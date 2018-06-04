@@ -16,7 +16,7 @@
 package expr
 
 import (
-	"github.com/google/nftables/internal/binaryutil"
+	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -116,12 +116,12 @@ const (
 type Cmp struct {
 	Op       CmpOp
 	Register uint32
-	Data     uint32
+	Data     []byte
 }
 
 func (e *Cmp) marshal() ([]byte, error) {
 	cmpData, err := netlink.MarshalAttributes([]netlink.Attribute{
-		{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.NativeEndian.PutUint32(e.Data)},
+		{Type: unix.NFTA_DATA_VALUE, Data: e.Data},
 	})
 	if err != nil {
 		return nil, err

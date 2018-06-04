@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
-	"github.com/google/nftables/internal/binaryutil"
 	"github.com/mdlayher/netlink"
 	"github.com/mdlayher/netlink/nltest"
 	"golang.org/x/sys/unix"
