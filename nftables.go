@@ -264,6 +264,8 @@ func (cc *Conn) Flush() error {
 		return err
 	}
 
+	defer conn.Close()
+
 	if _, err := conn.SendMessages(batch(cc.messages)); err != nil {
 		return fmt.Errorf("SendMessages: %v", err)
 	}
