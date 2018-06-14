@@ -33,6 +33,7 @@ type NAT struct {
 	Family      uint32 // TODO: typed const
 	RegAddrMin  uint32
 	RegProtoMin uint32
+	RegProtoMax uint32
 }
 
 // |00048|N-|00001|	|len |flags| type|
@@ -49,12 +50,16 @@ type NAT struct {
 // | 00 00 00 02  |	|      data      |  reg 2
 
 func (e *NAT) marshal() ([]byte, error) {
-	data, err := netlink.MarshalAttributes([]netlink.Attribute{
+	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_NAT_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(e.Type))},
 		{Type: unix.NFTA_NAT_FAMILY, Data: binaryutil.BigEndian.PutUint32(e.Family)},
 		{Type: unix.NFTA_NAT_REG_ADDR_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegAddrMin)},
 		{Type: unix.NFTA_NAT_REG_PROTO_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMin)},
-	})
+	}
+	if e.RegProtoMax > 0 {
+		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_PROTO_MAX, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMax)})
+	}
+	data, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
 		return nil, err
 	}
