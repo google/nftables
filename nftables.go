@@ -231,6 +231,18 @@ type Conn struct {
 	err      error
 }
 
+// FlushRuleset flushes the entire ruleset. See also
+// https://wiki.nftables.org/wiki-nftables/index.php/Operations_at_ruleset_level
+func (cc *Conn) FlushRuleset() {
+	cc.messages = append(cc.messages, netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
+			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsCreate,
+		},
+		Data: extraHeader(0, 0),
+	})
+}
+
 // AddTable adds the specified Table. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_tables
 func (cc *Conn) AddTable(t *Table) *Table {

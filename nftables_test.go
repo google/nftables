@@ -41,6 +41,8 @@ func TestConfigureNAT(t *testing.T) {
 	want := [][]byte{
 		// batch begin
 		[]byte("\x00\x00\x0a\x00"),
+		// nft flush ruleset
+		[]byte("\x00\x00\x00\x00"),
 		// nft add table ip nat
 		[]byte("\x02\x00\x00\x00\x08\x00\x01\x00\x6e\x61\x74\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
 		// nft add chain nat prerouting '{' type nat hook prerouting priority 0 \; '}'
@@ -78,6 +80,8 @@ func TestConfigureNAT(t *testing.T) {
 			return req, nil
 		},
 	}
+
+	c.FlushRuleset()
 
 	nat := c.AddTable(&nftables.Table{
 		Family: nftables.TableFamilyIPv4,
