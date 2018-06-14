@@ -128,7 +128,7 @@ func (e *Cmp) marshal() ([]byte, error) {
 	}
 	exprData, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_CMP_SREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
-		{Type: unix.NFTA_CMP_OP, Data: binaryutil.BigEndian.PutUint32(unix.NFT_CMP_EQ)},
+		{Type: unix.NFTA_CMP_OP, Data: binaryutil.BigEndian.PutUint32(uint32(e.Op))},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_CMP_DATA, Data: cmpData},
 	})
 	if err != nil {
