@@ -136,7 +136,7 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWCHAIN),
 			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsCreate,
 		},
-		Data: append(extraHeader(unix.AF_INET, 0), data...),
+		Data: append(extraHeader(uint8(c.Table.Family), 0), data...),
 	})
 
 	return c
@@ -197,7 +197,7 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWRULE),
 			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsCreate,
 		},
-		Data: append(extraHeader(unix.AF_INET, 0), data...),
+		Data: append(extraHeader(uint8(r.Table.Family), 0), data...),
 	})
 
 	return r
