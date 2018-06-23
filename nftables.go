@@ -18,6 +18,7 @@ package nftables
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
@@ -175,6 +176,82 @@ type Rule struct {
 	Exprs []expr.Any
 }
 
+var ruleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWRULE)
+
+func stringFrom0(b []byte) string {
+	return strings.TrimSuffix(string(b), "\x00")
+}
+
+func exprsFromMsg(b []byte) ([]expr.Any, error) {
+	elems, err := netlink.UnmarshalAttributes(b)
+	if err != nil {
+		return nil, err
+	}
+	var exprs []expr.Any
+	for _, elem := range elems {
+		attrs, err := netlink.UnmarshalAttributes(elem.Data)
+		if err != nil {
+			return nil, err
+		}
+		var (
+			name string
+			data []byte
+		)
+		for _, attr := range attrs {
+			switch attr.Type {
+			case unix.NFTA_EXPR_NAME:
+				name = stringFrom0(attr.Data)
+			case unix.NFTA_EXPR_DATA:
+				data = attr.Data
+			}
+		}
+		var e expr.Any
+		switch name {
+		case "meta":
+			e = &expr.Meta{}
+		case "cmp":
+			e = &expr.Cmp{}
+		case "counter":
+			e = &expr.Counter{}
+		}
+		if e == nil {
+			// TODO: introduce an opaque expression type so that users know
+			// something is here.
+			continue // unsupported expression type
+		}
+		if err := expr.Unmarshal(data, e); err != nil {
+			return nil, err
+		}
+		exprs = append(exprs, e)
+	}
+	return exprs, nil
+}
+
+func ruleFromMsg(msg netlink.Message) (*Rule, error) {
+	if got, want := msg.Header.Type, ruleHeaderType; got != want {
+		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
+	}
+	attrs, err := netlink.UnmarshalAttributes(msg.Data[4:])
+	if err != nil {
+		return nil, err
+	}
+	var r Rule
+	for _, attr := range attrs {
+		switch attr.Type {
+		case unix.NFTA_RULE_TABLE:
+			r.Table = &Table{Name: stringFrom0(attr.Data)}
+		case unix.NFTA_RULE_CHAIN:
+			r.Chain = &Chain{Name: stringFrom0(attr.Data)}
+		case unix.NFTA_RULE_EXPRESSIONS:
+			r.Exprs, err = exprsFromMsg(attr.Data)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return &r, nil
+}
+
 // AddRule adds the specified Rule. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Simple_rule_management
 func (cc *Conn) AddRule(r *Rule) *Rule {
@@ -194,7 +271,7 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWRULE),
+			Type:  ruleHeaderType,
 			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsCreate,
 		},
 		Data: append(extraHeader(uint8(r.Table.Family), 0), data...),
@@ -289,4 +366,55 @@ func (cc *Conn) Flush() error {
 	cc.messages = nil
 
 	return nil
+}
+
+// GetRule returns the rules in the specified table and chain.
+func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
+	var conn *netlink.Conn
+	var err error
+	if cc.TestDial == nil {
+		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, nil)
+	} else {
+		conn = nltest.Dial(cc.TestDial)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Close()
+
+	data, err := netlink.MarshalAttributes([]netlink.Attribute{
+		{Type: unix.NFTA_RULE_TABLE, Data: []byte(t.Name + "\x00")},
+		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(c.Name + "\x00")},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	message := netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETRULE),
+			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsDump,
+		},
+		Data: append(extraHeader(uint8(t.Family), 0), data...),
+	}
+
+	if _, err := conn.SendMessages([]netlink.Message{message}); err != nil {
+		return nil, fmt.Errorf("SendMessages: %v", err)
+	}
+
+	reply, err := conn.Receive()
+	if err != nil {
+		return nil, fmt.Errorf("Receive: %v", err)
+	}
+	var rules []*Rule
+	for _, msg := range reply {
+		r, err := ruleFromMsg(msg)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, r)
+	}
+
+	return rules, nil
 }

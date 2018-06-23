@@ -16,6 +16,8 @@
 package expr
 
 import (
+	"fmt"
+
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
@@ -26,9 +28,15 @@ func Marshal(e Any) ([]byte, error) {
 	return e.marshal()
 }
 
+// Unmarshal fills an expression from the specified byte slice.
+func Unmarshal(data []byte, e Any) error {
+	return e.unmarshal(data)
+}
+
 // Any is an interface implemented by any expression type.
 type Any interface {
 	marshal() ([]byte, error)
+	unmarshal([]byte) error
 }
 
 // MetaKey specifies which piece of meta information should be loaded. See also
@@ -87,6 +95,23 @@ func (e *Meta) marshal() ([]byte, error) {
 	})
 }
 
+func (e *Meta) unmarshal(data []byte) error {
+	attrs, err := netlink.UnmarshalAttributes(data)
+	if err != nil {
+		return err
+	}
+	for _, attr := range attrs {
+		switch attr.Type {
+		case unix.NFTA_META_DREG:
+			e.Register = binaryutil.BigEndian.Uint32(attr.Data)
+		case unix.NFTA_META_KEY:
+			e.Key = MetaKey(binaryutil.BigEndian.Uint32(attr.Data))
+		}
+	}
+
+	return nil
+}
+
 // Masq (Masquerade) is a special case of SNAT, where the source address is
 // automagically set to the address of the output interface. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Performing_Network_Address_Translation_(NAT)#Masquerading
@@ -97,6 +122,10 @@ func (e *Masq) marshal() ([]byte, error) {
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("masq\x00")},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: nil},
 	})
+}
+
+func (e *Masq) unmarshal(data []byte) error {
+	return fmt.Errorf("not yet implemented")
 }
 
 // CmpOp specifies which type of comparison should be performed.
@@ -138,4 +167,23 @@ func (e *Cmp) marshal() ([]byte, error) {
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("cmp\x00")},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: exprData},
 	})
+}
+
+func (e *Cmp) unmarshal(data []byte) error {
+	attrs, err := netlink.UnmarshalAttributes(data)
+	if err != nil {
+		return err
+	}
+	for _, attr := range attrs {
+		switch attr.Type {
+		case unix.NFTA_CMP_SREG:
+			e.Register = binaryutil.BigEndian.Uint32(attr.Data)
+		case unix.NFTA_CMP_OP:
+			e.Op = CmpOp(binaryutil.BigEndian.Uint32(attr.Data))
+		case unix.NFTA_CMP_DATA:
+			e.Data = attr.Data
+		}
+	}
+
+	return nil
 }

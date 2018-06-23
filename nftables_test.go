@@ -251,3 +251,81 @@ func TestConfigureNAT(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGetRule(t *testing.T) {
+	// The want byte sequences come from stracing nft(8), e.g.:
+	// strace -f -v -x -s 2048 -eraw=sendto nft list chain ip filter forward
+
+	want := [][]byte{
+		[]byte{0x2, 0x0, 0x0, 0x0, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xa, 0x0, 0x2, 0x0, 0x69, 0x6e, 0x70, 0x75, 0x74, 0x0, 0x0, 0x0},
+	}
+
+	// The reply messages come from adding log.Printf("msgs: %#v", msgs) to
+	// (*github.com/mdlayher/netlink/Conn).receive
+	reply := [][]netlink.Message{
+		nil,
+		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x68, Type: 0xa06, Flags: 0x802, Sequence: 0x9acb0443, PID: 0xba38ef3c}, Data: []uint8{0x2, 0x0, 0x0, 0xc, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xc, 0x0, 0x2, 0x0, 0x66, 0x6f, 0x72, 0x77, 0x61, 0x72, 0x64, 0x0, 0xc, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2, 0x30, 0x0, 0x4, 0x0, 0x2c, 0x0, 0x1, 0x0, 0xc, 0x0, 0x1, 0x0, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x65, 0x72, 0x0, 0x1c, 0x0, 0x2, 0x0, 0xc, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x6d, 0x92, 0x20, 0x20, 0xc, 0x0, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xa, 0x48, 0xd9}}},
+		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x14, Type: 0x3, Flags: 0x2, Sequence: 0x9acb0443, PID: 0xba38ef3c}, Data: []uint8{0x0, 0x0, 0x0, 0x0}}},
+	}
+
+	c := &nftables.Conn{
+		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				if got, want := b, want[0]; !bytes.Equal(got, want) {
+					t.Errorf("message %d: got %#v, want %#v", idx, got, want)
+				}
+				want = want[1:]
+			}
+			rep := reply[0]
+			reply = reply[1:]
+			return rep, nil
+		},
+	}
+
+	rules, err := c.GetRule(
+		&nftables.Table{
+			Family: nftables.TableFamilyIPv4,
+			Name:   "filter",
+		},
+		&nftables.Chain{
+			Name: "input",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+
+	rule := rules[0]
+	if got, want := len(rule.Exprs), 1; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	ce, ok := rule.Exprs[0].(*expr.Counter)
+	if !ok {
+		t.Fatalf("unexpected expression type: got %T, want *expr.Counter", rule.Exprs[0])
+	}
+
+	if got, want := ce.Packets, uint64(674009); got != want {
+		t.Errorf("unexpected number of packets: got %d, want %d", got, want)
+	}
+
+	if got, want := ce.Bytes, uint64(1838293024); got != want {
+		t.Errorf("unexpected number of bytes: got %d, want %d", got, want)
+	}
+}

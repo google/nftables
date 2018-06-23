@@ -15,6 +15,8 @@
 package expr
 
 import (
+	"fmt"
+
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
@@ -50,4 +52,8 @@ func (e *Payload) marshal() ([]byte, error) {
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("payload\x00")},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: data},
 	})
+}
+
+func (e *Payload) unmarshal(data []byte) error {
+	return fmt.Errorf("not yet implemented")
 }
