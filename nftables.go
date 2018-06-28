@@ -213,6 +213,8 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 			e = &expr.Cmp{}
 		case "counter":
 			e = &expr.Counter{}
+		case "payload":
+			e = &expr.Payload{}
 		}
 		if e == nil {
 			// TODO: introduce an opaque expression type so that users know

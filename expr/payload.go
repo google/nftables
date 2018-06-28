@@ -15,8 +15,6 @@
 package expr
 
 import (
-	"fmt"
-
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
@@ -55,5 +53,22 @@ func (e *Payload) marshal() ([]byte, error) {
 }
 
 func (e *Payload) unmarshal(data []byte) error {
-	return fmt.Errorf("not yet implemented")
+	attrs, err := netlink.UnmarshalAttributes(data)
+	if err != nil {
+		return err
+	}
+	for _, attr := range attrs {
+		switch attr.Type {
+		case unix.NFTA_PAYLOAD_DREG:
+			e.DestRegister = binaryutil.BigEndian.Uint32(attr.Data)
+		case unix.NFTA_PAYLOAD_BASE:
+			e.Base = PayloadBase(binaryutil.BigEndian.Uint32(attr.Data))
+		case unix.NFTA_PAYLOAD_OFFSET:
+			e.Offset = binaryutil.BigEndian.Uint32(attr.Data)
+		case unix.NFTA_PAYLOAD_LEN:
+			e.Len = binaryutil.BigEndian.Uint32(attr.Data)
+		}
+	}
+
+	return nil
 }
