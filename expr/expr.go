@@ -181,7 +181,13 @@ func (e *Cmp) unmarshal(data []byte) error {
 		case unix.NFTA_CMP_OP:
 			e.Op = CmpOp(binaryutil.BigEndian.Uint32(attr.Data))
 		case unix.NFTA_CMP_DATA:
-			e.Data = attr.Data
+			attrs, err := netlink.UnmarshalAttributes(attr.Data)
+			if err != nil {
+				return err
+			}
+			if len(attrs) == 1 && attrs[0].Type == unix.NFTA_DATA_VALUE {
+				e.Data = attrs[0].Data
+			}
 		}
 	}
 
