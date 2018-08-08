@@ -420,3 +420,174 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 
 	return rules, nil
 }
+
+// CounterObj implements Obj.
+type CounterObj struct {
+	Table *Table
+	Name  string // e.g. “fwded”
+
+	Bytes   uint64
+	Packets uint64
+}
+
+func (c *CounterObj) unmarshal(attrs []netlink.Attribute) error {
+	for _, attr := range attrs {
+		switch attr.Type {
+		case unix.NFTA_COUNTER_BYTES:
+			c.Bytes = binaryutil.BigEndian.Uint64(attr.Data)
+		case unix.NFTA_COUNTER_PACKETS:
+			c.Packets = binaryutil.BigEndian.Uint64(attr.Data)
+		}
+	}
+	return nil
+}
+
+func (c *CounterObj) family() TableFamily {
+	return c.Table.Family
+}
+
+func (c *CounterObj) marshal(data bool) ([]byte, error) {
+	obj, err := netlink.MarshalAttributes([]netlink.Attribute{
+		{Type: unix.NFTA_COUNTER_BYTES, Data: binaryutil.BigEndian.PutUint64(c.Bytes)},
+		{Type: unix.NFTA_COUNTER_PACKETS, Data: binaryutil.BigEndian.PutUint64(c.Packets)},
+	})
+	if err != nil {
+		return nil, err
+	}
+	const NFT_OBJECT_COUNTER = 1 // TODO: get into x/sys/unix
+	attrs := []netlink.Attribute{
+		{Type: unix.NFTA_OBJ_TABLE, Data: []byte(c.Table.Name + "\x00")},
+		{Type: unix.NFTA_OBJ_NAME, Data: []byte(c.Name + "\x00")},
+		{Type: unix.NFTA_OBJ_TYPE, Data: binaryutil.BigEndian.PutUint32(NFT_OBJECT_COUNTER)},
+	}
+	if data {
+		attrs = append(attrs, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_OBJ_DATA, Data: obj})
+	}
+	return netlink.MarshalAttributes(attrs)
+}
+
+// Obj represents a netfilter stateful object. See also
+// https://wiki.nftables.org/wiki-nftables/index.php/Stateful_objects
+type Obj interface {
+	family() TableFamily
+	unmarshal([]netlink.Attribute) error
+	marshal(data bool) ([]byte, error)
+}
+
+// AddObj adds the specified Obj. See also
+// https://wiki.nftables.org/wiki-nftables/index.php/Stateful_objects
+func (cc *Conn) AddObj(o Obj) Obj {
+	data, err := o.marshal(true)
+	if err != nil {
+		cc.setErr(err)
+		return nil
+	}
+
+	cc.messages = append(cc.messages, netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ),
+			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsCreate,
+		},
+		Data: append(extraHeader(uint8(o.family()), 0), data...),
+	})
+	return o
+}
+
+var objHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ)
+
+func objFromMsg(msg netlink.Message) (Obj, error) {
+	if got, want := msg.Header.Type, objHeaderType; got != want {
+		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
+	}
+	attrs, err := netlink.UnmarshalAttributes(msg.Data[4:])
+	if err != nil {
+		return nil, err
+	}
+	var (
+		table      *Table
+		name       string
+		objectType uint32
+	)
+	const NFT_OBJECT_COUNTER = 1 // TODO: get into x/sys/unix
+	for _, attr := range attrs {
+		switch attr.Type {
+		case unix.NFTA_OBJ_TABLE:
+			table = &Table{Name: stringFrom0(attr.Data)}
+		case unix.NFTA_OBJ_NAME:
+			name = stringFrom0(attr.Data)
+		case unix.NFTA_OBJ_TYPE:
+			objectType = binaryutil.BigEndian.Uint32(attr.Data)
+		case unix.NFTA_OBJ_DATA:
+			switch objectType {
+			case NFT_OBJECT_COUNTER:
+				attrs, err := netlink.UnmarshalAttributes(attr.Data)
+				if err != nil {
+					return nil, err
+				}
+				o := CounterObj{
+					Table: table,
+					Name:  name,
+				}
+				return &o, o.unmarshal(attrs)
+			}
+		}
+	}
+	return nil, fmt.Errorf("malformed stateful object")
+}
+
+func (cc *Conn) getObj(o Obj, msgType uint16) ([]Obj, error) {
+	var conn *netlink.Conn
+	var err error
+	if cc.TestDial == nil {
+		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, nil)
+	} else {
+		conn = nltest.Dial(cc.TestDial)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Close()
+
+	data, err := o.marshal(false)
+	if err != nil {
+		return nil, err
+	}
+
+	message := netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | msgType),
+			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsDump,
+		},
+		Data: append(extraHeader(uint8(o.family()), 0), data...),
+	}
+
+	if _, err := conn.SendMessages([]netlink.Message{message}); err != nil {
+		return nil, fmt.Errorf("SendMessages: %v", err)
+	}
+
+	reply, err := conn.Receive()
+	if err != nil {
+		return nil, fmt.Errorf("Receive: %v", err)
+	}
+	var objs []Obj
+	for _, msg := range reply {
+		o, err := objFromMsg(msg)
+		if err != nil {
+			return nil, err
+		}
+		objs = append(objs, o)
+	}
+
+	return objs, nil
+}
+
+// GetObj gets the specified Obj without resetting it.
+func (cc *Conn) GetObj(o Obj) ([]Obj, error) {
+	return cc.getObj(o, unix.NFT_MSG_GETOBJ)
+}
+
+// GetObjReset gets the specified Obj and resets it.
+func (cc *Conn) GetObjReset(o Obj) ([]Obj, error) {
+	return cc.getObj(o, unix.NFT_MSG_GETOBJ_RESET)
+}

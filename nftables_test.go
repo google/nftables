@@ -329,3 +329,135 @@ func TestGetRule(t *testing.T) {
 		t.Errorf("unexpected number of bytes: got %d, want %d", got, want)
 	}
 }
+
+func TestAddCounter(t *testing.T) {
+	// The want byte sequences come from stracing nft(8), e.g.:
+	// strace -f -v -x -s 2048 -eraw=sendto nft add table ip nat
+	//
+	// The nft(8) command sequence was taken from:
+	// https://wiki.nftables.org/wiki-nftables/index.php/Performing_Network_Address_Translation_(NAT)
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x0a\x00"),
+		// nft add counter ip filter fwded
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0a\x00\x02\x00\x66\x77\x64\x65\x64\x00\x00\x00\x08\x00\x03\x00\x00\x00\x00\x01\x1c\x00\x04\x80\x0c\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0c\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00"),
+		// nft add rule ip filter forward counter name fwded
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0c\x00\x02\x00\x66\x6f\x72\x77\x61\x72\x64\x00\x2c\x00\x04\x80\x28\x00\x01\x80\x0b\x00\x01\x00\x6f\x62\x6a\x72\x65\x66\x00\x00\x18\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x09\x00\x02\x00\x66\x77\x64\x65\x64\x00\x00\x00"),
+		// batch end
+		[]byte("\x00\x00\x0a\x00"),
+	}
+
+	c := &nftables.Conn{
+		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				if got, want := b, want[0]; !bytes.Equal(got, want) {
+					t.Errorf("message %d: got %x, want %x", idx, got, want)
+				}
+				want = want[1:]
+			}
+			return req, nil
+		},
+	}
+
+	c.AddObj(&nftables.CounterObj{
+		Table:   &nftables.Table{Name: "filter", Family: nftables.TableFamilyIPv4},
+		Name:    "fwded",
+		Bytes:   0,
+		Packets: 0,
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: &nftables.Table{Name: "filter", Family: nftables.TableFamilyIPv4},
+		Chain: &nftables.Chain{Name: "forward", Type: nftables.ChainTypeFilter},
+		Exprs: []expr.Any{
+			&expr.Objref{
+				Type: 1,
+				Name: "fwded",
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetObjReset(t *testing.T) {
+	// The want byte sequences come from stracing nft(8), e.g.:
+	// strace -f -v -x -s 2048 -eraw=sendto nft list chain ip filter forward
+
+	want := [][]byte{
+		[]byte{0x2, 0x0, 0x0, 0x0, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xa, 0x0, 0x2, 0x0, 0x66, 0x77, 0x64, 0x65, 0x64, 0x0, 0x0, 0x0, 0x8, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x1},
+	}
+
+	// The reply messages come from adding log.Printf("msgs: %#v", msgs) to
+	// (*github.com/mdlayher/netlink/Conn).receive
+	reply := [][]netlink.Message{
+		nil,
+		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x64, Type: 0xa12, Flags: 0x802, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0x2, 0x0, 0x0, 0x10, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xa, 0x0, 0x2, 0x0, 0x66, 0x77, 0x64, 0x65, 0x64, 0x0, 0x0, 0x0, 0x8, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x1, 0x8, 0x0, 0x5, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1c, 0x0, 0x4, 0x0, 0xc, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x4, 0x61, 0xc, 0x0, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x9, 0xc, 0x0, 0x6, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2}}},
+		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x14, Type: 0x3, Flags: 0x2, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0x0, 0x0, 0x0, 0x0}}},
+	}
+
+	c := &nftables.Conn{
+		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				if got, want := b, want[0]; !bytes.Equal(got, want) {
+					t.Errorf("message %d: got %#v, want %#v", idx, got, want)
+				}
+				want = want[1:]
+			}
+			rep := reply[0]
+			reply = reply[1:]
+			return rep, nil
+		},
+	}
+
+	objs, err := c.GetObjReset(&nftables.CounterObj{
+		Table: &nftables.Table{Name: "filter", Family: nftables.TableFamilyIPv4},
+		Name:  "fwded",
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(objs), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+
+	obj := objs[0]
+	co, ok := obj.(*nftables.CounterObj)
+	if !ok {
+		t.Fatalf("unexpected type: got %T, want *nftables.CounterObj", obj)
+	}
+	if got, want := co.Packets, uint64(9); got != want {
+		t.Errorf("unexpected number of packets: got %d, want %d", got, want)
+	}
+	if got, want := co.Bytes, uint64(1121); got != want {
+		t.Errorf("unexpected number of bytes: got %d, want %d", got, want)
+	}
+}
