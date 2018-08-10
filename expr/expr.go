@@ -16,6 +16,7 @@
 package expr
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/google/nftables/binaryutil"
@@ -96,20 +97,20 @@ func (e *Meta) marshal() ([]byte, error) {
 }
 
 func (e *Meta) unmarshal(data []byte) error {
-	attrs, err := netlink.UnmarshalAttributes(data)
+	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err
 	}
-	for _, attr := range attrs {
-		switch attr.Type {
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
 		case unix.NFTA_META_DREG:
-			e.Register = binaryutil.BigEndian.Uint32(attr.Data)
+			e.Register = ad.Uint32()
 		case unix.NFTA_META_KEY:
-			e.Key = MetaKey(binaryutil.BigEndian.Uint32(attr.Data))
+			e.Key = MetaKey(ad.Uint32())
 		}
 	}
-
-	return nil
+	return ad.Err()
 }
 
 // Masq (Masquerade) is a special case of SNAT, where the source address is
@@ -170,26 +171,33 @@ func (e *Cmp) marshal() ([]byte, error) {
 }
 
 func (e *Cmp) unmarshal(data []byte) error {
-	attrs, err := netlink.UnmarshalAttributes(data)
+	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err
 	}
-	for _, attr := range attrs {
-		switch attr.Type {
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
 		case unix.NFTA_CMP_SREG:
-			e.Register = binaryutil.BigEndian.Uint32(attr.Data)
+			e.Register = ad.Uint32()
 		case unix.NFTA_CMP_OP:
-			e.Op = CmpOp(binaryutil.BigEndian.Uint32(attr.Data))
+			e.Op = CmpOp(ad.Uint32())
 		case unix.NFTA_CMP_DATA:
-			attrs, err := netlink.UnmarshalAttributes(attr.Data)
-			if err != nil {
-				return err
-			}
-			if len(attrs) == 1 && attrs[0].Type == unix.NFTA_DATA_VALUE {
-				e.Data = attrs[0].Data
-			}
+			ad.Do(func(b []byte) error {
+				ad, err := netlink.NewAttributeDecoder(data)
+				if err != nil {
+					return err
+				}
+				ad.ByteOrder = binary.BigEndian
+				if ad.Next() && ad.Type() == unix.NFTA_DATA_VALUE {
+					ad.Do(func(b []byte) error {
+						e.Data = b
+						return nil
+					})
+				}
+				return ad.Err()
+			})
 		}
 	}
-
-	return nil
+	return ad.Err()
 }

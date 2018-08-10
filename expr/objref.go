@@ -15,6 +15,8 @@
 package expr
 
 import (
+	"encoding/binary"
+
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
@@ -41,18 +43,18 @@ func (e *Objref) marshal() ([]byte, error) {
 }
 
 func (e *Objref) unmarshal(data []byte) error {
-	attrs, err := netlink.UnmarshalAttributes(data)
+	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err
 	}
-	for _, attr := range attrs {
-		switch attr.Type {
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
 		case unix.NFTA_OBJREF_IMM_TYPE:
-			e.Type = int(binaryutil.BigEndian.Uint32(attr.Data))
+			e.Type = int(ad.Uint32())
 		case unix.NFTA_OBJREF_IMM_NAME:
-			e.Name = string(attr.Data)
+			e.Name = ad.String()
 		}
 	}
-
-	return nil
+	return ad.Err()
 }

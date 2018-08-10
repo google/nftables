@@ -15,6 +15,8 @@
 package expr
 
 import (
+	"encoding/binary"
+
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
@@ -53,22 +55,22 @@ func (e *Payload) marshal() ([]byte, error) {
 }
 
 func (e *Payload) unmarshal(data []byte) error {
-	attrs, err := netlink.UnmarshalAttributes(data)
+	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err
 	}
-	for _, attr := range attrs {
-		switch attr.Type {
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
 		case unix.NFTA_PAYLOAD_DREG:
-			e.DestRegister = binaryutil.BigEndian.Uint32(attr.Data)
+			e.DestRegister = ad.Uint32()
 		case unix.NFTA_PAYLOAD_BASE:
-			e.Base = PayloadBase(binaryutil.BigEndian.Uint32(attr.Data))
+			e.Base = PayloadBase(ad.Uint32())
 		case unix.NFTA_PAYLOAD_OFFSET:
-			e.Offset = binaryutil.BigEndian.Uint32(attr.Data)
+			e.Offset = ad.Uint32()
 		case unix.NFTA_PAYLOAD_LEN:
-			e.Len = binaryutil.BigEndian.Uint32(attr.Data)
+			e.Len = ad.Uint32()
 		}
 	}
-
-	return nil
+	return ad.Err()
 }
