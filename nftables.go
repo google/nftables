@@ -520,7 +520,7 @@ func objFromMsg(msg netlink.Message) (Obj, error) {
 	for ad.Next() {
 		switch ad.Type() {
 		case unix.NFTA_OBJ_TABLE:
-			table = &Table{Name: ad.String()}
+			table = &Table{Name: ad.String(), Family: TableFamily(msg.Data[0])}
 		case unix.NFTA_OBJ_NAME:
 			name = ad.String()
 		case unix.NFTA_OBJ_TYPE:
