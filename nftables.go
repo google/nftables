@@ -32,7 +32,7 @@ func extraHeader(family uint8, resID uint16) []byte {
 	return append([]byte{
 		family,
 		unix.NFNETLINK_V0,
-	}, binaryutil.NativeEndian.PutUint16(resID)...)
+	}, binaryutil.BigEndian.PutUint16(resID)...)
 }
 
 func batch(messages []netlink.Message) []netlink.Message {
