@@ -329,6 +329,21 @@ func (cc *Conn) FlushRuleset() {
 	})
 }
 
+// DelTable deletes a specific table, along with all chains/rules it contains.
+func (cc *Conn) DelTable(t *Table) {
+	data := cc.marshalAttr([]netlink.Attribute{
+		{Type: unix.NFTA_TABLE_NAME, Data: []byte(t.Name + "\x00")},
+		{Type: unix.NFTA_TABLE_FLAGS, Data: []byte{0, 0, 0, 0}},
+	})
+	cc.messages = append(cc.messages, netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
+			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge,
+		},
+		Data: append(extraHeader(uint8(t.Family), 0), data...),
+	})
+}
+
 // AddTable adds the specified Table. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_tables
 func (cc *Conn) AddTable(t *Table) *Table {
