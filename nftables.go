@@ -313,6 +313,7 @@ type Table struct {
 // Commands are buffered. Flush sends all buffered commands in a single batch.
 type Conn struct {
 	TestDial nltest.Func // for testing only; passed to nltest.Dial
+	NetNS    int         // Network namespace netlink will interact with.
 	messages []netlink.Message
 	err      error
 }
@@ -366,13 +367,7 @@ func (cc *Conn) Flush() error {
 	if cc.err != nil {
 		return cc.err // serialization error
 	}
-	var conn *netlink.Conn
-	var err error
-	if cc.TestDial == nil {
-		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, nil)
-	} else {
-		conn = nltest.Dial(cc.TestDial)
-	}
+	conn, err := cc.dialNetlink()
 	if err != nil {
 		return err
 	}
@@ -394,17 +389,10 @@ func (cc *Conn) Flush() error {
 
 // GetRule returns the rules in the specified table and chain.
 func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
-	var conn *netlink.Conn
-	var err error
-	if cc.TestDial == nil {
-		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, nil)
-	} else {
-		conn = nltest.Dial(cc.TestDial)
-	}
+	conn, err := cc.dialNetlink()
 	if err != nil {
 		return nil, err
 	}
-
 	defer conn.Close()
 
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
@@ -566,18 +554,18 @@ func objFromMsg(msg netlink.Message) (Obj, error) {
 	return nil, fmt.Errorf("malformed stateful object")
 }
 
-func (cc *Conn) getObj(o Obj, msgType uint16) ([]Obj, error) {
-	var conn *netlink.Conn
-	var err error
-	if cc.TestDial == nil {
-		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, nil)
-	} else {
-		conn = nltest.Dial(cc.TestDial)
+func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
+	if cc.TestDial != nil {
+		return nltest.Dial(cc.TestDial), nil
 	}
+	return netlink.Dial(unix.NETLINK_NETFILTER, &netlink.Config{NetNS: cc.NetNS})
+}
+
+func (cc *Conn) getObj(o Obj, msgType uint16) ([]Obj, error) {
+	conn, err := cc.dialNetlink()
 	if err != nil {
 		return nil, err
 	}
-
 	defer conn.Close()
 
 	data, err := o.marshal(false)

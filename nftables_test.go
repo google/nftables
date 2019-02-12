@@ -16,8 +16,10 @@ package nftables_test
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"net"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -25,7 +27,12 @@ import (
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
+	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
+)
+
+var (
+	enableSysTests = flag.Bool("run_system_tests", false, "Run tests that operate against the live kernel")
 )
 
 // nfdump returns a hexdump of 4 bytes per line (like nft --debug=all), allowing
@@ -72,6 +79,35 @@ func ifname(n string) []byte {
 	b := make([]byte, 16)
 	copy(b, []byte(n+"\x00"))
 	return b
+}
+
+// openSystemNFTConn returns a netlink connection that tests against
+// the running kernel in a separate network namespace.
+// cleanupSystemNFTConn() must be called from a defer to cleanup
+// created network namespace.
+func openSystemNFTConn(t *testing.T) (*nftables.Conn, netns.NsHandle) {
+	t.Helper()
+	if !*enableSysTests {
+		t.SkipNow()
+	}
+	// We lock the goroutine into the current thread, as namespace operations
+	// such as those invoked by `netns.New()` are thread-local. This is undone
+	// in cleanupSystemNFTConn().
+	runtime.LockOSThread()
+
+	ns, err := netns.New()
+	if err != nil {
+		t.Fatalf("netns.New() failed: %v", err)
+	}
+	return &nftables.Conn{NetNS: int(ns)}, ns
+}
+
+func cleanupSystemNFTConn(t *testing.T, newNS netns.NsHandle) {
+	defer runtime.UnlockOSThread()
+
+	if err := newNS.Close(); err != nil {
+		t.Fatalf("newNS.Close() failed: %v", err)
+	}
 }
 
 func TestConfigureNAT(t *testing.T) {
@@ -827,5 +863,252 @@ func TestDropVerdict(t *testing.T) {
 
 	if err := c.Flush(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCreateUseAnonymousSet(t *testing.T) {
+	// The want byte sequences come from stracing nft(8), e.g.:
+	// strace -f -v -x -s 2048 -eraw=sendto nft add table ip nat
+	//
+	// The nft(8) command sequence was taken from:
+	// https://wiki.nftables.org/wiki-nftables/index.php/Mangle_TCP_options
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// nft flush ruleset
+		[]byte("\x00\x00\x00\x00"),
+		// nft add table ip filter
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+		// Create anonymous set with key len of 2 bytes and data len of 0 bytes
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0c\x00\x02\x00\x5f\x5f\x73\x65\x74\x25\x64\x00\x08\x00\x03\x00\x00\x00\x00\x03\x08\x00\x04\x00\x00\x00\x00\x0d\x08\x00\x05\x00\x00\x00\x00\x02\x08\x00\x0a\x00\x00\x00\x00\x01\x0c\x00\x09\x80\x08\x00\x01\x00\x00\x00\x00\x02\x0a\x00\x0d\x00\x00\x04\x02\x00\x00\x00\x00\x00"),
+		// Assign the two values to the aforementioned anonymous set
+		[]byte("\x02\x00\x00\x00\x0c\x00\x02\x00\x5f\x5f\x73\x65\x74\x25\x64\x00\x08\x00\x04\x00\x00\x00\x00\x01\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x24\x00\x03\x80\x10\x00\x01\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x00\x45\x00\x00\x10\x00\x02\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x04\x8b\x00\x00"),
+		// nft add rule filter forward tcp dport {69, 1163} drop
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0c\x00\x02\x00\x66\x6f\x72\x77\x61\x72\x64\x00\xe8\x00\x04\x80\x24\x00\x01\x80\x09\x00\x01\x00\x6d\x65\x74\x61\x00\x00\x00\x00\x14\x00\x02\x80\x08\x00\x02\x00\x00\x00\x00\x10\x08\x00\x01\x00\x00\x00\x00\x01\x2c\x00\x01\x80\x08\x00\x01\x00\x63\x6d\x70\x00\x20\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x08\x00\x02\x00\x00\x00\x00\x00\x0c\x00\x03\x80\x05\x00\x01\x00\x06\x00\x00\x00\x34\x00\x01\x80\x0c\x00\x01\x00\x70\x61\x79\x6c\x6f\x61\x64\x00\x24\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x08\x00\x02\x00\x00\x00\x00\x02\x08\x00\x03\x00\x00\x00\x00\x02\x08\x00\x04\x00\x00\x00\x00\x02\x30\x00\x01\x80\x0b\x00\x01\x00\x6c\x6f\x6f\x6b\x75\x70\x00\x00\x20\x00\x02\x80\x08\x00\x02\x00\x00\x00\x00\x01\x0c\x00\x01\x00\x5f\x5f\x73\x65\x74\x25\x64\x00\x08\x00\x04\x00\x00\x00\x00\x01\x30\x00\x01\x80\x0e\x00\x01\x00\x69\x6d\x6d\x65\x64\x69\x61\x74\x65\x00\x00\x00\x1c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00\x10\x00\x02\x80\x0c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	c := &nftables.Conn{
+		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				if got, want := b, want[0]; !bytes.Equal(got, want) {
+					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
+				}
+				want = want[1:]
+			}
+			return req, nil
+		},
+	}
+
+	c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	set := &nftables.Set{
+		Anonymous: true,
+		Constant:  true,
+		Table:     filter,
+		KeyType:   nftables.TypeInetService,
+	}
+
+	if err := c.AddSet(set, []nftables.SetElement{
+		{Key: binaryutil.BigEndian.PutUint16(69)},
+		{Key: binaryutil.BigEndian.PutUint16(1163)},
+	}); err != nil {
+		t.Errorf("c.AddSet() failed: %v", err)
+	}
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: &nftables.Chain{Name: "forward", Type: nftables.ChainTypeFilter},
+		Exprs: []expr.Any{
+			// [ meta load l4proto => reg 1 ]
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			// [ cmp eq reg 1 0x00000006 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+
+			// [ payload load 2b @ transport header + 2 => reg 1 ]
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			// [ lookup reg 1 set __set%d ]
+			&expr.Lookup{
+				SourceRegister: 1,
+				SetName:        set.Name,
+				SetID:          set.ID,
+			},
+			// [ immediate reg 0 drop ]
+			&expr.Verdict{
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateUseNamedSet(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	portSet := &nftables.Set{
+		Table:   filter,
+		Name:    "kek",
+		KeyType: nftables.TypeInetService,
+	}
+	if err := c.AddSet(portSet, nil); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+	if err := c.SetAddElements(portSet, []nftables.SetElement{{Key: binaryutil.BigEndian.PutUint16(22)}}); err != nil {
+		t.Errorf("c.SetVal(portSet) failed: %v", err)
+	}
+
+	ipSet := &nftables.Set{
+		Table:   filter,
+		Name:    "IPs_4_dayz",
+		KeyType: nftables.TypeIPAddr,
+	}
+	if err := c.AddSet(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.64").To4())}}); err != nil {
+		t.Errorf("c.AddSet(ipSet) failed: %v", err)
+	}
+	if err := c.SetAddElements(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.42").To4())}}); err != nil {
+		t.Errorf("c.SetVal(ipSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	sets, err := c.GetSets(filter)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(sets) != 2 {
+		t.Fatalf("len(sets) = %d, want 2", len(sets))
+	}
+	if sets[0].Name != "kek" {
+		t.Errorf("set[0].Name = %q, want kek", sets[0].Name)
+	}
+	if sets[1].Name != "IPs_4_dayz" {
+		t.Errorf("set[1].Name = %q, want IPs_4_dayz", sets[1].Name)
+	}
+}
+
+func TestCreateDeleteNamedSet(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	portSet := &nftables.Set{
+		Table:   filter,
+		Name:    "kek",
+		KeyType: nftables.TypeInetService,
+	}
+	if err := c.AddSet(portSet, nil); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	c.DelSet(portSet)
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("Second c.Flush() failed: %v", err)
+	}
+
+	sets, err := c.GetSets(filter)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(sets) != 0 {
+		t.Fatalf("len(sets) = %d, want 0", len(sets))
+	}
+}
+
+func TestDeleteElementNamedSet(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	portSet := &nftables.Set{
+		Table:   filter,
+		Name:    "kek",
+		KeyType: nftables.TypeInetService,
+	}
+	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}}); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	c.SetDeleteElements(portSet, []nftables.SetElement{{Key: []byte{0, 23}}})
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("Second c.Flush() failed: %v", err)
+	}
+
+	elems, err := c.GetSetElements(portSet)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(elems) != 1 {
+		t.Fatalf("len(elems) = %d, want 1", len(elems))
+	}
+	if !bytes.Equal(elems[0].Key, []byte{0, 22}) {
+		t.Errorf("elems[0].Key = %v, want 22", elems[0].Key)
 	}
 }
