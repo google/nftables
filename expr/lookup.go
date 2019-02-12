@@ -29,6 +29,7 @@ type Lookup struct {
 
 	SetID   uint32
 	SetName string
+	Invert  bool
 }
 
 func (e *Lookup) marshal() ([]byte, error) {
@@ -39,6 +40,9 @@ func (e *Lookup) marshal() ([]byte, error) {
 	}
 	if e.DestRegister != 0 {
 		opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_LOOKUP_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)})
+	}
+	if e.Invert {
+		opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_LOOKUP_FLAGS, Data: binaryutil.BigEndian.PutUint32(unix.NFT_LOOKUP_F_INV)})
 	}
 	opAttrs = append(opAttrs,
 		netlink.Attribute{Type: unix.NFTA_LOOKUP_SET, Data: []byte(e.SetName + "\x00")},
