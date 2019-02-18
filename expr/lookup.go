@@ -15,7 +15,7 @@
 package expr
 
 import (
-	"fmt"
+	"encoding/binary"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
@@ -60,5 +60,24 @@ func (e *Lookup) marshal() ([]byte, error) {
 }
 
 func (e *Lookup) unmarshal(data []byte) error {
-	return fmt.Errorf("not yet implemented")
+	ad, err := netlink.NewAttributeDecoder(data)
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_LOOKUP_SET:
+			e.SetName = ad.String()
+		case unix.NFTA_LOOKUP_SET_ID:
+			e.SetID = ad.Uint32()
+		case unix.NFTA_LOOKUP_SREG:
+			e.SourceRegister = ad.Uint32()
+		case unix.NFTA_LOOKUP_DREG:
+			e.DestRegister = ad.Uint32()
+		case unix.NFTA_LOOKUP_FLAGS:
+			e.Invert = (ad.Uint32() & unix.NFT_LOOKUP_F_INV) != 0
+		}
+	}
+	return ad.Err()
 }
