@@ -213,6 +213,10 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 						e = &expr.Counter{}
 					case "payload":
 						e = &expr.Payload{}
+					case "lookup":
+						e = &expr.Lookup{}
+					case "immediate":
+						e = &expr.Immediate{}
 					}
 					if e == nil {
 						// TODO: introduce an opaque expression type so that users know
@@ -223,6 +227,15 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 					ad.Do(func(b []byte) error {
 						if err := expr.Unmarshal(b, e); err != nil {
 							return err
+						}
+						// Verdict expressions are a special-case of immediate expressions, so
+						// if the expression is an immediate writing nothing into the verdict
+						// register (invalid), re-parse it as a verdict expression.
+						if imm, isImmediate := e.(*expr.Immediate); isImmediate && imm.Register == unix.NFT_REG_VERDICT && len(imm.Data) == 0 {
+							e = &expr.Verdict{}
+							if err := expr.Unmarshal(b, e); err != nil {
+								return err
+							}
 						}
 						exprs = append(exprs, e)
 						return nil

@@ -15,6 +15,7 @@
 package expr
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/google/nftables/binaryutil"
@@ -49,5 +50,30 @@ func (e *Immediate) marshal() ([]byte, error) {
 }
 
 func (e *Immediate) unmarshal(data []byte) error {
-	return fmt.Errorf("not yet implemented")
+	ad, err := netlink.NewAttributeDecoder(data)
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_IMMEDIATE_DREG:
+			e.Register = ad.Uint32()
+		case unix.NFTA_IMMEDIATE_DATA:
+			nestedAD, err := netlink.NewAttributeDecoder(ad.Bytes())
+			if err != nil {
+				return fmt.Errorf("nested NewAttributeDecoder() failed: %v", err)
+			}
+			for nestedAD.Next() {
+				switch nestedAD.Type() {
+				case unix.NFTA_DATA_VALUE:
+					e.Data = nestedAD.Bytes()
+				}
+			}
+			if nestedAD.Err() != nil {
+				return fmt.Errorf("decoding immediate: %v", nestedAD.Err())
+			}
+		}
+	}
+	return ad.Err()
 }
