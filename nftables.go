@@ -40,7 +40,7 @@ func batch(messages []netlink.Message) []netlink.Message {
 		{
 			Header: netlink.Header{
 				Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
-				Flags: netlink.HeaderFlagsRequest,
+				Flags: netlink.Request,
 			},
 			Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
 		},
@@ -51,7 +51,7 @@ func batch(messages []netlink.Message) []netlink.Message {
 	batch = append(batch, netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_END),
-			Flags: netlink.HeaderFlagsRequest,
+			Flags: netlink.Request,
 		},
 		Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
 	})
@@ -136,7 +136,7 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWCHAIN),
-			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsCreate,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(c.Table.Family), 0), data...),
 	})
@@ -294,7 +294,7 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  ruleHeaderType,
-			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsCreate,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(r.Table.Family), 0), data...),
 	})
@@ -337,7 +337,7 @@ func (cc *Conn) FlushRuleset() {
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
-			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsCreate,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
 		Data: extraHeader(0, 0),
 	})
@@ -352,7 +352,7 @@ func (cc *Conn) DelTable(t *Table) {
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
-			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge,
+			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	})
@@ -368,7 +368,7 @@ func (cc *Conn) AddTable(t *Table) *Table {
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWTABLE),
-			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsCreate,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	})
@@ -419,7 +419,7 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETRULE),
-			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsDump,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
@@ -509,7 +509,7 @@ func (cc *Conn) AddObj(o Obj) Obj {
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ),
-			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsCreate,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(o.family()), 0), data...),
 	})
@@ -589,7 +589,7 @@ func (cc *Conn) getObj(o Obj, msgType uint16) ([]Obj, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | msgType),
-			Flags: netlink.HeaderFlagsRequest | netlink.HeaderFlagsAcknowledge | netlink.HeaderFlagsDump,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(o.family()), 0), data...),
 	}
