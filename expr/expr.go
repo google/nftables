@@ -184,7 +184,7 @@ func (e *Cmp) unmarshal(data []byte) error {
 			e.Op = CmpOp(ad.Uint32())
 		case unix.NFTA_CMP_DATA:
 			ad.Do(func(b []byte) error {
-				ad, err := netlink.NewAttributeDecoder(data)
+				ad, err := netlink.NewAttributeDecoder(b)
 				if err != nil {
 					return err
 				}
