@@ -201,3 +201,69 @@ func (e *Cmp) unmarshal(data []byte) error {
 	}
 	return ad.Err()
 }
+
+// ExprsFromMsg decodes NFTA_RULE_EXPRESSIONS from netlink message
+func ExprsFromMsg(b []byte) ([]Any, error) {
+	ad, err := netlink.NewAttributeDecoder(b)
+	if err != nil {
+		return nil, err
+	}
+	ad.ByteOrder = binary.BigEndian
+	var exprs []Any
+	for ad.Next() {
+		ad.Do(func(b []byte) error {
+			ad, err := netlink.NewAttributeDecoder(b)
+			if err != nil {
+				return err
+			}
+			ad.ByteOrder = binary.BigEndian
+			var name string
+			for ad.Next() {
+				switch ad.Type() {
+				case unix.NFTA_EXPR_NAME:
+					name = ad.String()
+				case unix.NFTA_EXPR_DATA:
+					var e Any
+					switch name {
+					case "meta":
+						e = &Meta{}
+					case "cmp":
+						e = &Cmp{}
+					case "counter":
+						e = &Counter{}
+					case "payload":
+						e = &Payload{}
+					case "lookup":
+						e = &Lookup{}
+					case "immediate":
+						e = &Immediate{}
+					}
+					if e == nil {
+						// TODO: introduce an opaque expression type so that users know
+						// something is here.
+						continue // unsupported expression type
+					}
+
+					ad.Do(func(b []byte) error {
+						if err := Unmarshal(b, e); err != nil {
+							return err
+						}
+						// Verdict expressions are a special-case of immediate expressions, so
+						// if the expression is an immediate writing nothing into the verdict
+						// register (invalid), re-parse it as a verdict expression.
+						if imm, isImmediate := e.(*Immediate); isImmediate && imm.Register == unix.NFT_REG_VERDICT && len(imm.Data) == 0 {
+							e = &Verdict{}
+							if err := Unmarshal(b, e); err != nil {
+								return err
+							}
+						}
+						exprs = append(exprs, e)
+						return nil
+					})
+				}
+			}
+			return ad.Err()
+		})
+	}
+	return exprs, ad.Err()
+}
