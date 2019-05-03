@@ -106,68 +106,68 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 }
 
 func exprsFromMsg(b []byte) ([]expr.Any, error) {
-        ad, err := netlink.NewAttributeDecoder(b)
-        if err != nil {
-                return nil, err
-        }
-        ad.ByteOrder = binary.BigEndian
-        var exprs []expr.Any
-        for ad.Next() {
-                ad.Do(func(b []byte) error {
-                        ad, err := netlink.NewAttributeDecoder(b)
-                        if err != nil {
-                                return err
-                        }
-                        ad.ByteOrder = binary.BigEndian
-                        var name string
-                        for ad.Next() {
-                                switch ad.Type() {
-                                case unix.NFTA_EXPR_NAME:
-                                        name = ad.String()
-                                case unix.NFTA_EXPR_DATA:
-                                        var e expr.Any
-                                        switch name {
-                                        case "meta":
-                                                e = &expr.Meta{}
-                                        case "cmp":
-                                                e = &expr.Cmp{}
-                                        case "counter":
-                                                e = &expr.Counter{}
-                                        case "payload":
-                                                e = &expr.Payload{}
-                                        case "lookup":
-                                                e = &expr.Lookup{}
-                                        case "immediate":
-                                                e = &expr.Immediate{}
-                                        }
-                                        if e == nil {
-                                                // TODO: introduce an opaque expression type so that users know
-                                                // something is here.
-                                                continue // unsupported expression type
-                                        }
+	ad, err := netlink.NewAttributeDecoder(b)
+	if err != nil {
+		return nil, err
+	}
+	ad.ByteOrder = binary.BigEndian
+	var exprs []expr.Any
+	for ad.Next() {
+		ad.Do(func(b []byte) error {
+			ad, err := netlink.NewAttributeDecoder(b)
+			if err != nil {
+				return err
+			}
+			ad.ByteOrder = binary.BigEndian
+			var name string
+			for ad.Next() {
+				switch ad.Type() {
+				case unix.NFTA_EXPR_NAME:
+					name = ad.String()
+				case unix.NFTA_EXPR_DATA:
+					var e expr.Any
+					switch name {
+					case "meta":
+						e = &expr.Meta{}
+					case "cmp":
+						e = &expr.Cmp{}
+					case "counter":
+						e = &expr.Counter{}
+					case "payload":
+						e = &expr.Payload{}
+					case "lookup":
+						e = &expr.Lookup{}
+					case "immediate":
+						e = &expr.Immediate{}
+					}
+					if e == nil {
+						// TODO: introduce an opaque expression type so that users know
+						// something is here.
+						continue // unsupported expression type
+					}
 
-                                        ad.Do(func(b []byte) error {
-                                                if err := expr.Unmarshal(b, e); err != nil {
-                                                        return err
-                                                }
-                                                // Verdict expressions are a special-case of immediate expressions, so
-                                                // if the expression is an immediate writing nothing into the verdict
-                                                // register (invalid), re-parse it as a verdict expression.
-                                                if imm, isImmediate := e.(*expr.Immediate); isImmediate && imm.Register == unix.NFT_REG_VERDICT && len(imm.Data) == 0 {
-                                                        e = &expr.Verdict{}
-                                                        if err := expr.Unmarshal(b, e); err != nil {
-                                                                return err
-                                                        }
-                                                }
-                                                exprs = append(exprs, e)
-                                                return nil
-                                        })
-                                }
-                        }
-                        return ad.Err()
-                })
-        }
-        return exprs, ad.Err()
+					ad.Do(func(b []byte) error {
+						if err := expr.Unmarshal(b, e); err != nil {
+							return err
+						}
+						// Verdict expressions are a special-case of immediate expressions, so
+						// if the expression is an immediate writing nothing into the verdict
+						// register (invalid), re-parse it as a verdict expression.
+						if imm, isImmediate := e.(*expr.Immediate); isImmediate && imm.Register == unix.NFT_REG_VERDICT && len(imm.Data) == 0 {
+							e = &expr.Verdict{}
+							if err := expr.Unmarshal(b, e); err != nil {
+								return err
+							}
+						}
+						exprs = append(exprs, e)
+						return nil
+					})
+				}
+			}
+			return ad.Err()
+		})
+	}
+	return exprs, ad.Err()
 }
 
 func ruleFromMsg(msg netlink.Message) (*Rule, error) {
