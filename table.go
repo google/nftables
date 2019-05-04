@@ -15,17 +15,22 @@
 package nftables
 
 import (
+	"fmt"
+
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
+
+var tableHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWTABLE)
 
 // TableFamily specifies the address family for this table.
 type TableFamily byte
 
 // Possible TableFamily values.
 const (
-	TableFamilyIPv4 TableFamily = unix.AF_INET
-	TableFamilyIPv6 TableFamily = unix.AF_INET6
+	TableFamilyIPv4   TableFamily = unix.AF_INET
+	TableFamilyIPv6   TableFamily = unix.AF_INET6
+	TableFamilyBridge TableFamily = unix.AF_BRIDGE
 )
 
 // A Table contains Chains. See also
@@ -65,4 +70,67 @@ func (cc *Conn) AddTable(t *Table) *Table {
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	})
 	return t
+}
+
+// ListTables returns currently configured tables in the kernel
+func (cc *Conn) ListTables() ([]*Table, error) {
+	conn, err := cc.dialNetlink()
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Close()
+
+	msg := netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETTABLE),
+			Flags: netlink.Request | netlink.Dump,
+		},
+		Data: extraHeader(uint8(unix.AF_UNSPEC), 0),
+	}
+
+	response, err := conn.Execute(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	var tables []*Table
+	for _, m := range response {
+		t, err := tableFromMsg(m)
+		if err != nil {
+			return nil, err
+		}
+
+		tables = append(tables, t)
+	}
+
+	return tables, nil
+}
+
+func tableFromMsg(msg netlink.Message) (*Table, error) {
+	if got, want := msg.Header.Type, tableHeaderType; got != want {
+		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
+	}
+
+	var t Table
+	t.Family = TableFamily(msg.Data[0])
+
+	ad, err := netlink.NewAttributeDecoder(msg.Data[4:])
+	if err != nil {
+		return nil, err
+	}
+
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_TABLE_NAME:
+			t.Name = ad.String()
+			/*
+				case unix.NFTA_TABLE_FLAGS: // decode flags (not yet a member on the Table struct)
+				case unix.NFTA_TABLE_USE: // number of chains in table (NLA_U32) (not yet a member on the Table struct)
+				case unix.NFTA_TABLE_HANDLE: NFTA_TABLE_HANDLE not yet in the unix package
+			*/
+		}
+	}
+
+	return &t, nil
 }
