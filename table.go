@@ -36,7 +36,9 @@ const (
 // A Table contains Chains. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_tables
 type Table struct {
-	Name   string
+	Name   string // NFTA_TABLE_NAME
+	Use    uint32 // NFTA_TABLE_USE (Number of chains in table)
+	Flags  uint32 // NFTA_TABLE_FLAGS
 	Family TableFamily
 }
 
@@ -124,11 +126,10 @@ func tableFromMsg(msg netlink.Message) (*Table, error) {
 		switch ad.Type() {
 		case unix.NFTA_TABLE_NAME:
 			t.Name = ad.String()
-			/*
-				case unix.NFTA_TABLE_FLAGS: // decode flags (not yet a member on the Table struct)
-				case unix.NFTA_TABLE_USE: // number of chains in table (NLA_U32) (not yet a member on the Table struct)
-				case unix.NFTA_TABLE_HANDLE: NFTA_TABLE_HANDLE not yet in the unix package
-			*/
+		case unix.NFTA_TABLE_USE:
+			t.Use = ad.Uint32()
+		case unix.NFTA_TABLE_FLAGS:
+			t.Flags = ad.Uint32()
 		}
 	}
 
