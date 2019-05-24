@@ -1451,3 +1451,88 @@ func TestConfigureJumpVerdict(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestConfigureReturnVerdict(t *testing.T) {
+	// The want byte sequences come from stracing nft(8), e.g.:
+	// strace -f -v -x -s 2048 -eraw=sendto nft add table ip nat
+	//
+	// The nft(8) command sequence was taken from:
+	// https://wiki.nftables.org/wiki-nftables/index.php/Performing_Network_Address_Translation_(NAT)
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// nft flush ruleset
+		[]byte("\x00\x00\x00\x00"),
+		// nft add table ip nat
+		[]byte("\x02\x00\x00\x00\x08\x00\x01\x00\x6e\x61\x74\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+		// nft add chain nat prerouting '{' type nat hook prerouting priority 0 \; '}'
+		[]byte("\x02\x00\x00\x00\x08\x00\x01\x00\x6e\x61\x74\x00\x0f\x00\x03\x00\x70\x72\x65\x72\x6f\x75\x74\x69\x6e\x67\x00\x00\x14\x00\x04\x80\x08\x00\x01\x00\x00\x00\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00\x08\x00\x07\x00\x6e\x61\x74\x00"),
+		// nft add rule nat prerouting meta skgid 1337 return
+		[]byte("\x02\x00\x00\x00\x08\x00\x01\x00\x6e\x61\x74\x00\x0f\x00\x02\x00\x70\x72\x65\x72\x6f\x75\x74\x69\x6e\x67\x00\x00\x84\x00\x04\x80\x24\x00\x01\x80\x09\x00\x01\x00\x6d\x65\x74\x61\x00\x00\x00\x00\x14\x00\x02\x80\x08\x00\x02\x00\x00\x00\x00\x0b\x08\x00\x01\x00\x00\x00\x00\x01\x2c\x00\x01\x80\x08\x00\x01\x00\x63\x6d\x70\x00\x20\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x08\x00\x02\x00\x00\x00\x00\x00\x0c\x00\x03\x80\x08\x00\x01\x00\x39\x05\x00\x00\x30\x00\x01\x80\x0e\x00\x01\x00\x69\x6d\x6d\x65\x64\x69\x61\x74\x65\x00\x00\x00\x1c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00\x10\x00\x02\x80\x0c\x00\x02\x80\x08\x00\x01\x00\xff\xff\xff\xfb"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	c := &nftables.Conn{
+		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				if got, want := b, want[0]; !bytes.Equal(got, want) {
+					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
+				}
+				want = want[1:]
+			}
+			return req, nil
+		},
+	}
+
+	c.FlushRuleset()
+
+	nat := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "nat",
+	})
+
+	prerouting := c.AddChain(&nftables.Chain{
+		Name:     "prerouting",
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityFilter,
+		Table:    nat,
+		Type:     nftables.ChainTypeNAT,
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: nat,
+		Chain: prerouting,
+		Exprs: []expr.Any{
+			// [ meta load skgid => reg 1 ]
+			&expr.Meta{Key: expr.MetaKeySKGID, Register: 1},
+			// [ cmp eq reg 1 0x00000539 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{0x39, 0x05, 0x00, 0x00},
+			},
+
+			// [ immediate reg 0 return ]
+			&expr.Verdict{
+				Kind: expr.VerdictKind(unix.NFT_RETURN),
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
