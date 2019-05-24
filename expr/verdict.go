@@ -31,10 +31,11 @@ import (
 //  - src/expr/data_reg.c (linbnftnl)
 
 type Verdict struct {
-	Kind VerdictKind
+	Kind  VerdictKind
+	Chain string
 }
 
-type VerdictKind uint64
+type VerdictKind int64
 
 // Verdicts, as per netfilter.h.
 const (
@@ -58,9 +59,13 @@ func (e *Verdict) marshal() ([]byte, error) {
 	//   }
 	// }
 
-	codeData, err := netlink.MarshalAttributes([]netlink.Attribute{
+	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_VERDICT_CODE, Data: binaryutil.BigEndian.PutUint32(uint32(e.Kind))},
-	})
+	}
+	if e.Chain != "" {
+		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_VERDICT_CHAIN, Data: []byte(e.Chain + "\x00")})
+	}
+	codeData, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
 		return nil, err
 	}
