@@ -1609,6 +1609,13 @@ func TestConfigureRange(t *testing.T) {
 				Register: 1,
 				Data:     []byte{unix.IPPROTO_TCP},
 			},
+			// [ payload load 2b @ transport header + 0 => reg 1 ]
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       0, // TODO
+				Len:          2, // TODO
+			},
 			// [ range neq reg 1 0x0000e807 0x0000ee07 ]
 			&expr.Range{
 				Op:       expr.CmpOpNeq,
