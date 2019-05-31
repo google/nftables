@@ -36,25 +36,18 @@ func (e *Range) marshal() ([]byte, error) {
 		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_RANGE_SREG, Data: binaryutil.BigEndian.PutUint32(e.Register)})
 	}
 	attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_RANGE_OP, Data: binaryutil.BigEndian.PutUint32(uint32(e.Op))})
-	// |00012|N-|00003|	|len |flags| type|
-	// |00006|--|00001|	|len |flags| type|
-	// | 07 e8 00 00  |	|      data      |
 	if e.FromData > 0 {
 		attrs = append(attrs, netlink.Attribute{Length: 12, Type: unix.NLA_F_NESTED | unix.NFTA_RANGE_FROM_DATA, Data: []byte{}})
-		attrs = append(attrs, netlink.Attribute{Length: 6, Type: 0x1, Data: binaryutil.BigEndian.PutUint32(e.FromData)})
+		attrs = append(attrs, netlink.Attribute{Length: 6, Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(e.FromData)})
 	}
-	// |00012|N-|00004|	|len |flags| type|
-	// |00006|--|00001|	|len |flags| type|
-	// | 07 ee 00 00  |	|      data      |
 	if e.ToData > 0 {
 		attrs = append(attrs, netlink.Attribute{Length: 12, Type: unix.NLA_F_NESTED | unix.NFTA_RANGE_TO_DATA, Data: []byte{}})
-		attrs = append(attrs, netlink.Attribute{Length: 6, Type: 0x1, Data: binaryutil.BigEndian.PutUint32(e.ToData)})
+		attrs = append(attrs, netlink.Attribute{Length: 6, Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(e.ToData)})
 	}
 	data, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
 		return nil, err
 	}
-
 	return netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("range\x00")},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: data},
