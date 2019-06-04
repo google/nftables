@@ -26,28 +26,38 @@ import (
 type Range struct {
 	Op       CmpOp
 	Register uint32
-	FromData uint32
-	ToData   uint32
+	FromData []byte
+	ToData   []byte
 }
 
 func (e *Range) marshal() ([]byte, error) {
 	var attrs []netlink.Attribute
+	var err error
+	var rangeFromData, rangeToData []byte
+
 	if e.Register > 0 {
 		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_RANGE_SREG, Data: binaryutil.BigEndian.PutUint32(e.Register)})
 	}
 	attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_RANGE_OP, Data: binaryutil.BigEndian.PutUint32(uint32(e.Op))})
-	if e.FromData > 0 {
-		attrs = append(attrs, netlink.Attribute{Length: 12, Type: unix.NLA_F_NESTED | unix.NFTA_RANGE_FROM_DATA, Data: []byte{}})
-		attrs = append(attrs, netlink.Attribute{Length: 6, Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(e.FromData)})
+	if len(e.FromData) > 0 {
+		rangeFromData, err = nestedAttr(e.FromData, unix.NFTA_RANGE_FROM_DATA)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if e.ToData > 0 {
-		attrs = append(attrs, netlink.Attribute{Length: 12, Type: unix.NLA_F_NESTED | unix.NFTA_RANGE_TO_DATA, Data: []byte{}})
-		attrs = append(attrs, netlink.Attribute{Length: 6, Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(e.ToData)})
+	if len(e.ToData) > 0 {
+		rangeToData, err = nestedAttr(e.ToData, unix.NFTA_RANGE_TO_DATA)
+		if err != nil {
+			return nil, err
+		}
 	}
 	data, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
 		return nil, err
 	}
+	data = append(data, rangeFromData...)
+	data = append(data, rangeToData...)
+
 	return netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("range\x00")},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: data},
@@ -67,10 +77,23 @@ func (e *Range) unmarshal(data []byte) error {
 		case unix.NFTA_RANGE_SREG:
 			e.Register = ad.Uint32()
 		case unix.NFTA_RANGE_FROM_DATA:
-			e.FromData = ad.Uint32()
+			e.FromData = ad.Bytes()
 		case unix.NFTA_RANGE_TO_DATA:
-			e.ToData = ad.Uint32()
+			e.ToData = ad.Bytes()
 		}
 	}
 	return ad.Err()
+}
+
+func nestedAttr(data []byte, attrType uint16) ([]byte, error) {
+	ae := netlink.NewAttributeEncoder()
+	ae.Do(unix.NLA_F_NESTED|attrType, func() ([]byte, error) {
+		nae := netlink.NewAttributeEncoder()
+		// You can set endianness if you need to for the data.
+		nae.ByteOrder = binary.BigEndian
+		nae.Bytes(unix.NFTA_DATA_VALUE, data)
+
+		return nae.Encode()
+	})
+	return ae.Encode()
 }
