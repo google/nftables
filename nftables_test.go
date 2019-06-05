@@ -1537,7 +1537,7 @@ func TestConfigureReturnVerdict(t *testing.T) {
 	}
 }
 
-func TestConfigureRangePorts(t *testing.T) {
+func TestConfigureRangePort(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft add rule filter forward tcp sport != 2024-2030  return
 	//
@@ -1635,7 +1635,7 @@ func TestConfigureRangePorts(t *testing.T) {
 	}
 }
 
-func TestConfigureRangeIPv4s(t *testing.T) {
+func TestConfigureRangeIPv4(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft add rule filter forward ip saddr != 192.168.1.0-192.168.2.0  return
 	//
@@ -1725,7 +1725,7 @@ func TestConfigureRangeIPv4s(t *testing.T) {
 	}
 }
 
-func TestConfigureRangeIPv6s(t *testing.T) {
+func TestConfigureRangeIPv6(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft add rule ip6 filter forward ip6 saddr != 2001:0001::1-2001:0002::1 return
 	//

@@ -89,7 +89,6 @@ func nestedAttr(data []byte, attrType uint16) ([]byte, error) {
 	ae := netlink.NewAttributeEncoder()
 	ae.Do(unix.NLA_F_NESTED|attrType, func() ([]byte, error) {
 		nae := netlink.NewAttributeEncoder()
-		// You can set endianness if you need to for the data.
 		nae.ByteOrder = binary.BigEndian
 		nae.Bytes(unix.NFTA_DATA_VALUE, data)
 
