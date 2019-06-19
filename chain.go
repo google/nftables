@@ -15,12 +15,16 @@
 package nftables
 
 import (
+	"encoding/binary"
+	"fmt"
 	"math"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
+
+var chainHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWCHAIN)
 
 // ChainHook specifies at which step in packet processing the Chain should be
 // executed. See also
@@ -105,4 +109,95 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 	})
 
 	return c
+}
+
+// ListChains returns currently configured chains in the kernel
+func (cc *Conn) ListChains() ([]*Chain, error) {
+	conn, err := cc.dialNetlink()
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Close()
+
+	msg := netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETCHAIN),
+			Flags: netlink.Request | netlink.Dump,
+		},
+		Data: extraHeader(uint8(unix.AF_UNSPEC), 0),
+	}
+
+	response, err := conn.Execute(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	var chains []*Chain
+	for _, m := range response {
+		c, err := chainFromMsg(m)
+		if err != nil {
+			return nil, err
+		}
+
+		chains = append(chains, c)
+	}
+
+	return chains, nil
+}
+
+func chainFromMsg(msg netlink.Message) (*Chain, error) {
+	if got, want := msg.Header.Type, chainHeaderType; got != want {
+		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
+	}
+
+	var c Chain
+
+	ad, err := netlink.NewAttributeDecoder(msg.Data[4:])
+	if err != nil {
+		return nil, err
+	}
+
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_CHAIN_NAME:
+			c.Name = ad.String()
+		case unix.NFTA_TABLE_NAME:
+			c.Table = &Table{Name: ad.String()}
+		case unix.NFTA_CHAIN_TYPE:
+			c.Type = ChainType(ad.String())
+		case unix.NFTA_CHAIN_HOOK:
+			ad.Do(func(b []byte) error {
+				c.Hooknum, c.Priority, err = hookFromMsg(b)
+				return err
+			})
+		}
+
+	}
+
+	return &c, nil
+}
+
+func hookFromMsg(b []byte) (ChainHook, ChainPriority, error) {
+
+	ad, err := netlink.NewAttributeDecoder(b)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	ad.ByteOrder = binary.BigEndian
+	
+	var hooknum ChainHook
+	var prio ChainPriority
+
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_HOOK_HOOKNUM:
+			hooknum = ChainHook(ad.Uint32())
+		case unix.NFTA_HOOK_PRIORITY:
+			prio = ChainPriority(ad.Uint32())
+		}
+	}
+
+	return hooknum, prio, nil
 }
