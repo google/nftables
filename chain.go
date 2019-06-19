@@ -117,7 +117,6 @@ func (cc *Conn) ListChains() ([]*Chain, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	defer conn.Close()
 
 	msg := netlink.Message{
@@ -179,7 +178,6 @@ func chainFromMsg(msg netlink.Message) (*Chain, error) {
 }
 
 func hookFromMsg(b []byte) (ChainHook, ChainPriority, error) {
-
 	ad, err := netlink.NewAttributeDecoder(b)
 	if err != nil {
 		return 0, 0, err
