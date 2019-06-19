@@ -24,8 +24,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var chainHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWCHAIN)
-
 // ChainHook specifies at which step in packet processing the Chain should be
 // executed. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains#Base_chain_hooks
@@ -146,6 +144,7 @@ func (cc *Conn) ListChains() ([]*Chain, error) {
 }
 
 func chainFromMsg(msg netlink.Message) (*Chain, error) {
+	chainHeaderType := netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWCHAIN)
 	if got, want := msg.Header.Type, chainHeaderType; got != want {
 		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
 	}
