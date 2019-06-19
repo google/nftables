@@ -186,7 +186,7 @@ func hookFromMsg(b []byte) (ChainHook, ChainPriority, error) {
 	}
 
 	ad.ByteOrder = binary.BigEndian
-	
+
 	var hooknum ChainHook
 	var prio ChainPriority
 
