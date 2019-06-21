@@ -86,17 +86,22 @@ type Chain struct {
 // AddChain adds the specified Chain. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains#Adding_base_chains
 func (cc *Conn) AddChain(c *Chain) *Chain {
-	chainHook := cc.marshalAttr([]netlink.Attribute{
-		{Type: unix.NFTA_HOOK_HOOKNUM, Data: binaryutil.BigEndian.PutUint32(uint32(c.Hooknum))},
-		{Type: unix.NFTA_HOOK_PRIORITY, Data: binaryutil.BigEndian.PutUint32(uint32(c.Priority))},
-	})
 
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_CHAIN_TABLE, Data: []byte(c.Table.Name + "\x00")},
 		{Type: unix.NFTA_CHAIN_NAME, Data: []byte(c.Name + "\x00")},
-		{Type: unix.NLA_F_NESTED | unix.NFTA_CHAIN_HOOK, Data: chainHook},
-		{Type: unix.NFTA_CHAIN_TYPE, Data: []byte(c.Type + "\x00")},
 	})
+
+	if c.Hooknum != 0 {
+		chainHook := cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_HOOK_HOOKNUM, Data: binaryutil.BigEndian.PutUint32(uint32(c.Hooknum))},
+			{Type: unix.NFTA_HOOK_PRIORITY, Data: binaryutil.BigEndian.PutUint32(uint32(c.Priority))},
+		})
+		data = append(data, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NLA_F_NESTED | unix.NFTA_CHAIN_HOOK, Data: chainHook},
+			{Type: unix.NFTA_CHAIN_TYPE, Data: []byte(c.Type + "\x00")},
+		})...)
+	}
 
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
