@@ -92,7 +92,7 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 		{Type: unix.NFTA_CHAIN_NAME, Data: []byte(c.Name + "\x00")},
 	})
 
-	if c.Hooknum != 0 {
+	if c.Type != "" {
 		chainHook := cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NFTA_HOOK_HOOKNUM, Data: binaryutil.BigEndian.PutUint32(uint32(c.Hooknum))},
 			{Type: unix.NFTA_HOOK_PRIORITY, Data: binaryutil.BigEndian.PutUint32(uint32(c.Priority))},
