@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
@@ -97,6 +98,27 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  ruleHeaderType,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
+		},
+		Data: append(extraHeader(uint8(r.Table.Family), 0), data...),
+	})
+
+	return r
+}
+
+// DelRule delete the specified rule via its handle number
+// https://wiki.nftables.org/wiki-nftables/index.php/Simple_rule_management#Removing_rules
+func (cc *Conn) DelRule(r *Rule, handle uint64) *Rule {
+
+	data := cc.marshalAttr([]netlink.Attribute{
+		{Type: unix.NFTA_RULE_TABLE, Data: []byte(r.Table.Name + "\x00")},
+		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(r.Chain.Name + "\x00")},
+		{Type: unix.NFTA_RULE_HANDLE, Data: binaryutil.BigEndian.PutUint64(handle)},
+	})
+
+	cc.messages = append(cc.messages, netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(r.Table.Family), 0), data...),
