@@ -22,47 +22,53 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type QueueAttribute uint16
+// IPv4
+// | 74 70 72 6f  |	|      data      |	 t p r o
+// | 78 79 00 00  |	|      data      |	 x y
+// |00020|N-|00002|	|len |flags| type|
+// |00008|--|00001|	|len |flags| type|
+// | 00 00 00 02  |	|      data      |
+// |00008|--|00003|	|len |flags| type|
+// | 00 00 00 01  |	|      data      |
 
-type QueueFlag uint16
+// IPv6
+// | 74 70 72 6f  |	|      data      |	 t p r o
+// | 78 79 00 00  |	|      data      |	 x y
+// |00020|N-|00002|	|len |flags| type|
+// |00008|--|00001|	|len |flags| type|
+// | 00 00 00 0a  |	|      data      |
+// |00008|--|00003|	|len |flags| type|
+// | 00 00 00 01  |	|      data      |
 
-// Possible QueueAttribute values
 const (
-	QueueNum   QueueAttribute = unix.NFTA_QUEUE_NUM
-	QueueTotal QueueAttribute = unix.NFTA_QUEUE_TOTAL
-	QueueFlags QueueAttribute = unix.NFTA_QUEUE_FLAGS
-
-	// TODO: get into x/sys/unix
-	QueueFlagBypass QueueFlag = 0x01
-	QueueFlagFanout QueueFlag = 0x02
-	QueueFlagMask   QueueFlag = 0x03
+	// NFTA_TPROXY_FAMILY defines attribute for a table family
+	NFTA_TPROXY_FAMILY = 0x01
+	// NFTA_TPROXY_REG defines attribute for a register carrying redirection port value
+	NFTA_TPROXY_REG = 0x03
 )
 
-type Queue struct {
-	Num   uint16
-	Total uint16
-	Flag  QueueFlag
+// TProxy defines struct with parameters for the transparent proxy
+type TProxy struct {
+	Family      byte
+	TableFamily byte
+	RegPort     uint32
 }
 
-func (e *Queue) marshal() ([]byte, error) {
-	if e.Total == 0 {
-		e.Total = 1 // The total default value is 1
-	}
+func (e *TProxy) marshal() ([]byte, error) {
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
-		{Type: unix.NFTA_QUEUE_NUM, Data: binaryutil.BigEndian.PutUint16(e.Num)},
-		{Type: unix.NFTA_QUEUE_TOTAL, Data: binaryutil.BigEndian.PutUint16(e.Total)},
-		{Type: unix.NFTA_QUEUE_FLAGS, Data: binaryutil.BigEndian.PutUint16(uint16(e.Flag))},
+		{Type: NFTA_TPROXY_FAMILY, Data: binaryutil.BigEndian.PutUint32(uint32(e.Family))},
+		{Type: NFTA_TPROXY_REG, Data: binaryutil.BigEndian.PutUint32(e.RegPort)},
 	})
 	if err != nil {
 		return nil, err
 	}
 	return netlink.MarshalAttributes([]netlink.Attribute{
-		{Type: unix.NFTA_EXPR_NAME, Data: []byte("queue\x00")},
+		{Type: unix.NFTA_EXPR_NAME, Data: []byte("tproxy\x00")},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: data},
 	})
 }
 
-func (e *Queue) unmarshal(data []byte) error {
+func (e *TProxy) unmarshal(data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err
@@ -70,12 +76,10 @@ func (e *Queue) unmarshal(data []byte) error {
 	ad.ByteOrder = binary.BigEndian
 	for ad.Next() {
 		switch ad.Type() {
-		case unix.NFTA_QUEUE_NUM:
-			e.Num = ad.Uint16()
-		case unix.NFTA_QUEUE_TOTAL:
-			e.Total = ad.Uint16()
-		case unix.NFTA_QUEUE_FLAGS:
-			e.Flag = QueueFlag(ad.Uint16())
+		case NFTA_TPROXY_FAMILY:
+			e.Family = ad.Uint8()
+		case NFTA_TPROXY_REG:
+			e.RegPort = ad.Uint32()
 		}
 	}
 	return ad.Err()
