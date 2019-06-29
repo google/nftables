@@ -22,24 +22,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// IPv4
-// | 74 70 72 6f  |	|      data      |	 t p r o
-// | 78 79 00 00  |	|      data      |	 x y
-// |00020|N-|00002|	|len |flags| type|
-// |00008|--|00001|	|len |flags| type|
-// | 00 00 00 02  |	|      data      |
-// |00008|--|00003|	|len |flags| type|
-// | 00 00 00 01  |	|      data      |
-
-// IPv6
-// | 74 70 72 6f  |	|      data      |	 t p r o
-// | 78 79 00 00  |	|      data      |	 x y
-// |00020|N-|00002|	|len |flags| type|
-// |00008|--|00001|	|len |flags| type|
-// | 00 00 00 0a  |	|      data      |
-// |00008|--|00003|	|len |flags| type|
-// | 00 00 00 01  |	|      data      |
-
 const (
 	// NFTA_TPROXY_FAMILY defines attribute for a table family
 	NFTA_TPROXY_FAMILY = 0x01

@@ -595,11 +595,6 @@ func TestTProxy(t *testing.T) {
 		},
 	}
 
-	//	[ payload load 1b @ network header + 9 => reg 1 ]
-	//	[ cmp eq reg 1 0x00000006 ]
-	//	[ immediate reg 1 0x0000a0c3 ]
-	//	[ tproxy ip port reg 1 ]
-
 	c.AddRule(&nftables.Rule{
 		Table: &nftables.Table{Name: "filter", Family: nftables.TableFamilyIPv4},
 		Chain: &nftables.Chain{
@@ -609,9 +604,13 @@ func TestTProxy(t *testing.T) {
 			Priority: -150,
 		},
 		Exprs: []expr.Any{
+			//	[ payload load 1b @ network header + 9 => reg 1 ]
 			&expr.Payload{DestRegister: 1, Base: expr.PayloadBaseNetworkHeader, Offset: 9, Len: 1},
+			//	[ cmp eq reg 1 0x00000006 ]
 			&expr.Cmp{Op: expr.CmpOpEq, Register: 1, Data: []byte{unix.IPPROTO_TCP}},
+			//	[ immediate reg 1 0x0000a0c3 ]
 			&expr.Immediate{Register: 1, Data: binaryutil.BigEndian.PutUint16(50080)},
+			//	[ tproxy ip port reg 1 ]
 			&expr.TProxy{
 				Family:      byte(nftables.TableFamilyIPv4),
 				TableFamily: byte(nftables.TableFamilyIPv4),
