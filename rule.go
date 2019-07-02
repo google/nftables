@@ -91,20 +91,36 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 			Data: cc.marshalExpr(expr),
 		}
 	}
-
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(r.Table.Name + "\x00")},
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(r.Chain.Name + "\x00")},
-		{Type: unix.NFTA_RULE_ID, Data: binaryutil.BigEndian.PutUint32(r.RuleID)},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_EXPRESSIONS, Data: cc.marshalAttr(exprAttrs)},
 	})
+	msgData := []byte{}
+	msgData = append(msgData, data...)
+	if r.RuleID != 0 {
+		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_RULE_ID, Data: binaryutil.BigEndian.PutUint32(r.RuleID)},
+		})...)
+	}
+	var flags netlink.HeaderFlags
+	if r.Position != 0 {
+		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_RULE_POSITION, Data: binaryutil.BigEndian.PutUint64(r.Position)},
+		})...)
+		// when a rule's position is specified, it becomes nft insert rule operation
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create
+	} else {
+		// unix.NLM_F_APPEND is added when nft add rule operation is executed.
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_APPEND
+	}
 
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  ruleHeaderType,
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
+			Flags: flags,
 		},
-		Data: append(extraHeader(uint8(r.Table.Family), 0), data...),
+		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
 	})
 
 	return r
