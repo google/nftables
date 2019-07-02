@@ -83,7 +83,12 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 
 // AddRule adds the specified Rule. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Simple_rule_management
-func (cc *Conn) AddRule(r *Rule) *Rule {
+func (cc *Conn) AddRule(r *Rule) (*Rule, error) {
+	conn, err := cc.dialNetlink()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
 	exprAttrs := make([]netlink.Attribute, len(r.Exprs))
 	for idx, expr := range r.Exprs {
 		exprAttrs[idx] = netlink.Attribute{
@@ -109,21 +114,36 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 			{Type: unix.NFTA_RULE_POSITION, Data: binaryutil.BigEndian.PutUint64(r.Position)},
 		})...)
 		// when a rule's position is specified, it becomes nft insert rule operation
-		flags = netlink.Request | netlink.Acknowledge | netlink.Create
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO
 	} else {
 		// unix.NLM_F_APPEND is added when nft add rule operation is executed.
-		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_APPEND
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO | unix.NLM_F_APPEND
 	}
 
-	cc.messages = append(cc.messages, netlink.Message{
+	message := netlink.Message{
 		Header: netlink.Header{
-			Type:  ruleHeaderType,
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWRULE),
 			Flags: flags,
 		},
 		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
-	})
+	}
+	if _, err := conn.SendMessages(batch([]netlink.Message{message})); err != nil {
+		return nil, fmt.Errorf("SendMessages: %v", err)
+	}
 
-	return r
+	reply, err := conn.Receive()
+	if err != nil {
+		return nil, fmt.Errorf("Receive: %v", err)
+	}
+	if len(reply) != 1 {
+		return nil, fmt.Errorf("Receive: Expected 1 message but got %d", len(reply))
+	}
+	rr, err := ruleFromMsg(reply[0])
+	if err != nil {
+		return nil, err
+	}
+
+	return rr, nil
 }
 
 func exprsFromMsg(b []byte) ([]expr.Any, error) {
