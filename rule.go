@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
@@ -28,9 +29,12 @@ var ruleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.
 // A Rule does something with a packet. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Simple_rule_management
 type Rule struct {
-	Table *Table
-	Chain *Chain
-	Exprs []expr.Any
+	Table    *Table
+	Chain    *Chain
+	RuleID   uint32
+	Position uint64
+	Handle   uint64
+	Exprs    []expr.Any
 }
 
 // GetRule returns the rules in the specified table and chain.
@@ -52,7 +56,7 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETRULE),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump | unix.NLM_F_ECHO,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
@@ -91,6 +95,7 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(r.Table.Name + "\x00")},
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(r.Chain.Name + "\x00")},
+		{Type: unix.NFTA_RULE_ID, Data: binaryutil.BigEndian.PutUint32(r.RuleID)},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_EXPRESSIONS, Data: cc.marshalAttr(exprAttrs)},
 	})
 
@@ -191,6 +196,12 @@ func ruleFromMsg(msg netlink.Message) (*Rule, error) {
 				r.Exprs, err = exprsFromMsg(b)
 				return err
 			})
+		case unix.NFTA_RULE_POSITION:
+			r.Position = ad.Uint64()
+		case unix.NFTA_RULE_HANDLE:
+			r.Handle = ad.Uint64()
+		case unix.NFTA_RULE_ID:
+			r.RuleID = ad.Uint32()
 		}
 	}
 	return &r, ad.Err()
