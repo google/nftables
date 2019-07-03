@@ -81,7 +81,7 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 	return rules, nil
 }
 
-// GetRuleHandle returns the rules in the specified table and chain.
+// GetRuleHandle returns a specific rule's handle. Rule is identified by Table, Chain and RuleID.
 func (cc *Conn) GetRuleHandle(t *Table, c *Chain, ruleID uint32) (uint64, error) {
 	conn, err := cc.dialNetlink()
 	if err != nil {
