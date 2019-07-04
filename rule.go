@@ -126,7 +126,7 @@ func (cc *Conn) GetRuleHandle(t *Table, c *Chain, ruleID uint32) (uint64, error)
 }
 
 // AddRule adds the specified Rule
-func (cc *Conn) AddRule(r *Rule) (*Rule, error) {
+func (cc *Conn) AddRule(r *Rule) *Rule {
 	exprAttrs := make([]netlink.Attribute, len(r.Exprs))
 	for idx, expr := range r.Exprs {
 		exprAttrs[idx] = netlink.Attribute{
@@ -165,7 +165,7 @@ func (cc *Conn) AddRule(r *Rule) (*Rule, error) {
 		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
 	})
 
-	return r, nil
+	return r
 }
 
 func exprsFromMsg(b []byte) ([]expr.Any, error) {
