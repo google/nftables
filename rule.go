@@ -89,7 +89,7 @@ func (cc *Conn) GetRuleHandle(t *Table, c *Chain, ruleID uint32) (uint64, error)
 	}
 	defer conn.Close()
 	if ruleID == 0 {
-		return 0, fmt.Errorf("Rule's RuleID cannot be 0")
+		return 0, fmt.Errorf("rule's id cannot be 0")
 	}
 
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
