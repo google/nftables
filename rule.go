@@ -114,15 +114,17 @@ func (cc *Conn) GetRuleHandle(t *Table, c *Chain, ruleID uint32) (uint64, error)
 	if err != nil {
 		return 0, fmt.Errorf("Receive: %v", err)
 	}
-	if len(reply) != 1 {
-		return 0, fmt.Errorf("Receive: Expected 1 message but got %d", len(reply))
-	}
-	rr, err := ruleFromMsg(reply[0])
-	if err != nil {
-		return 0, err
+	for _, msg := range reply {
+		rr, err := ruleFromMsg(msg)
+		if err != nil {
+			return 0, err
+		}
+		if rr.RuleID == ruleID {
+			return rr.Handle, nil
+		}
 	}
 
-	return rr.Handle, nil
+	return 0, fmt.Errorf("rule with id %d is not found", ruleID)
 }
 
 // AddRule adds the specified Rule
