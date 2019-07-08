@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
@@ -28,9 +29,12 @@ var ruleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.
 // A Rule does something with a packet. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Simple_rule_management
 type Rule struct {
-	Table *Table
-	Chain *Chain
-	Exprs []expr.Any
+	Table    *Table
+	Chain    *Chain
+	RuleID   uint32
+	Position uint64
+	Handle   uint64
+	Exprs    []expr.Any
 }
 
 // GetRule returns the rules in the specified table and chain.
@@ -52,7 +56,7 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETRULE),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump | unix.NLM_F_ECHO,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
@@ -77,8 +81,51 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 	return rules, nil
 }
 
-// AddRule adds the specified Rule. See also
-// https://wiki.nftables.org/wiki-nftables/index.php/Simple_rule_management
+// GetRuleHandle returns a specific rule's handle. Rule is identified by Table, Chain and RuleID.
+func (cc *Conn) GetRuleHandle(t *Table, c *Chain, ruleID uint32) (uint64, error) {
+	conn, err := cc.dialNetlink()
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Close()
+	if ruleID == 0 {
+		return 0, fmt.Errorf("rule's id cannot be 0")
+	}
+
+	data, err := netlink.MarshalAttributes([]netlink.Attribute{
+		{Type: unix.NFTA_RULE_TABLE, Data: []byte(t.Name + "\x00")},
+		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(c.Name + "\x00")},
+		{Type: unix.NFTA_RULE_USERDATA, Data: binaryutil.BigEndian.PutUint32(ruleID)},
+	})
+	if err != nil {
+		return 0, err
+	}
+	message := netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETRULE),
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump | unix.NLM_F_ECHO,
+		},
+		Data: append(extraHeader(uint8(t.Family), 0), data...),
+	}
+	if _, err := conn.SendMessages([]netlink.Message{message}); err != nil {
+		return 0, fmt.Errorf("SendMessages: %v", err)
+	}
+	reply, err := conn.Receive()
+	if err != nil {
+		return 0, fmt.Errorf("Receive: %v", err)
+	}
+	if len(reply) != 1 {
+		return 0, fmt.Errorf("Receive: Expected 1 message but got %d", len(reply))
+	}
+	rr, err := ruleFromMsg(reply[0])
+	if err != nil {
+		return 0, err
+	}
+
+	return rr.Handle, nil
+}
+
+// AddRule adds the specified Rule
 func (cc *Conn) AddRule(r *Rule) *Rule {
 	exprAttrs := make([]netlink.Attribute, len(r.Exprs))
 	for idx, expr := range r.Exprs {
@@ -87,19 +134,35 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 			Data: cc.marshalExpr(expr),
 		}
 	}
-
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(r.Table.Name + "\x00")},
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(r.Chain.Name + "\x00")},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_EXPRESSIONS, Data: cc.marshalAttr(exprAttrs)},
 	})
-
+	msgData := []byte{}
+	msgData = append(msgData, data...)
+	var flags netlink.HeaderFlags
+	if r.RuleID != 0 {
+		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_RULE_USERDATA, Data: binaryutil.BigEndian.PutUint32(r.RuleID)},
+		})...)
+	}
+	if r.Position != 0 {
+		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_RULE_POSITION, Data: binaryutil.BigEndian.PutUint64(r.Position)},
+		})...)
+		// when a rule's position is specified, it becomes nft insert rule operation
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO
+	} else {
+		// unix.NLM_F_APPEND is added when nft add rule operation is executed.
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO | unix.NLM_F_APPEND
+	}
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  ruleHeaderType,
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
+			Flags: flags,
 		},
-		Data: append(extraHeader(uint8(r.Table.Family), 0), data...),
+		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
 	})
 
 	return r
@@ -191,6 +254,12 @@ func ruleFromMsg(msg netlink.Message) (*Rule, error) {
 				r.Exprs, err = exprsFromMsg(b)
 				return err
 			})
+		case unix.NFTA_RULE_POSITION:
+			r.Position = ad.Uint64()
+		case unix.NFTA_RULE_HANDLE:
+			r.Handle = ad.Uint64()
+		case unix.NFTA_RULE_USERDATA:
+			r.RuleID = ad.Uint32()
 		}
 	}
 	return &r, ad.Err()
