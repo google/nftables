@@ -114,6 +114,24 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 	return c
 }
 
+// DelChain deletes the specified Chain. See also
+// https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains#Adding_base_chains
+func (cc *Conn) DelChain(c *Chain) {
+
+	data := cc.marshalAttr([]netlink.Attribute{
+		{Type: unix.NFTA_CHAIN_TABLE, Data: []byte(c.Table.Name + "\x00")},
+		{Type: unix.NFTA_CHAIN_NAME, Data: []byte(c.Name + "\x00")},
+	})
+
+	cc.messages = append(cc.messages, netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELCHAIN),
+			Flags: netlink.Request | netlink.Acknowledge,
+		},
+		Data: append(extraHeader(uint8(c.Table.Family), 0), data...),
+	})
+}
+
 // ListChains returns currently configured chains in the kernel
 func (cc *Conn) ListChains() ([]*Chain, error) {
 	conn, err := cc.dialNetlink()
