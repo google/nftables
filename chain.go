@@ -115,9 +115,8 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 }
 
 // DelChain deletes the specified Chain. See also
-// https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains#Adding_base_chains
+// https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains#Deleting_chains
 func (cc *Conn) DelChain(c *Chain) {
-
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_CHAIN_TABLE, Data: []byte(c.Table.Name + "\x00")},
 		{Type: unix.NFTA_CHAIN_NAME, Data: []byte(c.Name + "\x00")},
