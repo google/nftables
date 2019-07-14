@@ -170,6 +170,31 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 	return r
 }
 
+// DelRule deletes the specified Rule, rule's handle cannot be 0
+func (cc *Conn) DelRule(r *Rule) error {
+	data := cc.marshalAttr([]netlink.Attribute{
+		{Type: unix.NFTA_RULE_TABLE, Data: []byte(r.Table.Name + "\x00")},
+		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(r.Chain.Name + "\x00")},
+	})
+	if r.Handle == 0 {
+		return fmt.Errorf("rule's handle cannot be 0")
+	}
+	data = append(data, cc.marshalAttr([]netlink.Attribute{
+		{Type: unix.NFTA_RULE_HANDLE, Data: binaryutil.BigEndian.PutUint64(r.Handle)},
+	})...)
+	flags := netlink.Request | netlink.Acknowledge
+
+	cc.messages = append(cc.messages, netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE),
+			Flags: flags,
+		},
+		Data: append(extraHeader(uint8(r.Table.Family), 0), data...),
+	})
+
+	return nil
+}
+
 func exprsFromMsg(b []byte) ([]expr.Any, error) {
 	ad, err := netlink.NewAttributeDecoder(b)
 	if err != nil {
