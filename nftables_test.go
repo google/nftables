@@ -669,6 +669,59 @@ func TestTProxy(t *testing.T) {
 	}
 }
 
+func TestCt(t *testing.T) {
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// nft add rule filter divert ip protocol tcp tproxy to :50080
+		[]byte("\x02\x00\x00\x00\x0e\x00\x01\x00\x69\x70\x76\x34\x74\x61\x62\x6c\x65\x00\x00\x00\x10\x00\x02\x00\x69\x70\x76\x34\x63\x68\x61\x69\x6e\x2d\x35\x00\x24\x00\x04\x80\x20\x00\x01\x80\x07\x00\x01\x00\x63\x74\x00\x00\x14\x00\x02\x80\x08\x00\x02\x00\x00\x00\x00\x03\x08\x00\x01\x00\x00\x00\x00\x01"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	c := &nftables.Conn{
+		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				if got, want := b, want[0]; !bytes.Equal(got, want) {
+					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
+				}
+				want = want[1:]
+			}
+			return req, nil
+		},
+	}
+
+	c.AddRule(&nftables.Rule{
+		Table: &nftables.Table{Name: "ipv4table", Family: nftables.TableFamilyIPv4},
+		Chain: &nftables.Chain{
+			Name: "ipv4chain-5",
+		},
+		Exprs: []expr.Any{
+			//	[ ct load mark => reg 1 ]
+			&expr.Ct{
+				Key:      unix.NFT_CT_MARK,
+				Register: 1,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAddRuleWithPosition(t *testing.T) {
 	want := [][]byte{
 		// batch begin
