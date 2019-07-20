@@ -81,6 +81,7 @@ type Chain struct {
 	Hooknum  ChainHook
 	Priority ChainPriority
 	Type     ChainType
+	Policy   uint32
 }
 
 // AddChain adds the specified Chain. See also
@@ -93,12 +94,22 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 	})
 
 	if c.Type != "" {
-		chainHook := cc.marshalAttr([]netlink.Attribute{
+		hookAttr := []netlink.Attribute{
 			{Type: unix.NFTA_HOOK_HOOKNUM, Data: binaryutil.BigEndian.PutUint32(uint32(c.Hooknum))},
 			{Type: unix.NFTA_HOOK_PRIORITY, Data: binaryutil.BigEndian.PutUint32(uint32(c.Priority))},
-		})
+		}
 		data = append(data, cc.marshalAttr([]netlink.Attribute{
-			{Type: unix.NLA_F_NESTED | unix.NFTA_CHAIN_HOOK, Data: chainHook},
+			{Type: unix.NLA_F_NESTED | unix.NFTA_CHAIN_HOOK, Data: cc.marshalAttr(hookAttr)},
+		})...)
+	}
+
+	if c.Policy > 0 {
+		data = append(data, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_CHAIN_POLICY, Data: binaryutil.BigEndian.PutUint32(uint32(c.Policy))},
+		})...)
+	}
+	if c.Type != "" {
+		data = append(data, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NFTA_CHAIN_TYPE, Data: []byte(c.Type + "\x00")},
 		})...)
 	}
@@ -186,6 +197,8 @@ func chainFromMsg(msg netlink.Message) (*Chain, error) {
 			c.Table = &Table{Name: ad.String()}
 		case unix.NFTA_CHAIN_TYPE:
 			c.Type = ChainType(ad.String())
+		case unix.NFTA_CHAIN_POLICY:
+			c.Policy = uint32(ad.Uint32())
 		case unix.NFTA_CHAIN_HOOK:
 			ad.Do(func(b []byte) error {
 				c.Hooknum, c.Priority, err = hookFromMsg(b)
