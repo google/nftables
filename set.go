@@ -151,7 +151,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	}
 
 	setData := cc.marshalAttr([]netlink.Attribute{
-		{Type: unix.NFTA_SET_DESC_SIZE, Data: binaryutil.BigEndian.PutUint32(uint32(s.KeyType.Bytes))},
+		{Type: unix.NFTA_SET_DESC_SIZE, Data: binaryutil.BigEndian.PutUint32(uint32(len(vals)))},
 	})
 
 	var flags uint32
