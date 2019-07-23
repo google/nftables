@@ -188,7 +188,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSET),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
-		Data: append(extraHeader(unix.NFTA_SET_NAME, 0), cc.marshalAttr(tableInfo)...),
+		Data: append(extraHeader(uint8(s.Table.Family), 0), cc.marshalAttr(tableInfo)...),
 	})
 
 	// Set the values of the set if initial values were provided.
@@ -207,7 +207,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 				Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | hdrType),
 				Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 			},
-			Data: append(extraHeader(unix.NFTA_SET_NAME, 0), cc.marshalAttr(elements)...),
+			Data: append(extraHeader(uint8(s.Table.Family), 0), cc.marshalAttr(elements)...),
 		})
 	}
 
@@ -225,7 +225,7 @@ func (cc *Conn) DelSet(s *Set) {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSET),
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
-		Data: append(extraHeader(uint8(unix.NFTA_SET_NAME), 0), data...),
+		Data: append(extraHeader(uint8(s.Table.Family), 0), data...),
 	})
 }
 
@@ -244,7 +244,7 @@ func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSETELEM),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
-		Data: append(extraHeader(unix.NFTA_SET_NAME, 0), cc.marshalAttr(elements)...),
+		Data: append(extraHeader(uint8(s.Table.Family), 0), cc.marshalAttr(elements)...),
 	})
 
 	return nil
