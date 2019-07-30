@@ -1,4 +1,4 @@
-// Copyright 2018 Google LLC. All Rights Reserved.
+// Copyright 2019 Google LLC. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,10 +19,6 @@ import (
 
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
-)
-
-const (
-	NFTA_LOG_KEY = 0x2
 )
 
 // Log defines type for NFT logging
@@ -75,23 +71,16 @@ func (e *Log) unmarshal(data []byte) error {
 	}
 
 	ad.ByteOrder = binary.BigEndian
-	for ad.Next() {
-		switch ad.Type() {
-		case unix.NFTA_LOG_GROUP:
-			fallthrough
+	if ad.Next() {
+		e.Key = uint32(ad.Type())
+		e.Data = ad.Bytes()
+		switch e.Key {
 		case unix.NFTA_LOG_PREFIX:
 			fallthrough
-		case unix.NFTA_LOG_SNAPLEN:
-			fallthrough
-		case unix.NFTA_LOG_QTHRESHOLD:
-			fallthrough
 		case unix.NFTA_LOG_LEVEL:
-			e.Key = ad.Uint32()
-		default:
-			e.Data = ad.Bytes()
-
+			// Getting rid of \x00 at the end of string
+			e.Data = e.Data[:len(e.Data)-1]
 		}
 	}
-
 	return ad.Err()
 }
