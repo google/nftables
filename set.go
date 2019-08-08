@@ -71,8 +71,9 @@ type Set struct {
 
 // SetElement represents a data point within a set.
 type SetElement struct {
-	Key []byte
-	Val []byte
+	Key         []byte
+	Val         []byte
+	IntervalEnd bool
 }
 
 // SetAddElements applies data points to an nftables set.
@@ -98,15 +99,23 @@ func (cc *Conn) SetAddElements(s *Set, vals []SetElement) error {
 
 func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
 	var elements []netlink.Attribute
+
 	for i, v := range vals {
-		encodedKey, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE /* unix.NFTA_SET_ELEM_KEY*/, Data: v.Key}})
+		var flags uint32
+		if v.IntervalEnd {
+			flags |= unix.NFT_SET_ELEM_INTERVAL_END
+		}
+
+		item := []netlink.Attribute{{Type: unix.NFTA_SET_ELEM_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)}}
+
+		encodedKey, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_SET_ELEM_KEY, Data: v.Key}})
 		if err != nil {
 			return nil, fmt.Errorf("marshal key %d: %v", i, err)
 		}
-		item := []netlink.Attribute{{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey}}
+		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey})
 
 		if len(v.Val) > 0 {
-			encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE /*unix.NFTA_SET_ELEM_DATA*/, Data: v.Val}})
+			encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_SET_ELEM_DATA, Data: v.Val}})
 			if err != nil {
 				return nil, fmt.Errorf("marshal item %d: %v", i, err)
 			}
@@ -172,7 +181,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	tableInfo := []netlink.Attribute{
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},
 		{Type: unix.NFTA_SET_NAME, Data: []byte(s.Name + "\x00")},
-		{Type: unix.NFTA_SET_ELEM_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)},
+		{Type: unix.NFTA_SET_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)},
 		{Type: unix.NFTA_SET_KEY_TYPE, Data: binaryutil.BigEndian.PutUint32(s.KeyType.nftMagic)},
 		{Type: unix.NFTA_SET_KEY_LEN, Data: binaryutil.BigEndian.PutUint32(s.KeyType.Bytes)},
 		{Type: unix.NFTA_SET_ID, Data: binaryutil.BigEndian.PutUint32(s.ID)},
@@ -181,7 +190,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(unix.NFT_DATA_VALUE)},
 			netlink.Attribute{Type: unix.NFTA_SET_DATA_LEN, Data: binaryutil.BigEndian.PutUint32(uint32(s.DataLen))})
 	}
-	if s.Anonymous || s.Constant {
+	if s.Anonymous || s.Constant || s.Interval {
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: setData},
 			// Semantically useless - kept for binary compatability with nft
 			netlink.Attribute{Type: unix.NFTA_SET_USERDATA, Data: []byte("\x00\x04\x02\x00\x00\x00")})
@@ -277,6 +286,7 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			flags := ad.Uint32()
 			set.Constant = (flags & unix.NFT_SET_CONSTANT) != 0
 			set.Anonymous = (flags & unix.NFT_SET_ANONYMOUS) != 0
+			set.Interval = (flags & unix.NFT_SET_INTERVAL) != 0
 		case unix.NFTA_SET_KEY_TYPE:
 			nftMagic := ad.Uint32()
 			for _, dt := range nftDatatypes {
@@ -322,6 +332,9 @@ func elementsFromMsg(msg netlink.Message) ([]SetElement, error) {
 					elem.Key = ad.Bytes()
 				case unix.NFTA_SET_ELEM_DATA:
 					elem.Val = ad.Bytes()
+				case unix.NFTA_SET_ELEM_FLAGS:
+					flags := ad.Uint32()
+					elem.IntervalEnd = (flags & unix.NFT_SET_ELEM_INTERVAL_END) != 0
 				}
 			}
 			elements = append(elements, elem)
