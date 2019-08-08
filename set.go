@@ -101,12 +101,12 @@ func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
 	var elements []netlink.Attribute
 
 	for i, v := range vals {
+		item := make([]netlink.Attribute, 0)
 		var flags uint32
 		if v.IntervalEnd {
 			flags |= unix.NFT_SET_ELEM_INTERVAL_END
+			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)})
 		}
-
-		item := []netlink.Attribute{{Type: unix.NFTA_SET_ELEM_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)}}
 
 		encodedKey, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_SET_ELEM_KEY, Data: v.Key}})
 		if err != nil {
