@@ -63,6 +63,7 @@ type Set struct {
 	Name      string
 	Anonymous bool
 	Constant  bool
+	Interval  bool
 
 	KeyType SetDatatype
 	DataLen int
@@ -160,6 +161,9 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	}
 	if s.Constant {
 		flags |= unix.NFT_SET_CONSTANT
+	}
+	if s.Interval {
+		flags |= unix.NFT_SET_INTERVAL
 	}
 	if s.DataLen > 0 {
 		flags |= unix.NFT_SET_MAP
