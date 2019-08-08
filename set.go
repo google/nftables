@@ -99,14 +99,14 @@ func (cc *Conn) SetAddElements(s *Set, vals []SetElement) error {
 func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
 	var elements []netlink.Attribute
 	for i, v := range vals {
-		encodedKey, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.Key}})
+		encodedKey, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE /* unix.NFTA_SET_ELEM_KEY*/, Data: v.Key}})
 		if err != nil {
 			return nil, fmt.Errorf("marshal key %d: %v", i, err)
 		}
 		item := []netlink.Attribute{{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey}}
 
 		if len(v.Val) > 0 {
-			encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.Val}})
+			encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE /*unix.NFTA_SET_ELEM_DATA*/, Data: v.Val}})
 			if err != nil {
 				return nil, fmt.Errorf("marshal item %d: %v", i, err)
 			}
