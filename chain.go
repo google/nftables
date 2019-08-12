@@ -195,6 +195,8 @@ func chainFromMsg(msg netlink.Message) (*Chain, error) {
 			c.Name = ad.String()
 		case unix.NFTA_TABLE_NAME:
 			c.Table = &Table{Name: ad.String()}
+			// msg[0] carries TableFamily byte indicating whether it is IPv4, IPv6 or something else
+			c.Table.Family = TableFamily(msg.Data[0])
 		case unix.NFTA_CHAIN_TYPE:
 			c.Type = ChainType(ad.String())
 		case unix.NFTA_CHAIN_POLICY:
@@ -205,7 +207,6 @@ func chainFromMsg(msg netlink.Message) (*Chain, error) {
 				return err
 			})
 		}
-
 	}
 
 	return &c, nil
