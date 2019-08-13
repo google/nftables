@@ -383,7 +383,6 @@ func elementsFromMsg(msg netlink.Message) ([]SetElement, error) {
 				case unix.NFTA_LIST_ELEM:
 					ad.Do(elem.decode())
 				}
-				fmt.Printf("Resulting element: %+v\n", elem)
 				elements = append(elements, elem)
 			}
 		}
