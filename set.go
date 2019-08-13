@@ -87,12 +87,12 @@ func (s *SetElement) decode() func(b []byte) error {
 		for ad.Next() {
 			switch ad.Type() {
 			case unix.NFTA_SET_ELEM_KEY:
-				s.Key, err = decode(ad.Bytes())
+				s.Key, err = decodeElement(ad.Bytes())
 				if err != nil {
 					return err
 				}
 			case unix.NFTA_SET_ELEM_DATA:
-				s.Val, err = decode(ad.Bytes())
+				s.Val, err = decodeElement(ad.Bytes())
 				if err != nil {
 					return err
 				}
@@ -105,8 +105,7 @@ func (s *SetElement) decode() func(b []byte) error {
 	}
 }
 
-func decode(d []byte) ([]byte, error) {
-
+func decodeElement(d []byte) ([]byte, error) {
 	ad, err := netlink.NewAttributeDecoder(d)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create nested attribute decoder: %v", err)
@@ -114,7 +113,15 @@ func decode(d []byte) ([]byte, error) {
 	ad.ByteOrder = binary.BigEndian
 	var b []byte
 	for ad.Next() {
-		b = ad.Bytes()
+		switch ad.Type() {
+		case unix.NFTA_SET_ELEM_KEY:
+			fallthrough
+		case unix.NFTA_SET_ELEM_DATA:
+			b = ad.Bytes()
+		}
+	}
+	if err := ad.Err(); err != nil {
+		return nil, err
 	}
 	return b, nil
 }
@@ -362,7 +369,6 @@ func elementsFromMsg(msg netlink.Message) ([]SetElement, error) {
 
 	var elements []SetElement
 	for ad.Next() {
-		var elem SetElement
 		b := ad.Bytes()
 		if ad.Type() == unix.NFTA_SET_ELEM_LIST_ELEMENTS {
 			ad, err := netlink.NewAttributeDecoder(b)
@@ -372,10 +378,12 @@ func elementsFromMsg(msg netlink.Message) ([]SetElement, error) {
 			ad.ByteOrder = binary.BigEndian
 
 			for ad.Next() {
+				var elem SetElement
 				switch ad.Type() {
 				case unix.NFTA_LIST_ELEM:
 					ad.Do(elem.decode())
 				}
+				fmt.Printf("Resulting element: %+v\n", elem)
 				elements = append(elements, elem)
 			}
 		}
