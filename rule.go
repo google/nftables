@@ -15,7 +15,9 @@
 package nftables
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/gob"
 	"fmt"
 
 	"github.com/google/nftables/binaryutil"
@@ -26,15 +28,23 @@ import (
 
 var ruleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWRULE)
 
+// UserData defines a struct which will be carried as unix.NFTA_RULE_USERDATA
+// for two purposes; to retrieve Rule's handle by means of RuleID and to carry some
+// arbitrary metadata user wants to associate with a rule.
+type UserData struct {
+	RuleID uint32
+	Data   []byte
+}
+
 // A Rule does something with a packet. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Simple_rule_management
 type Rule struct {
 	Table    *Table
 	Chain    *Chain
-	RuleID   uint32
 	Position uint64
 	Handle   uint64
 	Exprs    []expr.Any
+	UserData *UserData
 }
 
 // GetRule returns the rules in the specified table and chain.
@@ -119,7 +129,7 @@ func (cc *Conn) GetRuleHandle(t *Table, c *Chain, ruleID uint32) (uint64, error)
 		if err != nil {
 			return 0, err
 		}
-		if rr.RuleID == ruleID {
+		if rr.UserData.RuleID == ruleID {
 			return rr.Handle, nil
 		}
 	}
@@ -144,9 +154,12 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 	msgData := []byte{}
 	msgData = append(msgData, data...)
 	var flags netlink.HeaderFlags
-	if r.RuleID != 0 {
+	if r.UserData != nil {
+		buffer := new(bytes.Buffer)
+		enc := gob.NewEncoder(buffer)
+		enc.Encode(*r.UserData)
 		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
-			{Type: unix.NFTA_RULE_USERDATA, Data: binaryutil.BigEndian.PutUint32(r.RuleID)},
+			{Type: unix.NFTA_RULE_USERDATA, Data: buffer.Bytes()},
 		})...)
 	}
 	if r.Position != 0 {
@@ -286,7 +299,12 @@ func ruleFromMsg(msg netlink.Message) (*Rule, error) {
 		case unix.NFTA_RULE_HANDLE:
 			r.Handle = ad.Uint64()
 		case unix.NFTA_RULE_USERDATA:
-			r.RuleID = ad.Uint32()
+			r.UserData = &UserData{}
+			dr := bytes.NewReader(ad.Bytes())
+			dec := gob.NewDecoder(dr)
+			if err := dec.Decode(r.UserData); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return &r, ad.Err()
