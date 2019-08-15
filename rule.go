@@ -31,10 +31,10 @@ var ruleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.
 type Rule struct {
 	Table    *Table
 	Chain    *Chain
-	RuleID   uint32
 	Position uint64
 	Handle   uint64
 	Exprs    []expr.Any
+	UserData []byte
 }
 
 // GetRule returns the rules in the specified table and chain.
@@ -81,52 +81,6 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 	return rules, nil
 }
 
-// GetRuleHandle returns a specific rule's handle. Rule is identified by Table, Chain and RuleID.
-func (cc *Conn) GetRuleHandle(t *Table, c *Chain, ruleID uint32) (uint64, error) {
-	conn, err := cc.dialNetlink()
-	if err != nil {
-		return 0, err
-	}
-	defer conn.Close()
-	if ruleID == 0 {
-		return 0, fmt.Errorf("rule's id cannot be 0")
-	}
-
-	data, err := netlink.MarshalAttributes([]netlink.Attribute{
-		{Type: unix.NFTA_RULE_TABLE, Data: []byte(t.Name + "\x00")},
-		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(c.Name + "\x00")},
-		{Type: unix.NFTA_RULE_USERDATA, Data: binaryutil.BigEndian.PutUint32(ruleID)},
-	})
-	if err != nil {
-		return 0, err
-	}
-	message := netlink.Message{
-		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETRULE),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump | unix.NLM_F_ECHO,
-		},
-		Data: append(extraHeader(uint8(t.Family), 0), data...),
-	}
-	if _, err := conn.SendMessages([]netlink.Message{message}); err != nil {
-		return 0, fmt.Errorf("SendMessages: %v", err)
-	}
-	reply, err := conn.Receive()
-	if err != nil {
-		return 0, fmt.Errorf("Receive: %v", err)
-	}
-	for _, msg := range reply {
-		rr, err := ruleFromMsg(msg)
-		if err != nil {
-			return 0, err
-		}
-		if rr.RuleID == ruleID {
-			return rr.Handle, nil
-		}
-	}
-
-	return 0, fmt.Errorf("rule with id %d is not found", ruleID)
-}
-
 // AddRule adds the specified Rule
 func (cc *Conn) AddRule(r *Rule) *Rule {
 	exprAttrs := make([]netlink.Attribute, len(r.Exprs))
@@ -144,9 +98,9 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 	msgData := []byte{}
 	msgData = append(msgData, data...)
 	var flags netlink.HeaderFlags
-	if r.RuleID != 0 {
+	if r.UserData != nil {
 		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
-			{Type: unix.NFTA_RULE_USERDATA, Data: binaryutil.BigEndian.PutUint32(r.RuleID)},
+			{Type: unix.NFTA_RULE_USERDATA, Data: r.UserData},
 		})...)
 	}
 	if r.Position != 0 {
@@ -286,7 +240,7 @@ func ruleFromMsg(msg netlink.Message) (*Rule, error) {
 		case unix.NFTA_RULE_HANDLE:
 			r.Handle = ad.Uint64()
 		case unix.NFTA_RULE_USERDATA:
-			r.RuleID = ad.Uint32()
+			r.UserData = ad.Bytes()
 		}
 	}
 	return &r, ad.Err()
