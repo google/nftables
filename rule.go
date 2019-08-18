@@ -103,7 +103,13 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 			{Type: unix.NFTA_RULE_USERDATA, Data: r.UserData},
 		})...)
 	}
-	if r.Position != 0 {
+	if r.Handle != 0 {
+		flags = netlink.Request | netlink.Acknowledge | netlink.Replace | unix.NLM_F_ECHO | unix.NLM_F_REPLACE
+		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_RULE_HANDLE, Data: binaryutil.BigEndian.PutUint64(r.Handle)},
+		})...)
+	} else if r.Position != 0 {
+		// when a rule's position is specified, it becomes nft insert rule operation
 		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NFTA_RULE_POSITION, Data: binaryutil.BigEndian.PutUint64(r.Position)},
 		})...)
@@ -113,6 +119,7 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 		// unix.NLM_F_APPEND is added when nft add rule operation is executed.
 		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO | unix.NLM_F_APPEND
 	}
+
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  ruleHeaderType,
