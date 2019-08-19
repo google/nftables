@@ -17,7 +17,6 @@ package expr
 
 import (
 	"encoding/binary"
-	"fmt"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
@@ -135,17 +134,69 @@ func (e *Meta) unmarshal(data []byte) error {
 // Masq (Masquerade) is a special case of SNAT, where the source address is
 // automagically set to the address of the output interface. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Performing_Network_Address_Translation_(NAT)#Masquerading
-type Masq struct{}
+type Masq struct {
+	Random      bool
+	FullyRandom bool
+	Persistent  bool
+	ToPorts     bool
+	RegProtoMin uint16
+	RegProtoMax uint16
+}
 
 func (e *Masq) marshal() ([]byte, error) {
+	msgData := []byte{}
+	if !e.ToPorts {
+		flags := uint32(0)
+		if e.Random {
+			flags |= 0x4
+		}
+		if e.FullyRandom {
+			flags |= 0x10
+		}
+		if e.Persistent {
+			flags |= 0x8
+		}
+		flagsData, err := netlink.MarshalAttributes([]netlink.Attribute{
+			{Type: unix.NFTA_MASQ_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)}})
+		if err != nil {
+			return nil, err
+		}
+		msgData = append(msgData, flagsData...)
+	} else {
+		regsData, err := netlink.MarshalAttributes([]netlink.Attribute{
+			{Type: unix.NFTA_MASQ_REG_PROTO_MIN, Data: binaryutil.BigEndian.PutUint16(e.RegProtoMin)},
+			{Type: unix.NFTA_MASQ_REG_PROTO_MAX, Data: binaryutil.BigEndian.PutUint16(e.RegProtoMax)}})
+		if err != nil {
+			return nil, err
+		}
+		msgData = append(msgData, regsData...)
+	}
 	return netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("masq\x00")},
-		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: nil},
+		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: msgData},
 	})
 }
 
 func (e *Masq) unmarshal(data []byte) error {
-	return fmt.Errorf("not yet implemented")
+	ad, err := netlink.NewAttributeDecoder(data)
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_MASQ_REG_PROTO_MIN:
+			e.RegProtoMin = ad.Uint16()
+		case unix.NFTA_MASQ_REG_PROTO_MAX:
+			e.RegProtoMax = ad.Uint16()
+		case unix.NFTA_MASQ_FLAGS:
+			flags := ad.Uint32()
+			e.Persistent = (flags & 0x8) != 0
+			e.Random = (flags & 0x4) != 0
+			e.FullyRandom = (flags & 0x10) != 0
+		}
+	}
+	return ad.Err()
 }
 
 // CmpOp specifies which type of comparison should be performed.
