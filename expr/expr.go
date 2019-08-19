@@ -76,20 +76,39 @@ const (
 // Meta loads packet meta information for later comparisons. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Matching_packet_metainformation
 type Meta struct {
-	Key      MetaKey
-	Register uint32
+	Key            MetaKey
+	SourceRegister bool
+	Register       uint32
 }
 
 func (e *Meta) marshal() ([]byte, error) {
+	regData := []byte{}
 	exprData, err := netlink.MarshalAttributes(
 		[]netlink.Attribute{
 			{Type: unix.NFTA_META_KEY, Data: binaryutil.BigEndian.PutUint32(uint32(e.Key))},
-			{Type: unix.NFTA_META_DREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
 		},
 	)
 	if err != nil {
 		return nil, err
 	}
+	if e.SourceRegister {
+		regData, err = netlink.MarshalAttributes(
+			[]netlink.Attribute{
+				{Type: unix.NFTA_META_SREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
+			},
+		)
+	} else {
+		regData, err = netlink.MarshalAttributes(
+			[]netlink.Attribute{
+				{Type: unix.NFTA_META_DREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
+			},
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	exprData = append(exprData, regData...)
+
 	return netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("meta\x00")},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: exprData},
