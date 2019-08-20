@@ -139,8 +139,8 @@ type Masq struct {
 	FullyRandom bool
 	Persistent  bool
 	ToPorts     bool
-	RegProtoMin uint16
-	RegProtoMax uint16
+	RegProtoMin uint32
+	RegProtoMax uint32
 }
 
 func (e *Masq) marshal() ([]byte, error) {
@@ -156,20 +156,29 @@ func (e *Masq) marshal() ([]byte, error) {
 		if e.Persistent {
 			flags |= 0x8
 		}
-		flagsData, err := netlink.MarshalAttributes([]netlink.Attribute{
-			{Type: unix.NFTA_MASQ_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)}})
-		if err != nil {
-			return nil, err
+		if flags != 0 {
+			flagsData, err := netlink.MarshalAttributes([]netlink.Attribute{
+				{Type: unix.NFTA_MASQ_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)}})
+			if err != nil {
+				return nil, err
+			}
+			msgData = append(msgData, flagsData...)
 		}
-		msgData = append(msgData, flagsData...)
 	} else {
 		regsData, err := netlink.MarshalAttributes([]netlink.Attribute{
-			{Type: unix.NFTA_MASQ_REG_PROTO_MIN, Data: binaryutil.BigEndian.PutUint16(e.RegProtoMin)},
-			{Type: unix.NFTA_MASQ_REG_PROTO_MAX, Data: binaryutil.BigEndian.PutUint16(e.RegProtoMax)}})
+			{Type: unix.NFTA_MASQ_REG_PROTO_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMin)}})
 		if err != nil {
 			return nil, err
 		}
 		msgData = append(msgData, regsData...)
+		if e.RegProtoMax != 0 {
+			regsData, err := netlink.MarshalAttributes([]netlink.Attribute{
+				{Type: unix.NFTA_MASQ_REG_PROTO_MAX, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMax)}})
+			if err != nil {
+				return nil, err
+			}
+			msgData = append(msgData, regsData...)
+		}
 	}
 	return netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("masq\x00")},
@@ -186,9 +195,9 @@ func (e *Masq) unmarshal(data []byte) error {
 	for ad.Next() {
 		switch ad.Type() {
 		case unix.NFTA_MASQ_REG_PROTO_MIN:
-			e.RegProtoMin = ad.Uint16()
+			e.RegProtoMin = ad.Uint32()
 		case unix.NFTA_MASQ_REG_PROTO_MAX:
-			e.RegProtoMax = ad.Uint16()
+			e.RegProtoMax = ad.Uint32()
 		case unix.NFTA_MASQ_FLAGS:
 			flags := ad.Uint32()
 			e.Persistent = (flags & 0x8) != 0
