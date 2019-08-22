@@ -2656,3 +2656,131 @@ func TestReject(t *testing.T) {
 		}
 	}
 }
+
+func TestFib(t *testing.T) {
+	tests := []struct {
+		name     string
+		chain    *nftables.Chain
+		want     [][]byte
+		fibExprs []expr.Any
+	}{
+		{
+			name: "fib saddr type local",
+			chain: &nftables.Chain{
+				Name: "base-chain",
+			},
+			want: [][]byte{
+				// batch begin
+				[]byte("\x00\x00\x00\x0a"),
+				// nft add table ip  filter
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+				// nft add chain ip filter base-chain
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00"),
+				// nft add  rule ip filter base-chain fib saddr type local
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x02\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x2c\x00\x04\x80\x28\x00\x01\x80\x08\x00\x01\x00\x66\x69\x62\x00\x1c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x08\x00\x03\x00\x00\x00\x00\x01\x08\x00\x02\x00\x00\x00\x00\x03"),
+				// batch end
+				[]byte("\x00\x00\x00\x0a"),
+			},
+			fibExprs: []expr.Any{
+				&expr.Fib{
+					Register:       1,
+					FlagSADDR:      true,
+					ResultADDRTYPE: true,
+				},
+			},
+		},
+		{
+			name: "fib daddr type broadcast",
+			chain: &nftables.Chain{
+				Name: "base-chain",
+			},
+			want: [][]byte{
+				// batch begin
+				[]byte("\x00\x00\x00\x0a"),
+				// nft add table ip  filter
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+				// nft add chain ip filter base-chain
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00"),
+				// nft add  rule ip filter base-chain fib daddr type broadcast
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x02\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x2c\x00\x04\x80\x28\x00\x01\x80\x08\x00\x01\x00\x66\x69\x62\x00\x1c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x08\x00\x03\x00\x00\x00\x00\x02\x08\x00\x02\x00\x00\x00\x00\x03"),
+				// batch end
+				[]byte("\x00\x00\x00\x0a"),
+			},
+			fibExprs: []expr.Any{
+				&expr.Fib{
+					Register:       1,
+					FlagDADDR:      true,
+					ResultADDRTYPE: true,
+				},
+			},
+		},
+		{
+			name: "fib saddr . iif oif missing",
+			chain: &nftables.Chain{
+				Name: "base-chain",
+			},
+			want: [][]byte{
+				// batch begin
+				[]byte("\x00\x00\x00\x0a"),
+				// nft add table ip  filter
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+				// nft add chain ip filter base-chain
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00"),
+				// nft add  rule ip filter base-chain fib saddr . iif oif missing
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x02\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x2c\x00\x04\x80\x28\x00\x01\x80\x08\x00\x01\x00\x66\x69\x62\x00\x1c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x08\x00\x03\x00\x00\x00\x00\x09\x08\x00\x02\x00\x00\x00\x00\x01"),
+				// batch end
+				[]byte("\x00\x00\x00\x0a"),
+			},
+			fibExprs: []expr.Any{
+				&expr.Fib{
+					Register:  1,
+					FlagSADDR: true,
+					FlagIIF:   true,
+					ResultOIF: true,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		c := &nftables.Conn{
+			TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+				for idx, msg := range req {
+					b, err := msg.MarshalBinary()
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(b) < 16 {
+						continue
+					}
+					b = b[16:]
+					if len(tt.want[idx]) == 0 {
+						t.Errorf("no want entry for message %d: %x", idx, b)
+						continue
+					}
+					got := b
+					if !bytes.Equal(got, tt.want[idx]) {
+						t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(tt.want[idx])))
+					}
+				}
+				return req, nil
+			},
+		}
+
+		filter := c.AddTable(&nftables.Table{
+			Family: nftables.TableFamilyIPv4,
+			Name:   "filter",
+		})
+
+		tt.chain.Table = filter
+		chain := c.AddChain(tt.chain)
+		c.AddRule(&nftables.Rule{
+			Table: filter,
+			Chain: chain,
+			Exprs: tt.fibExprs,
+		})
+		if err := c.Flush(); err != nil {
+			t.Fatalf("Test \"%s\" failed with error: %+v", tt.name, err)
+		}
+	}
+}
