@@ -177,6 +177,10 @@ func (e *Masq) marshal() ([]byte, error) {
 	} else {
 		regsData, err := netlink.MarshalAttributes([]netlink.Attribute{
 			{Type: unix.NFTA_MASQ_REG_PROTO_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMin)}})
+		if err != nil {
+			return nil, err
+		}
+		msgData = append(msgData, regsData...)
 		if e.RegProtoMax != 0 {
 			regsData, err := netlink.MarshalAttributes([]netlink.Attribute{
 				{Type: unix.NFTA_MASQ_REG_PROTO_MAX, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMax)}})
