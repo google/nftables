@@ -143,18 +143,27 @@ type Masq struct {
 	RegProtoMax uint32
 }
 
+const (
+	// MasqRandom defines flag for a random masquerade
+	MasqRandom = 0x4
+	// MasqFullyRandom defines flag for a fully random masquerade
+	MasqFullyRandom = 0x10
+	// MasqPersistent defines flag for a persistent masquerade
+	MasqPersistent = 0x8
+)
+
 func (e *Masq) marshal() ([]byte, error) {
 	msgData := []byte{}
 	if !e.ToPorts {
 		flags := uint32(0)
 		if e.Random {
-			flags |= 0x4
+			flags |= MasqRandom
 		}
 		if e.FullyRandom {
-			flags |= 0x10
+			flags |= MasqFullyRandom
 		}
 		if e.Persistent {
-			flags |= 0x8
+			flags |= MasqPersistent
 		}
 		if flags != 0 {
 			flagsData, err := netlink.MarshalAttributes([]netlink.Attribute{
@@ -200,9 +209,9 @@ func (e *Masq) unmarshal(data []byte) error {
 			e.RegProtoMax = ad.Uint32()
 		case unix.NFTA_MASQ_FLAGS:
 			flags := ad.Uint32()
-			e.Persistent = (flags & 0x8) != 0
-			e.Random = (flags & 0x4) != 0
-			e.FullyRandom = (flags & 0x10) != 0
+			e.Persistent = (flags & MasqPersistent) != 0
+			e.Random = (flags & MasqRandom) != 0
+			e.FullyRandom = (flags & MasqFullyRandom) != 0
 		}
 	}
 	return ad.Err()
