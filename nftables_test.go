@@ -2588,7 +2588,7 @@ func TestReject(t *testing.T) {
 				[]byte("\x00\x00\x00\x0a"),
 			},
 			rejectExprs: []expr.Any{
-				&expr.Reject{Type: 0x1, Code: unix.NFT_REJECT_TCP_RST},
+				&expr.Reject{Type: unix.NFT_REJECT_TCP_RST, Code: unix.NFT_REJECT_TCP_RST},
 			},
 		},
 		{
@@ -2609,7 +2609,7 @@ func TestReject(t *testing.T) {
 				[]byte("\x00\x00\x00\x0a"),
 			},
 			rejectExprs: []expr.Any{
-				&expr.Reject{Type: 0x0, Code: unix.NFT_REJECT_ICMP_UNREACH},
+				&expr.Reject{Type: unix.NFT_REJECT_ICMP_UNREACH, Code: unix.NFT_REJECT_ICMP_UNREACH},
 			},
 		},
 	}
