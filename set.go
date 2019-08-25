@@ -64,9 +64,10 @@ type Set struct {
 	Anonymous bool
 	Constant  bool
 	Interval  bool
+	IsMap     bool
 
-	KeyType SetDatatype
-	DataLen int
+	KeyType  SetDatatype
+	DataType SetDatatype
 }
 
 // SetElement represents a data point within a set.
@@ -158,14 +159,14 @@ func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
 			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_FLAGS | unix.NLA_F_NESTED, Data: binaryutil.BigEndian.PutUint32(flags)})
 		}
 
-		encodedKey, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_SET_ELEM_KEY, Data: v.Key}})
+		encodedKey, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.Key}})
 		if err != nil {
 			return nil, fmt.Errorf("marshal key %d: %v", i, err)
 		}
 		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey})
 
 		if len(v.Val) > 0 {
-			encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_SET_ELEM_DATA, Data: v.Val}})
+			encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.Val}})
 			if err != nil {
 				return nil, fmt.Errorf("marshal item %d: %v", i, err)
 			}
@@ -207,12 +208,11 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		s.ID = allocSetID
 		if s.Anonymous {
 			s.Name = "__set%d"
+			if s.IsMap {
+				s.Name = "__map%d"
+			}
 		}
 	}
-
-	setData := cc.marshalAttr([]netlink.Attribute{
-		{Type: unix.NFTA_SET_DESC_SIZE, Data: binaryutil.BigEndian.PutUint32(uint32(len(vals)))},
-	})
 
 	var flags uint32
 	if s.Anonymous {
@@ -224,7 +224,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	if s.Interval {
 		flags |= unix.NFT_SET_INTERVAL
 	}
-	if s.DataLen > 0 {
+	if s.IsMap {
 		flags |= unix.NFT_SET_MAP
 	}
 
@@ -236,12 +236,12 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		{Type: unix.NFTA_SET_KEY_LEN, Data: binaryutil.BigEndian.PutUint32(s.KeyType.Bytes)},
 		{Type: unix.NFTA_SET_ID, Data: binaryutil.BigEndian.PutUint32(s.ID)},
 	}
-	if s.DataLen > 0 {
-		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(unix.NFT_DATA_VALUE)},
-			netlink.Attribute{Type: unix.NFTA_SET_DATA_LEN, Data: binaryutil.BigEndian.PutUint32(uint32(s.DataLen))})
+	if s.IsMap {
+		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(s.DataType.nftMagic)},
+			netlink.Attribute{Type: unix.NFTA_SET_DATA_LEN, Data: binaryutil.BigEndian.PutUint32(s.DataType.Bytes)})
 	}
 	if s.Anonymous || s.Constant || s.Interval {
-		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: setData},
+		tableInfo = append(tableInfo,
 			// Semantically useless - kept for binary compatability with nft
 			netlink.Attribute{Type: unix.NFTA_SET_USERDATA, Data: []byte("\x00\x04\x02\x00\x00\x00")})
 	}
@@ -332,13 +332,12 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			set.Name = ad.String()
 		case unix.NFTA_SET_ID:
 			set.ID = binary.BigEndian.Uint32(ad.Bytes())
-		case unix.NFTA_SET_DATA_LEN:
-			set.DataLen = int(ad.Uint32())
 		case unix.NFTA_SET_FLAGS:
 			flags := ad.Uint32()
 			set.Constant = (flags & unix.NFT_SET_CONSTANT) != 0
 			set.Anonymous = (flags & unix.NFT_SET_ANONYMOUS) != 0
 			set.Interval = (flags & unix.NFT_SET_INTERVAL) != 0
+			set.IsMap = (flags & unix.NFTA_SET_TABLE) != 0
 		case unix.NFTA_SET_KEY_TYPE:
 			nftMagic := ad.Uint32()
 			for _, dt := range nftDatatypes {
@@ -348,6 +347,17 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 				}
 			}
 			if set.KeyType.nftMagic == 0 {
+				return nil, fmt.Errorf("could not determine datatype %x", nftMagic)
+			}
+		case unix.NFTA_SET_DATA_TYPE:
+			nftMagic := ad.Uint32()
+			for _, dt := range nftDatatypes {
+				if nftMagic == dt.nftMagic {
+					set.DataType = dt
+					break
+				}
+			}
+			if set.DataType.nftMagic == 0 {
 				return nil, fmt.Errorf("could not determine datatype %x", nftMagic)
 			}
 		}
