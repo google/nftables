@@ -143,6 +143,7 @@ type Masq struct {
 	RegProtoMax uint32
 }
 
+// TODO, Once the constants below are available in golang.org/x/sys/unix, switch to use those.
 const (
 	// NF_NAT_RANGE_PROTO_RANDOM defines flag for a random masquerade
 	NF_NAT_RANGE_PROTO_RANDOM = 0x4
