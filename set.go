@@ -19,6 +19,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/nftables/expr"
+
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
@@ -40,6 +42,7 @@ type SetDatatype struct {
 // NFT datatypes. See: https://git.netfilter.org/nftables/tree/src/datatype.c
 var (
 	TypeInvalid     = SetDatatype{Name: "invalid", nftMagic: 1}
+	TypeVerdict     = SetDatatype{Name: "verdict", Bytes: 0, nftMagic: 1}
 	TypeIPAddr      = SetDatatype{Name: "ipv4_addr", Bytes: 4, nftMagic: 7}
 	TypeIP6Addr     = SetDatatype{Name: "ipv6_addr", Bytes: 16, nftMagic: 8}
 	TypeEtherAddr   = SetDatatype{Name: "ether_addr", Bytes: 6, nftMagic: 9}
@@ -47,6 +50,7 @@ var (
 	TypeInetService = SetDatatype{Name: "inet_service", Bytes: 2, nftMagic: 13}
 
 	nftDatatypes = []SetDatatype{
+		TypeVerdict,
 		TypeIPAddr,
 		TypeIP6Addr,
 		TypeEtherAddr,
@@ -75,6 +79,9 @@ type SetElement struct {
 	Key         []byte
 	Val         []byte
 	IntervalEnd bool
+	// To support vmap, a caller must be able to pass Verdict type of data
+	// If ISMap is true and VerdictData is not nil, then DataType
+	VerdictData *expr.Verdict
 }
 
 func (s *SetElement) decode() func(b []byte) error {
@@ -164,12 +171,38 @@ func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
 			return nil, fmt.Errorf("marshal key %d: %v", i, err)
 		}
 		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey})
-
-		if len(v.Val) > 0 {
+		// There are 3 possible cases for Data, Set element Data (no data), Map Element Data and Vmap Element Data
+		switch {
+		case v.VerdictData != nil:
+			encodedVal := []byte{}
+			encodedKind, err := netlink.MarshalAttributes([]netlink.Attribute{
+				{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(uint32(v.VerdictData.Kind))},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("marshal item %d: %v", i, err)
+			}
+			encodedVal = append(encodedVal, encodedKind...)
+			if len(v.VerdictData.Chain) != 0 {
+				encodedChain, err := netlink.MarshalAttributes([]netlink.Attribute{
+					{Type: unix.NFTA_DATA_VALUE, Data: []byte(v.VerdictData.Chain)},
+				})
+				if err != nil {
+					return nil, fmt.Errorf("marshal item %d: %v", i, err)
+				}
+				encodedVal = append(encodedVal, encodedChain...)
+			}
+			encodedVerdict, err := netlink.MarshalAttributes([]netlink.Attribute{
+				{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVal}})
+			if err != nil {
+				return nil, fmt.Errorf("marshal item %d: %v", i, err)
+			}
+			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVerdict})
+		case len(v.Val) > 0:
 			encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.Val}})
 			if err != nil {
 				return nil, fmt.Errorf("marshal item %d: %v", i, err)
 			}
+
 			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVal})
 		}
 
@@ -237,8 +270,15 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		{Type: unix.NFTA_SET_ID, Data: binaryutil.BigEndian.PutUint32(s.ID)},
 	}
 	if s.IsMap {
-		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(s.DataType.nftMagic)},
-			netlink.Attribute{Type: unix.NFTA_SET_DATA_LEN, Data: binaryutil.BigEndian.PutUint32(s.DataType.Bytes)})
+		// Check if it is vmap case
+		if s.DataType.nftMagic == 1 {
+			// For Verdict data type, the expected magic is 0xfffff0
+			tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(unix.NFT_DATA_VERDICT))},
+				netlink.Attribute{Type: unix.NFTA_SET_DATA_LEN, Data: binaryutil.BigEndian.PutUint32(s.DataType.Bytes)})
+		} else {
+			tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(s.DataType.nftMagic)},
+				netlink.Attribute{Type: unix.NFTA_SET_DATA_LEN, Data: binaryutil.BigEndian.PutUint32(s.DataType.Bytes)})
+		}
 	}
 	if s.Constant {
 		// nft cli tool adds the number of elements to set/map's descriptor
