@@ -240,6 +240,17 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(s.DataType.nftMagic)},
 			netlink.Attribute{Type: unix.NFTA_SET_DATA_LEN, Data: binaryutil.BigEndian.PutUint32(s.DataType.Bytes)})
 	}
+	if s.Constant {
+		// nft cli tool adds the number of elements to set/map's descriptor
+		// It make sense to do only if a set or map are constant, otherwise skip NFTA_SET_DESC attribute
+		numberOfElements, err := netlink.MarshalAttributes([]netlink.Attribute{
+			{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(uint32(len(vals)))},
+		})
+		if err != nil {
+			return fmt.Errorf("fail to marshal number of elements %d: %v", len(vals), err)
+		}
+		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: numberOfElements})
+	}
 	if s.Anonymous || s.Constant || s.Interval {
 		tableInfo = append(tableInfo,
 			// Semantically useless - kept for binary compatability with nft
