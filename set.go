@@ -184,7 +184,7 @@ func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
 			encodedVal = append(encodedVal, encodedKind...)
 			if len(v.VerdictData.Chain) != 0 {
 				encodedChain, err := netlink.MarshalAttributes([]netlink.Attribute{
-					{Type: unix.NFTA_DATA_VALUE, Data: []byte(v.VerdictData.Chain)},
+					{Type: unix.NFTA_SET_ELEM_DATA, Data: []byte(v.VerdictData.Chain + "\x00")},
 				})
 				if err != nil {
 					return nil, fmt.Errorf("marshal item %d: %v", i, err)
