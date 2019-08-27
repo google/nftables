@@ -79,8 +79,9 @@ type SetElement struct {
 	Key         []byte
 	Val         []byte
 	IntervalEnd bool
-	// To support vmap, a caller must be able to pass Verdict type of data
-	// If ISMap is true and VerdictData is not nil, then DataType
+	// To support vmap, a caller must be able to pass Verdict type of data.
+	// If IsMap is true and VerdictData is not nil, then Val of SetElement will be ignored
+	// and VerdictData will be wrapped into Attribute data.
 	VerdictData *expr.Verdict
 }
 
@@ -171,9 +172,13 @@ func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
 			return nil, fmt.Errorf("marshal key %d: %v", i, err)
 		}
 		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey})
-		// There are 3 possible cases for Data, Set element Data (no data), Map Element Data and Vmap Element Data
+		// The following switch statement deal with 3 different types of elements.
+		// 1. v is an element of vmap
+		// 2. v is an element of a regular map
+		// 3. v is an element of a regular set (default)
 		switch {
 		case v.VerdictData != nil:
+			// Since VerdictData is not nil, v is vmap element, need to add to the attributes
 			encodedVal := []byte{}
 			encodedKind, err := netlink.MarshalAttributes([]netlink.Attribute{
 				{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(uint32(v.VerdictData.Kind))},
@@ -198,12 +203,15 @@ func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
 			}
 			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVerdict})
 		case len(v.Val) > 0:
+			// Since v.Val's length is not 0 then, v is a regular map element, need to add to the attributes
 			encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.Val}})
 			if err != nil {
 				return nil, fmt.Errorf("marshal item %d: %v", i, err)
 			}
 
 			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVal})
+		default:
+			// If niether of previous cases matche, it means 'e' is an element of a regular Set, no need to add to the attributes
 		}
 
 		encodedItem, err := netlink.MarshalAttributes(item)
