@@ -2948,3 +2948,87 @@ func TestMap(t *testing.T) {
 		}
 	}
 }
+
+func TestVmap(t *testing.T) {
+	tests := []struct {
+		name    string
+		chain   *nftables.Chain
+		want    [][]byte
+		set     nftables.Set
+		element []nftables.SetElement
+	}{
+		{
+			name: "map inet_service: verdict 1 element",
+			chain: &nftables.Chain{
+				Name: "base-chain",
+			},
+			want: [][]byte{
+				// batch begin
+				[]byte("\x00\x00\x00\x0a"),
+				// nft add table ip  filter
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+				// nft add chain ip filter base-chain
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00"),
+				// nft add map ip filter test-vmap  { type inet_service: verdict\; elements={ 22: drop } \; }
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0e\x00\x02\x00\x74\x65\x73\x74\x2d\x76\x6d\x61\x70\x00\x00\x00\x08\x00\x03\x00\x00\x00\x00\x08\x08\x00\x04\x00\x00\x00\x00\x0d\x08\x00\x05\x00\x00\x00\x00\x02\x08\x00\x0a\x00\x00\x00\x00\x01\x08\x00\x06\x00\xff\xff\xff\x00\x08\x00\x07\x00\x00\x00\x00\x00"),
+				[]byte("\x02\x00\x00\x00\x0e\x00\x02\x00\x74\x65\x73\x74\x2d\x76\x6d\x61\x70\x00\x00\x00\x08\x00\x04\x00\x00\x00\x00\x01\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x24\x00\x03\x80\x20\x00\x01\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x00\x16\x00\x00\x10\x00\x02\x80\x0c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00"),
+				// batch end
+				[]byte("\x00\x00\x00\x0a"),
+			},
+			set: nftables.Set{
+				Name:     "test-vmap",
+				ID:       uint32(1),
+				KeyType:  nftables.TypeInetService,
+				DataType: nftables.TypeVerdict,
+				IsMap:    true,
+			},
+			element: []nftables.SetElement{
+				{
+					Key: binaryutil.BigEndian.PutUint16(uint16(22)),
+					VerdictData: &expr.Verdict{
+						Kind: expr.VerdictDrop,
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		c := &nftables.Conn{
+			TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+				for idx, msg := range req {
+					b, err := msg.MarshalBinary()
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(b) < 16 {
+						continue
+					}
+					b = b[16:]
+					if len(tt.want[idx]) == 0 {
+						t.Errorf("no want entry for message %d: %x", idx, b)
+						continue
+					}
+					got := b
+					if !bytes.Equal(got, tt.want[idx]) {
+						t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(tt.want[idx])))
+					}
+				}
+				return req, nil
+			},
+		}
+
+		filter := c.AddTable(&nftables.Table{
+			Family: nftables.TableFamilyIPv4,
+			Name:   "filter",
+		})
+
+		tt.chain.Table = filter
+		c.AddChain(tt.chain)
+		tt.set.Table = filter
+		c.AddSet(&tt.set, tt.element)
+		if err := c.Flush(); err != nil {
+			t.Fatalf("Test \"%s\" failed with error: %+v", tt.name, err)
+		}
+	}
+}
