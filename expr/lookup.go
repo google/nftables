@@ -26,6 +26,7 @@ import (
 type Lookup struct {
 	SourceRegister uint32
 	DestRegister   uint32
+	IsDestRegSet   bool
 
 	SetID   uint32
 	SetName string
@@ -38,7 +39,7 @@ func (e *Lookup) marshal() ([]byte, error) {
 	if e.SourceRegister != 0 {
 		opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_LOOKUP_SREG, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister)})
 	}
-	if e.DestRegister != 0 {
+	if e.IsDestRegSet {
 		opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_LOOKUP_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)})
 	}
 	if e.Invert {
