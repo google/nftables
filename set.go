@@ -389,6 +389,7 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 		switch ad.Type() {
 		case unix.NFTA_SET_NAME:
 			set.Name = ad.String()
+			fmt.Printf("Discover set %s\n", set.Name)
 		case unix.NFTA_SET_ID:
 			set.ID = binary.BigEndian.Uint32(ad.Bytes())
 		case unix.NFTA_SET_FLAGS:
@@ -406,10 +407,15 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 				}
 			}
 			if set.KeyType.nftMagic == 0 {
-				return nil, fmt.Errorf("could not determine datatype %x", nftMagic)
+				return nil, fmt.Errorf("could not determine key type %x", nftMagic)
 			}
 		case unix.NFTA_SET_DATA_TYPE:
 			nftMagic := ad.Uint32()
+			// Special case for the data type verdict, in the message it is stored as 0xffffff00 but it is defined as 1
+			if nftMagic == 0xffffff00 {
+				set.KeyType = TypeVerdict
+				break
+			}
 			for _, dt := range nftDatatypes {
 				if nftMagic == dt.nftMagic {
 					set.DataType = dt
@@ -417,7 +423,7 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 				}
 			}
 			if set.DataType.nftMagic == 0 {
-				return nil, fmt.Errorf("could not determine datatype %x", nftMagic)
+				return nil, fmt.Errorf("could not determine data type %x", nftMagic)
 			}
 		}
 	}
