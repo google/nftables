@@ -15,7 +15,7 @@
 package expr
 
 import (
-	"fmt"
+	"encoding/binary"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
@@ -34,6 +34,7 @@ type NAT struct {
 	Type        NATType
 	Family      uint32 // TODO: typed const
 	RegAddrMin  uint32
+	RegAddrMax  uint32
 	RegProtoMin uint32
 	RegProtoMax uint32
 }
@@ -55,12 +56,24 @@ func (e *NAT) marshal() ([]byte, error) {
 	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_NAT_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(e.Type))},
 		{Type: unix.NFTA_NAT_FAMILY, Data: binaryutil.BigEndian.PutUint32(e.Family)},
-		{Type: unix.NFTA_NAT_REG_ADDR_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegAddrMin)},
-		{Type: unix.NFTA_NAT_REG_PROTO_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMin)},
 	}
-	if e.RegProtoMax > 0 {
-		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_PROTO_MAX, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMax)})
+	if e.RegAddrMin != 0 {
+		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_ADDR_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegAddrMin)})
+		if e.RegAddrMax != 0 {
+			attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_ADDR_MAX, Data: binaryutil.BigEndian.PutUint32(e.RegAddrMax)})
+		} else {
+			attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_ADDR_MAX, Data: binaryutil.BigEndian.PutUint32(0)})
+		}
 	}
+	if e.RegProtoMin != 0 {
+		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_PROTO_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMin)})
+		if e.RegProtoMax != 0 {
+			attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_PROTO_MAX, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMax)})
+		} else {
+			attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_PROTO_MAX, Data: binaryutil.BigEndian.PutUint32(0)})
+		}
+	}
+
 	data, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
 		return nil, err
@@ -72,5 +85,26 @@ func (e *NAT) marshal() ([]byte, error) {
 }
 
 func (e *NAT) unmarshal(data []byte) error {
-	return fmt.Errorf("not yet implemented")
+	ad, err := netlink.NewAttributeDecoder(data)
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_NAT_TYPE:
+			e.Type = NATType(ad.Uint32())
+		case unix.NFTA_NAT_FAMILY:
+			e.Family = ad.Uint32()
+		case unix.NFTA_NAT_REG_ADDR_MIN:
+			e.RegAddrMin = ad.Uint32()
+		case unix.NFTA_NAT_REG_ADDR_MAX:
+			e.RegAddrMax = ad.Uint32()
+		case unix.NFTA_NAT_REG_PROTO_MIN:
+			e.RegProtoMin = ad.Uint32()
+		case unix.NFTA_NAT_REG_PROTO_MAX:
+			e.RegProtoMax = ad.Uint32()
+		}
+	}
+	return ad.Err()
 }
