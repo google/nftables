@@ -37,6 +37,9 @@ type NAT struct {
 	RegAddrMax  uint32
 	RegProtoMin uint32
 	RegProtoMax uint32
+	Random      bool
+	FullyRandom bool
+	Persistent  bool
 }
 
 // |00048|N-|00001|	|len |flags| type|
@@ -61,17 +64,26 @@ func (e *NAT) marshal() ([]byte, error) {
 		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_ADDR_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegAddrMin)})
 		if e.RegAddrMax != 0 {
 			attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_ADDR_MAX, Data: binaryutil.BigEndian.PutUint32(e.RegAddrMax)})
-		} else {
-			attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_ADDR_MAX, Data: binaryutil.BigEndian.PutUint32(0)})
 		}
 	}
 	if e.RegProtoMin != 0 {
 		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_PROTO_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMin)})
 		if e.RegProtoMax != 0 {
 			attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_PROTO_MAX, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMax)})
-		} else {
-			attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_REG_PROTO_MAX, Data: binaryutil.BigEndian.PutUint32(0)})
 		}
+	}
+	flags := uint32(0)
+	if e.Random {
+		flags |= NF_NAT_RANGE_PROTO_RANDOM
+	}
+	if e.FullyRandom {
+		flags |= NF_NAT_RANGE_PROTO_RANDOM_FULLY
+	}
+	if e.Persistent {
+		flags |= NF_NAT_RANGE_PERSISTENT
+	}
+	if flags != 0 {
+		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)})
 	}
 
 	data, err := netlink.MarshalAttributes(attrs)
@@ -104,6 +116,11 @@ func (e *NAT) unmarshal(data []byte) error {
 			e.RegProtoMin = ad.Uint32()
 		case unix.NFTA_NAT_REG_PROTO_MAX:
 			e.RegProtoMax = ad.Uint32()
+		case unix.NFTA_NAT_FLAGS:
+			flags := ad.Uint32()
+			e.Persistent = (flags & NF_NAT_RANGE_PERSISTENT) != 0
+			e.Random = (flags & NF_NAT_RANGE_PROTO_RANDOM) != 0
+			e.FullyRandom = (flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY) != 0
 		}
 	}
 	return ad.Err()
