@@ -52,17 +52,38 @@ const (
 // Ct defines type for NFT connection tracking
 type Ct struct {
 	Register uint32
+	SourceRegister bool
 	Key      CtKey
 }
 
 func (e *Ct) marshal() ([]byte, error) {
-	data, err := netlink.MarshalAttributes([]netlink.Attribute{
-		{Type: unix.NFTA_CT_KEY, Data: binaryutil.BigEndian.PutUint32(uint32(e.Key))},
-		{Type: unix.NFTA_CT_DREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
-	})
+	regData := []byte{}
+	exprData, err := netlink.MarshalAttributes(
+		[]netlink.Attribute{
+			{Type: unix.NFTA_CT_KEY, Data: binaryutil.BigEndian.PutUint32(uint32(e.Key))},
+		}
+	)
 	if err != nil {
 		return nil, err
 	}
+	if e.SourceRegister {
+		regData, err = netlink.MarshalAttributes(
+			[]netlink.Attribute{
+				{Type: unix.NFTA_CT_SREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
+			}
+		)
+	} else {
+		regData, err = netlink.MarshalAttributes(
+			[]netlink.Attribute{
+				{Type: unix.NFTA_CT_DREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
+			}
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	exprData = append(exprData, regData...)
+	
 	return netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("ct\x00")},
 		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: data},
