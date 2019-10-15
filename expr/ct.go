@@ -61,7 +61,7 @@ func (e *Ct) marshal() ([]byte, error) {
 	exprData, err := netlink.MarshalAttributes(
 		[]netlink.Attribute{
 			{Type: unix.NFTA_CT_KEY, Data: binaryutil.BigEndian.PutUint32(uint32(e.Key))},
-		}
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -70,13 +70,13 @@ func (e *Ct) marshal() ([]byte, error) {
 		regData, err = netlink.MarshalAttributes(
 			[]netlink.Attribute{
 				{Type: unix.NFTA_CT_SREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
-			}
+			},
 		)
 	} else {
 		regData, err = netlink.MarshalAttributes(
 			[]netlink.Attribute{
 				{Type: unix.NFTA_CT_DREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
-			}
+			},
 		)
 	}
 	if err != nil {
