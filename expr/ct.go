@@ -22,6 +22,33 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// CtKey specifies which piece of conntrack information should be loaded. See
+// also https://wiki.nftables.org/wiki-nftables/index.php/Matching_connection_tracking_stateful_metainformation
+type CtKey uint32
+
+// Possible CtKey values.
+const (
+	CtKeySTATE      CtKey = unix.NFT_CT_STATE
+	CtKeyDIRECTION  CtKey = unix.NFT_CT_DIRECTION
+	CtKeySTATUS     CtKey = unix.NFT_CT_STATUS
+	CtKeyMARK       CtKey = unix.NFT_CT_MARK
+	CtKeySECMARK    CtKey = unix.NFT_CT_SECMARK
+	CtKeyEXPIRATION CtKey = unix.NFT_CT_EXPIRATION
+	CtKeyHELPER     CtKey = unix.NFT_CT_HELPER
+	CtKeyL3PROTOCOL CtKey = unix.NFT_CT_L3PROTOCOL
+	CtKeySRC        CtKey = unix.NFT_CT_SRC
+	CtKeyDST        CtKey = unix.NFT_CT_DST
+	CtKeyPROTOCOL   CtKey = unix.NFT_CT_PROTOCOL
+	CtKeyPROTOSRC   CtKey = unix.NFT_CT_PROTO_SRC
+	CtKeyPROTODST   CtKey = unix.NFT_CT_PROTO_DST
+	CtKeyLABELS     CtKey = unix.NFT_CT_LABELS
+	CtKeyPKTS       CtKey = unix.NFT_CT_PKTS
+	CtKeyBYTES      CtKey = unix.NFT_CT_BYTES
+	CtKeyAVGPKT     CtKey = unix.NFT_CT_AVGPKT
+	CtKeyZONE       CtKey = unix.NFT_CT_ZONE
+	CtKeyEVENTMASK  CtKey = unix.NFT_CT_EVENTMASK
+)
+
 // Ct defines type for NFT connection tracking
 type Ct struct {
 	Register uint32
