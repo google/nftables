@@ -52,7 +52,7 @@ const (
 // Ct defines type for NFT connection tracking
 type Ct struct {
 	Register uint32
-	Key      uint32
+	Key      CtKey
 }
 
 func (e *Ct) marshal() ([]byte, error) {
