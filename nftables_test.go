@@ -2327,13 +2327,14 @@ func TestSet4(t *testing.T) {
 		Name:   "ipv4table",
 		Family: nftables.TableFamilyIPv4,
 	}
+	defPol := nftables.ChainPolicyAccept
 	ch := &nftables.Chain{
 		Name:     "ipv4chain-2",
 		Table:    tbl,
 		Type:     nftables.ChainTypeNAT,
 		Priority: nftables.ChainPriorityNATDest,
 		Hooknum:  nftables.ChainHookPrerouting,
-		Policy:   1, // TODO
+		Policy:   &defPol,
 	}
 	set := nftables.Set{
 		Anonymous: false,
