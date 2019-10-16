@@ -73,6 +73,15 @@ const (
 	ChainTypeNAT    ChainType = "nat"
 )
 
+// ChainPolicy defines what this chain default policy will be.
+type ChainPolicy uint32
+
+// Possible ChainPolicy values.
+const (
+	ChainPolicyDrop ChainPolicy = iota
+	ChainPolicyAccept
+)
+
 // A Chain contains Rules. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains
 type Chain struct {
