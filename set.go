@@ -43,19 +43,23 @@ type SetDatatype struct {
 var (
 	TypeInvalid     = SetDatatype{Name: "invalid", nftMagic: 1}
 	TypeVerdict     = SetDatatype{Name: "verdict", Bytes: 0, nftMagic: 1}
+	TypeInteger     = SetDatatype{Name: "integer", Bytes: 4, nftMagic: 4}
 	TypeIPAddr      = SetDatatype{Name: "ipv4_addr", Bytes: 4, nftMagic: 7}
 	TypeIP6Addr     = SetDatatype{Name: "ipv6_addr", Bytes: 16, nftMagic: 8}
 	TypeEtherAddr   = SetDatatype{Name: "ether_addr", Bytes: 6, nftMagic: 9}
 	TypeInetProto   = SetDatatype{Name: "inet_proto", Bytes: 1, nftMagic: 12}
 	TypeInetService = SetDatatype{Name: "inet_service", Bytes: 2, nftMagic: 13}
+	TypeMark        = SetDatatype{Name: "mark", Bytes: 4, nftMagic: 19}
 
 	nftDatatypes = []SetDatatype{
 		TypeVerdict,
+		TypeInteger,
 		TypeIPAddr,
 		TypeIP6Addr,
 		TypeEtherAddr,
 		TypeInetProto,
 		TypeInetService,
+		TypeMark,
 	}
 )
 
