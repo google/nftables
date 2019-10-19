@@ -772,6 +772,65 @@ func TestCt(t *testing.T) {
 	}
 }
 
+func TestCtSet(t *testing.T) {
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// sudo nft add rule filter forward ct mark set 1
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0c\x00\x02\x00\x66\x6f\x72\x77\x61\x72\x64\x00\x50\x00\x04\x80\x2c\x00\x01\x80\x0e\x00\x01\x00\x69\x6d\x6d\x65\x64\x69\x61\x74\x65\x00\x00\x00\x18\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x0c\x00\x02\x80\x08\x00\x01\x00\x01\x00\x00\x00\x20\x00\x01\x80\x07\x00\x01\x00\x63\x74\x00\x00\x14\x00\x02\x80\x08\x00\x02\x00\x00\x00\x00\x03\x08\x00\x04\x00\x00\x00\x00\x01"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	c := &nftables.Conn{
+		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				if got, want := b, want[0]; !bytes.Equal(got, want) {
+					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
+				}
+				want = want[1:]
+			}
+			return req, nil
+		},
+	}
+
+	c.AddRule(&nftables.Rule{
+		Table: &nftables.Table{Name: "filter", Family: nftables.TableFamilyIPv4},
+		Chain: &nftables.Chain{
+			Name: "forward",
+		},
+		Exprs: []expr.Any{
+			//	[ immediate reg 1 0x00000001 ]
+			&expr.Immediate{
+				Register: 1,
+				Data:     binaryutil.NativeEndian.PutUint32(1),
+			},
+			// [ ct set mark with reg 1 ]
+			&expr.Ct{
+				Key:            expr.CtKeyMARK,
+				Register:       1,
+				SourceRegister: true,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAddRuleWithPosition(t *testing.T) {
 	want := [][]byte{
 		// batch begin

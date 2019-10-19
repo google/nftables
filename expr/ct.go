@@ -22,23 +22,71 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// CtKey specifies which piece of conntrack information should be loaded. See
+// also https://wiki.nftables.org/wiki-nftables/index.php/Matching_connection_tracking_stateful_metainformation
+type CtKey uint32
+
+// Possible CtKey values.
+const (
+	CtKeySTATE      CtKey = unix.NFT_CT_STATE
+	CtKeyDIRECTION  CtKey = unix.NFT_CT_DIRECTION
+	CtKeySTATUS     CtKey = unix.NFT_CT_STATUS
+	CtKeyMARK       CtKey = unix.NFT_CT_MARK
+	CtKeySECMARK    CtKey = unix.NFT_CT_SECMARK
+	CtKeyEXPIRATION CtKey = unix.NFT_CT_EXPIRATION
+	CtKeyHELPER     CtKey = unix.NFT_CT_HELPER
+	CtKeyL3PROTOCOL CtKey = unix.NFT_CT_L3PROTOCOL
+	CtKeySRC        CtKey = unix.NFT_CT_SRC
+	CtKeyDST        CtKey = unix.NFT_CT_DST
+	CtKeyPROTOCOL   CtKey = unix.NFT_CT_PROTOCOL
+	CtKeyPROTOSRC   CtKey = unix.NFT_CT_PROTO_SRC
+	CtKeyPROTODST   CtKey = unix.NFT_CT_PROTO_DST
+	CtKeyLABELS     CtKey = unix.NFT_CT_LABELS
+	CtKeyPKTS       CtKey = unix.NFT_CT_PKTS
+	CtKeyBYTES      CtKey = unix.NFT_CT_BYTES
+	CtKeyAVGPKT     CtKey = unix.NFT_CT_AVGPKT
+	CtKeyZONE       CtKey = unix.NFT_CT_ZONE
+	CtKeyEVENTMASK  CtKey = unix.NFT_CT_EVENTMASK
+)
+
 // Ct defines type for NFT connection tracking
 type Ct struct {
-	Register uint32
-	Key      uint32
+	Register       uint32
+	SourceRegister bool
+	Key            CtKey
 }
 
 func (e *Ct) marshal() ([]byte, error) {
-	data, err := netlink.MarshalAttributes([]netlink.Attribute{
-		{Type: unix.NFTA_CT_KEY, Data: binaryutil.BigEndian.PutUint32(uint32(e.Key))},
-		{Type: unix.NFTA_CT_DREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
-	})
+	regData := []byte{}
+	exprData, err := netlink.MarshalAttributes(
+		[]netlink.Attribute{
+			{Type: unix.NFTA_CT_KEY, Data: binaryutil.BigEndian.PutUint32(uint32(e.Key))},
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
+	if e.SourceRegister {
+		regData, err = netlink.MarshalAttributes(
+			[]netlink.Attribute{
+				{Type: unix.NFTA_CT_SREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
+			},
+		)
+	} else {
+		regData, err = netlink.MarshalAttributes(
+			[]netlink.Attribute{
+				{Type: unix.NFTA_CT_DREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
+			},
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	exprData = append(exprData, regData...)
+
 	return netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("ct\x00")},
-		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: data},
+		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: exprData},
 	})
 }
 
@@ -51,7 +99,7 @@ func (e *Ct) unmarshal(data []byte) error {
 	for ad.Next() {
 		switch ad.Type() {
 		case unix.NFTA_CT_KEY:
-			e.Key = ad.Uint32()
+			e.Key = CtKey(ad.Uint32())
 		case unix.NFTA_CT_DREG:
 			e.Register = ad.Uint32()
 		}
