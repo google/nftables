@@ -376,6 +376,21 @@ func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
 	return nil
 }
 
+// FlushSet deletes all data points from an nftables set.
+func (cc *Conn) FlushSet(s *Set) {
+	data := cc.marshalAttr([]netlink.Attribute{
+		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},
+		{Type: unix.NFTA_SET_NAME, Data: []byte(s.Name + "\x00")},
+	})
+	cc.messages = append(cc.messages, netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSETELEM),
+			Flags: netlink.Request | netlink.Acknowledge,
+		},
+		Data: append(extraHeader(uint8(s.Table.Family), 0), data...),
+	})
+}
+
 var setHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSET)
 
 func setsFromMsg(msg netlink.Message) (*Set, error) {
