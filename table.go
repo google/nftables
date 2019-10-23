@@ -74,6 +74,21 @@ func (cc *Conn) AddTable(t *Table) *Table {
 	return t
 }
 
+// FlushTable removes all rules in all chains within the specified Table. See also
+// https://wiki.nftables.org/wiki-nftables/index.php/Configuring_tables#Flushing_tables
+func (cc *Conn) FlushTable(t *Table) {
+	data := cc.marshalAttr([]netlink.Attribute{
+		{Type: unix.NFTA_RULE_TABLE, Data: []byte(t.Name + "\x00")},
+	})
+	cc.messages = append(cc.messages, netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE),
+			Flags: netlink.Request | netlink.Acknowledge,
+		},
+		Data: append(extraHeader(uint8(t.Family), 0), data...),
+	})
+}
+
 // ListTables returns currently configured tables in the kernel
 func (cc *Conn) ListTables() ([]*Table, error) {
 	conn, err := cc.dialNetlink()
