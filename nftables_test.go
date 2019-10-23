@@ -1613,6 +1613,47 @@ func TestDeleteElementNamedSet(t *testing.T) {
 	}
 }
 
+func TestFlushNamedSet(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	portSet := &nftables.Set{
+		Table:   filter,
+		Name:    "kek",
+		KeyType: nftables.TypeInetService,
+	}
+	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}}); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	c.FlushSet(portSet)
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("Second c.Flush() failed: %v", err)
+	}
+
+	elems, err := c.GetSetElements(portSet)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(elems) != 0 {
+		t.Fatalf("len(elems) = %d, want 0", len(elems))
+	}
+}
+
 func TestGetRuleLookupVerdictImmediate(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
