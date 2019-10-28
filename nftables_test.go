@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"runtime"
 	"strings"
@@ -1614,6 +1615,9 @@ func TestDeleteElementNamedSet(t *testing.T) {
 }
 
 func TestFlushNamedSet(t *testing.T) {
+	if os.Getenv("TRAVIS") == "true" {
+		t.SkipNow()
+	}
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
 	c, newNS := openSystemNFTConn(t)
@@ -1766,6 +1770,9 @@ func TestFlushChain(t *testing.T) {
 }
 
 func TestFlushTable(t *testing.T) {
+	if os.Getenv("TRAVIS") == "true" {
+		t.SkipNow()
+	}
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
 	c, newNS := openSystemNFTConn(t)
