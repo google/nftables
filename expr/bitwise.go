@@ -74,32 +74,28 @@ func (e *Bitwise) unmarshal(data []byte) error {
 			e.DestRegister = ad.Uint32()
 		case unix.NFTA_BITWISE_LEN:
 			e.Len = ad.Uint32()
-		case unix.NLA_F_NESTED | unix.NFTA_BITWISE_MASK:
+		case unix.NFTA_BITWISE_MASK:
 			// Since NFTA_BITWISE_MASK is nested, it requires additional decoding
-			nad, err := netlink.NewAttributeDecoder(ad.Bytes())
-			if err != nil {
-				return err
-			}
-			nad.ByteOrder = binary.BigEndian
-			for nad.Next() {
-				switch nad.Type() {
-				case unix.NFTA_DATA_VALUE:
-					e.Mask = nad.Bytes()
+			ad.Nested(func(nad *netlink.AttributeDecoder) error {
+				for nad.Next() {
+					switch nad.Type() {
+					case unix.NFTA_DATA_VALUE:
+						e.Mask = nad.Bytes()
+					}
 				}
-			}
-		case unix.NLA_F_NESTED | unix.NFTA_BITWISE_XOR:
+				return nil
+			})
+		case unix.NFTA_BITWISE_XOR:
 			// Since NFTA_BITWISE_XOR is nested, it requires additional decoding
-			nad, err := netlink.NewAttributeDecoder(ad.Bytes())
-			if err != nil {
-				return err
-			}
-			nad.ByteOrder = binary.BigEndian
-			for nad.Next() {
-				switch nad.Type() {
-				case unix.NFTA_DATA_VALUE:
-					e.Xor = nad.Bytes()
+			ad.Nested(func(nad *netlink.AttributeDecoder) error {
+				for nad.Next() {
+					switch nad.Type() {
+					case unix.NFTA_DATA_VALUE:
+						e.Xor = nad.Bytes()
+					}
 				}
-			}
+				return nil
+			})
 		}
 	}
 	return ad.Err()

@@ -40,7 +40,7 @@ func TestBitwise(t *testing.T) {
 		}
 		ad.ByteOrder = binary.BigEndian
 		for ad.Next() {
-			if ad.Type() == unix.NLA_F_NESTED|unix.NFTA_EXPR_DATA {
+			if ad.Type() == unix.NFTA_EXPR_DATA {
 				if err := nbw.unmarshal(ad.Bytes()); err != nil {
 					t.Errorf("Test \"%s\" failed to unmarshal data into Bitwise struct with error: %+v", tt.name, err)
 					break
