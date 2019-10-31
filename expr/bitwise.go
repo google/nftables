@@ -74,7 +74,7 @@ func (e *Bitwise) unmarshal(data []byte) error {
 			e.DestRegister = ad.Uint32()
 		case unix.NFTA_BITWISE_LEN:
 			e.Len = ad.Uint32()
-		case unix.NFTA_BITWISE_MASK:
+		case unix.NLA_F_NESTED | unix.NFTA_BITWISE_MASK:
 			// Since NFTA_BITWISE_MASK is nested, it requires additional decoding
 			nad, err := netlink.NewAttributeDecoder(ad.Bytes())
 			if err != nil {
@@ -87,7 +87,7 @@ func (e *Bitwise) unmarshal(data []byte) error {
 					e.Mask = nad.Bytes()
 				}
 			}
-		case unix.NFTA_BITWISE_XOR:
+		case unix.NLA_F_NESTED | unix.NFTA_BITWISE_XOR:
 			// Since NFTA_BITWISE_XOR is nested, it requires additional decoding
 			nad, err := netlink.NewAttributeDecoder(ad.Bytes())
 			if err != nil {
