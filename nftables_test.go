@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"runtime"
 	"strings"
@@ -1610,6 +1611,391 @@ func TestDeleteElementNamedSet(t *testing.T) {
 	}
 	if !bytes.Equal(elems[0].Key, []byte{0, 22}) {
 		t.Errorf("elems[0].Key = %v, want 22", elems[0].Key)
+	}
+}
+
+func TestFlushNamedSet(t *testing.T) {
+	if os.Getenv("TRAVIS") == "true" {
+		t.SkipNow()
+	}
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	portSet := &nftables.Set{
+		Table:   filter,
+		Name:    "kek",
+		KeyType: nftables.TypeInetService,
+	}
+	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}}); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	c.FlushSet(portSet)
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("Second c.Flush() failed: %v", err)
+	}
+
+	elems, err := c.GetSetElements(portSet)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(elems) != 0 {
+		t.Fatalf("len(elems) = %d, want 0", len(elems))
+	}
+}
+
+func TestFlushChain(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	forward := c.AddChain(&nftables.Chain{
+		Table: filter,
+		Name:  "forward",
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: forward,
+		Exprs: []expr.Any{
+			// [ meta load l4proto => reg 1 ]
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			// [ cmp eq reg 1 0x00000006 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+
+			// [ payload load 2b @ transport header + 2 => reg 1 ]
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			// [ cmp eq reg 1 0x0000d204 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{0x04, 0xd2},
+			},
+			// [ immediate reg 0 drop ]
+			&expr.Verdict{
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: forward,
+		Exprs: []expr.Any{
+			// [ meta load l4proto => reg 1 ]
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			// [ cmp eq reg 1 0x00000006 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+
+			// [ payload load 2b @ transport header + 2 => reg 1 ]
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			// [ cmp eq reg 1 0x000010e1 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{0xe1, 0x10},
+			},
+			// [ immediate reg 0 drop ]
+			&expr.Verdict{
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+	rules, err := c.GetRule(filter, forward)
+	if err != nil {
+		t.Errorf("c.GetRule() failed: %v", err)
+	}
+	if len(rules) != 2 {
+		t.Fatalf("len(rules) = %d, want 2", len(rules))
+	}
+
+	c.FlushChain(forward)
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("Second c.Flush() failed: %v", err)
+	}
+
+	rules, err = c.GetRule(filter, forward)
+	if err != nil {
+		t.Errorf("c.GetRule() failed: %v", err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("len(rules) = %d, want 0", len(rules))
+	}
+}
+
+func TestFlushTable(t *testing.T) {
+	if os.Getenv("TRAVIS") == "true" {
+		t.SkipNow()
+	}
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	nat := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "nat",
+	})
+
+	forward := c.AddChain(&nftables.Chain{
+		Table: filter,
+		Name:  "forward",
+	})
+
+	input := c.AddChain(&nftables.Chain{
+		Table: filter,
+		Name:  "input",
+	})
+
+	prerouting := c.AddChain(&nftables.Chain{
+		Table: nat,
+		Name:  "prerouting",
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: forward,
+		Exprs: []expr.Any{
+			// [ meta load l4proto => reg 1 ]
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			// [ cmp eq reg 1 0x00000006 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+
+			// [ payload load 2b @ transport header + 2 => reg 1 ]
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			// [ cmp eq reg 1 0x0000d204 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{0x04, 0xd2},
+			},
+			// [ immediate reg 0 drop ]
+			&expr.Verdict{
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: forward,
+		Exprs: []expr.Any{
+			// [ meta load l4proto => reg 1 ]
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			// [ cmp eq reg 1 0x00000006 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+
+			// [ payload load 2b @ transport header + 2 => reg 1 ]
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			// [ cmp eq reg 1 0x000010e1 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{0xe1, 0x10},
+			},
+			// [ immediate reg 0 drop ]
+			&expr.Verdict{
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: input,
+		Exprs: []expr.Any{
+			// [ meta load l4proto => reg 1 ]
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			// [ cmp eq reg 1 0x00000006 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+
+			// [ payload load 2b @ transport header + 2 => reg 1 ]
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			// [ cmp eq reg 1 0x0000162e ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{0x2e, 0x16},
+			},
+			// [ immediate reg 0 drop ]
+			&expr.Verdict{
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: nat,
+		Chain: prerouting,
+		Exprs: []expr.Any{
+			// [ meta load l4proto => reg 1 ]
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			// [ cmp eq reg 1 0x00000006 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+
+			// [ payload load 2b @ transport header + 2 => reg 1 ]
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2, // TODO
+				Len:          2, // TODO
+			},
+			// [ cmp eq reg 1 0x00001600 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{0x00, 0x16},
+			},
+
+			// [ immediate reg 1 0x0000ae08 ]
+			&expr.Immediate{
+				Register: 1,
+				Data:     binaryutil.BigEndian.PutUint16(2222),
+			},
+
+			// [ redir proto_min reg 1 ]
+			&expr.Redir{
+				RegisterProtoMin: 1,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+	rules, err := c.GetRule(filter, forward)
+	if err != nil {
+		t.Errorf("c.GetRule() failed: %v", err)
+	}
+	if len(rules) != 2 {
+		t.Fatalf("len(rules) = %d, want 2", len(rules))
+	}
+	rules, err = c.GetRule(filter, input)
+	if err != nil {
+		t.Errorf("c.GetRule() failed: %v", err)
+	}
+	if len(rules) != 1 {
+		t.Fatalf("len(rules) = %d, want 1", len(rules))
+	}
+	rules, err = c.GetRule(nat, prerouting)
+	if err != nil {
+		t.Errorf("c.GetRule() failed: %v", err)
+	}
+	if len(rules) != 1 {
+		t.Fatalf("len(rules) = %d, want 1", len(rules))
+	}
+
+	c.FlushTable(filter)
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("Second c.Flush() failed: %v", err)
+	}
+
+	rules, err = c.GetRule(filter, forward)
+	if err != nil {
+		t.Errorf("c.GetRule() failed: %v", err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("len(rules) = %d, want 0", len(rules))
+	}
+	rules, err = c.GetRule(filter, input)
+	if err != nil {
+		t.Errorf("c.GetRule() failed: %v", err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("len(rules) = %d, want 0", len(rules))
+	}
+	rules, err = c.GetRule(nat, prerouting)
+	if err != nil {
+		t.Errorf("c.GetRule() failed: %v", err)
+	}
+	if len(rules) != 1 {
+		t.Fatalf("len(rules) = %d, want 1", len(rules))
 	}
 }
 
