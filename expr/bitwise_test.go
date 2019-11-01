@@ -48,7 +48,7 @@ func TestBitwise(t *testing.T) {
 			}
 		}
 		if !reflect.DeepEqual(tt.bw, nbw) {
-			t.Errorf("Test \"%s\" failed as original and recovered Bitwise structs are different", tt.name)
+			t.Errorf("Test \"%s\" failed as original %+v and recovered %+v Bitwise structs are different", tt.name, tt.bw, nbw)
 			continue
 		}
 	}
