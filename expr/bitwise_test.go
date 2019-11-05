@@ -22,7 +22,7 @@ func TestBitwise(t *testing.T) {
 				DestRegister:   2,
 				Len:            4,
 				// By specifying Xor to 0x0,0x0,0x0,0x0 and Mask to 0xff,0xff,0x0,0x0
-				// an expression will match it /16 IPv4 address
+				// an expression will match /16 IPv4 address.
 				Xor:  []byte{0x0, 0x0, 0x0, 0x0},
 				Mask: []byte{0xff, 0xff, 0x0, 0x0},
 			},
