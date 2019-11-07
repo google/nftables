@@ -34,24 +34,24 @@ func TestBitwise(t *testing.T) {
 			nbw := Bitwise{}
 			data, err := tt.bw.marshal()
 			if err != nil {
-				t.Fatalf("Test \"%s\" failed to marshal Bitwise struct with error: %+v", tt.name, err)
+				t.Fatalf("marshal error: %+v", err)
 
 			}
 			ad, err := netlink.NewAttributeDecoder(data)
 			if err != nil {
-				t.Fatalf("Test \"%s\" failed to marshal Bitwise struct with error: %+v", tt.name, err)
+				t.Fatalf("NewAttributeDecoder() error: %+v", err)
 			}
 			ad.ByteOrder = binary.BigEndian
 			for ad.Next() {
 				if ad.Type() == unix.NFTA_EXPR_DATA {
 					if err := nbw.unmarshal(ad.Bytes()); err != nil {
-						t.Errorf("Test \"%s\" failed to unmarshal data into Bitwise struct with error: %+v", tt.name, err)
+						t.Errorf("unmarshal error: %+v", err)
 						break
 					}
 				}
 			}
 			if !reflect.DeepEqual(tt.bw, nbw) {
-				t.Fatalf("Test \"%s\" failed as original %+v and recovered %+v Bitwise structs are different", tt.name, tt.bw, nbw)
+				t.Fatalf("original %+v and recovered %+v Bitwise structs are different", tt.bw, nbw)
 			}
 		})
 	}
