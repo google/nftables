@@ -192,6 +192,10 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 						e = &expr.Immediate{}
 					case "bitwise":
 						e = &expr.Bitwise{}
+					case "redir":
+						e = &expr.Redir{}
+					case "nat":
+						e = &expr.NAT{}
 					}
 					if e == nil {
 						// TODO: introduce an opaque expression type so that users know
