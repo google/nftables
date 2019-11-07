@@ -190,6 +190,8 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 						e = &expr.Lookup{}
 					case "immediate":
 						e = &expr.Immediate{}
+					case "bitwise":
+						e = &expr.Bitwise{}
 					}
 					if e == nil {
 						// TODO: introduce an opaque expression type so that users know
