@@ -83,6 +83,8 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 
 // AddRule adds the specified Rule
 func (cc *Conn) AddRule(r *Rule) *Rule {
+	cc.Lock()
+	defer cc.Unlock()
 	exprAttrs := make([]netlink.Attribute, len(r.Exprs))
 	for idx, expr := range r.Exprs {
 		exprAttrs[idx] = netlink.Attribute{
@@ -133,6 +135,8 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 
 // DelRule deletes the specified Rule, rule's handle cannot be 0
 func (cc *Conn) DelRule(r *Rule) error {
+	cc.Lock()
+	defer cc.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(r.Table.Name + "\x00")},
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(r.Chain.Name + "\x00")},

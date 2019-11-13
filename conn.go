@@ -16,6 +16,7 @@ package nftables
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
@@ -32,12 +33,19 @@ import (
 type Conn struct {
 	TestDial nltest.Func // for testing only; passed to nltest.Dial
 	NetNS    int         // Network namespace netlink will interact with.
+	sync.Mutex
 	messages []netlink.Message
 	err      error
 }
 
 // Flush sends all buffered commands in a single batch to nftables.
 func (cc *Conn) Flush() error {
+	cc.Lock()
+	defer cc.Unlock()
+	if len(cc.messages) == 0 {
+		// Messages were already programmed, returning nil
+		return nil
+	}
 	if cc.err != nil {
 		return cc.err // serialization error
 	}
@@ -64,6 +72,8 @@ func (cc *Conn) Flush() error {
 // FlushRuleset flushes the entire ruleset. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Operations_at_ruleset_level
 func (cc *Conn) FlushRuleset() {
+	cc.Lock()
+	defer cc.Unlock()
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),

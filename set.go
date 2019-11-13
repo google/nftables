@@ -141,6 +141,8 @@ func decodeElement(d []byte) ([]byte, error) {
 
 // SetAddElements applies data points to an nftables set.
 func (cc *Conn) SetAddElements(s *Set, vals []SetElement) error {
+	cc.Lock()
+	defer cc.Unlock()
 	if s.Anonymous {
 		return errors.New("anonymous sets cannot be updated")
 	}
@@ -240,6 +242,8 @@ func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
 
 // AddSet adds the specified Set.
 func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
+	cc.Lock()
+	defer cc.Unlock()
 	// Based on nft implementation & linux source.
 	// Link: https://github.com/torvalds/linux/blob/49a57857aeea06ca831043acbb0fa5e0f50602fd/net/netfilter/nf_tables_api.c#L3395
 	// Another reference: https://git.netfilter.org/nftables/tree/src
@@ -342,6 +346,8 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 
 // DelSet deletes a specific set, along with all elements it contains.
 func (cc *Conn) DelSet(s *Set) {
+	cc.Lock()
+	defer cc.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},
 		{Type: unix.NFTA_SET_NAME, Data: []byte(s.Name + "\x00")},
@@ -357,6 +363,8 @@ func (cc *Conn) DelSet(s *Set) {
 
 // SetDeleteElements deletes data points from an nftables set.
 func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
+	cc.Lock()
+	defer cc.Unlock()
 	if s.Anonymous {
 		return errors.New("anonymous sets cannot be updated")
 	}
@@ -378,6 +386,8 @@ func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
 
 // FlushSet deletes all data points from an nftables set.
 func (cc *Conn) FlushSet(s *Set) {
+	cc.Lock()
+	defer cc.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},
 		{Type: unix.NFTA_SET_NAME, Data: []byte(s.Name + "\x00")},
@@ -408,7 +418,6 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 		switch ad.Type() {
 		case unix.NFTA_SET_NAME:
 			set.Name = ad.String()
-			fmt.Printf("Discover set %s\n", set.Name)
 		case unix.NFTA_SET_ID:
 			set.ID = binary.BigEndian.Uint32(ad.Bytes())
 		case unix.NFTA_SET_FLAGS:
