@@ -35,6 +35,8 @@ type Obj interface {
 // AddObj adds the specified Obj. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Stateful_objects
 func (cc *Conn) AddObj(o Obj) Obj {
+	cc.Lock()
+	defer cc.Unlock()
 	data, err := o.marshal(true)
 	if err != nil {
 		cc.setErr(err)
