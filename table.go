@@ -28,9 +28,12 @@ type TableFamily byte
 
 // Possible TableFamily values.
 const (
-	TableFamilyIPv4   TableFamily = unix.AF_INET
-	TableFamilyIPv6   TableFamily = unix.AF_INET6
-	TableFamilyBridge TableFamily = unix.AF_BRIDGE
+	TableFamilyINet   TableFamily = unix.NFPROTO_INET
+	TableFamilyIPv4   TableFamily = unix.NFPROTO_IPV4
+	TableFamilyIPv6   TableFamily = unix.NFPROTO_IPV6
+	TableFamilyARP    TableFamily = unix.NFPROTO_ARP
+	TableFamilyNetdev TableFamily = unix.NFPROTO_NETDEV
+	TableFamilyBridge TableFamily = unix.NFPROTO_BRIDGE
 )
 
 // A Table contains Chains. See also
