@@ -33,23 +33,23 @@ type SetDatatype struct {
 	Name  string
 	Bytes uint32
 
-	// nftMagic represents the magic value that nft uses for
+	// NFTMagic represents the magic value that nft uses for
 	// certain types (ie: IP addresses). We populate SET_KEY_TYPE
 	// identically, so `nft list ...` commands produce correct output.
-	nftMagic uint32
+	NFTMagic uint32
 }
 
 // NFT datatypes. See: https://git.netfilter.org/nftables/tree/src/datatype.c
 var (
-	TypeInvalid     = SetDatatype{Name: "invalid", nftMagic: 1}
-	TypeVerdict     = SetDatatype{Name: "verdict", Bytes: 0, nftMagic: 1}
-	TypeInteger     = SetDatatype{Name: "integer", Bytes: 4, nftMagic: 4}
-	TypeIPAddr      = SetDatatype{Name: "ipv4_addr", Bytes: 4, nftMagic: 7}
-	TypeIP6Addr     = SetDatatype{Name: "ipv6_addr", Bytes: 16, nftMagic: 8}
-	TypeEtherAddr   = SetDatatype{Name: "ether_addr", Bytes: 6, nftMagic: 9}
-	TypeInetProto   = SetDatatype{Name: "inet_proto", Bytes: 1, nftMagic: 12}
-	TypeInetService = SetDatatype{Name: "inet_service", Bytes: 2, nftMagic: 13}
-	TypeMark        = SetDatatype{Name: "mark", Bytes: 4, nftMagic: 19}
+	TypeInvalid     = SetDatatype{Name: "invalid", NFTMagic: 1}
+	TypeVerdict     = SetDatatype{Name: "verdict", Bytes: 0, NFTMagic: 1}
+	TypeInteger     = SetDatatype{Name: "integer", Bytes: 4, NFTMagic: 4}
+	TypeIPAddr      = SetDatatype{Name: "ipv4_addr", Bytes: 4, NFTMagic: 7}
+	TypeIP6Addr     = SetDatatype{Name: "ipv6_addr", Bytes: 16, NFTMagic: 8}
+	TypeEtherAddr   = SetDatatype{Name: "ether_addr", Bytes: 6, NFTMagic: 9}
+	TypeInetProto   = SetDatatype{Name: "inet_proto", Bytes: 1, NFTMagic: 12}
+	TypeInetService = SetDatatype{Name: "inet_service", Bytes: 2, NFTMagic: 13}
+	TypeMark        = SetDatatype{Name: "mark", Bytes: 4, NFTMagic: 19}
 
 	nftDatatypes = []SetDatatype{
 		TypeVerdict,
@@ -281,18 +281,18 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},
 		{Type: unix.NFTA_SET_NAME, Data: []byte(s.Name + "\x00")},
 		{Type: unix.NFTA_SET_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)},
-		{Type: unix.NFTA_SET_KEY_TYPE, Data: binaryutil.BigEndian.PutUint32(s.KeyType.nftMagic)},
+		{Type: unix.NFTA_SET_KEY_TYPE, Data: binaryutil.BigEndian.PutUint32(s.KeyType.NFTMagic)},
 		{Type: unix.NFTA_SET_KEY_LEN, Data: binaryutil.BigEndian.PutUint32(s.KeyType.Bytes)},
 		{Type: unix.NFTA_SET_ID, Data: binaryutil.BigEndian.PutUint32(s.ID)},
 	}
 	if s.IsMap {
 		// Check if it is vmap case
-		if s.DataType.nftMagic == 1 {
+		if s.DataType.NFTMagic == 1 {
 			// For Verdict data type, the expected magic is 0xfffff0
 			tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(unix.NFT_DATA_VERDICT))},
 				netlink.Attribute{Type: unix.NFTA_SET_DATA_LEN, Data: binaryutil.BigEndian.PutUint32(s.DataType.Bytes)})
 		} else {
-			tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(s.DataType.nftMagic)},
+			tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(s.DataType.NFTMagic)},
 				netlink.Attribute{Type: unix.NFTA_SET_DATA_LEN, Data: binaryutil.BigEndian.PutUint32(s.DataType.Bytes)})
 		}
 	}
@@ -427,31 +427,31 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			set.Interval = (flags & unix.NFT_SET_INTERVAL) != 0
 			set.IsMap = (flags & unix.NFTA_SET_TABLE) != 0
 		case unix.NFTA_SET_KEY_TYPE:
-			nftMagic := ad.Uint32()
+			NFTMagic := ad.Uint32()
 			for _, dt := range nftDatatypes {
-				if nftMagic == dt.nftMagic {
+				if NFTMagic == dt.NFTMagic {
 					set.KeyType = dt
 					break
 				}
 			}
-			if set.KeyType.nftMagic == 0 {
-				return nil, fmt.Errorf("could not determine key type %x", nftMagic)
+			if set.KeyType.NFTMagic == 0 {
+				return nil, fmt.Errorf("could not determine key type %x", NFTMagic)
 			}
 		case unix.NFTA_SET_DATA_TYPE:
-			nftMagic := ad.Uint32()
+			NFTMagic := ad.Uint32()
 			// Special case for the data type verdict, in the message it is stored as 0xffffff00 but it is defined as 1
-			if nftMagic == 0xffffff00 {
+			if NFTMagic == 0xffffff00 {
 				set.KeyType = TypeVerdict
 				break
 			}
 			for _, dt := range nftDatatypes {
-				if nftMagic == dt.nftMagic {
+				if NFTMagic == dt.NFTMagic {
 					set.DataType = dt
 					break
 				}
 			}
-			if set.DataType.nftMagic == 0 {
-				return nil, fmt.Errorf("could not determine data type %x", nftMagic)
+			if set.DataType.NFTMagic == 0 {
+				return nil, fmt.Errorf("could not determine data type %x", NFTMagic)
 			}
 		}
 	}
