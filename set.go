@@ -39,9 +39,19 @@ type SetDatatype struct {
 	nftMagic uint32
 }
 
+// GetNFTMagic returns a custom datatype based on user's parameters
+func (s *SetDatatype) GetNFTMagic() uint32 {
+	return s.nftMagic
+}
+
+// SetNFTMagic returns a custom datatype based on user's parameters
+func (s *SetDatatype) SetNFTMagic(nftMagic uint32) {
+	s.nftMagic = nftMagic
+}
+
 // NFT datatypes. See: https://git.netfilter.org/nftables/tree/src/datatype.c
 var (
-	TypeInvalid     = SetDatatype{Name: "invalid", nftMagic: 1}
+	TypeInvalid     = SetDatatype{Name: "invalid", nftMagic: 0}
 	TypeVerdict     = SetDatatype{Name: "verdict", Bytes: 0, nftMagic: 1}
 	TypeInteger     = SetDatatype{Name: "integer", Bytes: 4, nftMagic: 4}
 	TypeIPAddr      = SetDatatype{Name: "ipv4_addr", Bytes: 4, nftMagic: 7}
