@@ -334,10 +334,6 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	// Set the values of the set if initial values were provided.
 	if len(vals) > 0 {
 		hdrType := unix.NFT_MSG_NEWSETELEM
-		if s.Anonymous {
-			// Anonymous sets can only be populated within NEWSET.
-			hdrType = unix.NFT_MSG_NEWSET
-		}
 		elements, err := s.makeElemList(vals)
 		if err != nil {
 			return err
