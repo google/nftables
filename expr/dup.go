@@ -23,17 +23,18 @@ import (
 )
 
 type Dup struct {
-	RegAddr uint32
-	RegDev  uint32
+	RegAddr     uint32
+	RegDev      uint32
+	IsRegDevSet bool
 }
 
-func (d *Dup) marshal() ([]byte, error) {
+func (e *Dup) marshal() ([]byte, error) {
 	attrs := []netlink.Attribute{
-		{Type: unix.NFTA_DUP_SREG_ADDR, Data: binaryutil.BigEndian.PutUint32(d.RegAddr)},
+		{Type: unix.NFTA_DUP_SREG_ADDR, Data: binaryutil.BigEndian.PutUint32(e.RegAddr)},
 	}
 
-	if d.RegDev != 0 {
-		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_DUP_SREG_DEV, Data: binaryutil.BigEndian.PutUint32(d.RegDev)})
+	if e.IsRegDevSet {
+		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_DUP_SREG_DEV, Data: binaryutil.BigEndian.PutUint32(e.RegDev)})
 	}
 
 	data, err := netlink.MarshalAttributes(attrs)
@@ -48,7 +49,7 @@ func (d *Dup) marshal() ([]byte, error) {
 	})
 }
 
-func (d *Dup) unmarshal(data []byte) error {
+func (e *Dup) unmarshal(data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err
@@ -57,9 +58,9 @@ func (d *Dup) unmarshal(data []byte) error {
 	for ad.Next() {
 		switch ad.Type() {
 		case unix.NFTA_DUP_SREG_ADDR:
-			d.RegAddr = ad.Uint32()
+			e.RegAddr = ad.Uint32()
 		case unix.NFTA_DUP_SREG_DEV:
-			d.RegDev = ad.Uint32()
+			e.RegDev = ad.Uint32()
 		}
 	}
 	return ad.Err()

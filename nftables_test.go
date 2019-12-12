@@ -3718,8 +3718,9 @@ func TestDup(t *testing.T) {
 			},
 			// [ dup sreg_addr 1 sreg_dev 2 ]
 			&expr.Dup{
-				RegAddr: 1,
-				RegDev:  2,
+				RegAddr:     1,
+				RegDev:      2,
+				IsRegDevSet: true,
 			},
 		},
 	})
