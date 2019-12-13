@@ -22,7 +22,6 @@ import (
 type Notrack struct{}
 
 func (e *Notrack) marshal() ([]byte, error) {
-
 	return netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("notrack\x00")},
 	})
