@@ -39,7 +39,7 @@ const (
 	CsumTypeInet PayloadCsumType = unix.NFT_PAYLOAD_CSUM_INET
 )
 
-// Possible PayloadType values.
+// Possible PayloadOperationType values.
 const (
 	PayloadLoad PayloadOperationType = iota
 	PayloadWrite
