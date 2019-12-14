@@ -24,6 +24,7 @@ import (
 
 type PayloadBase uint32
 type PayloadCsumType uint32
+type PayloadOperationType uint32
 
 // Possible PayloadBase values.
 const (
@@ -38,7 +39,14 @@ const (
 	CsumTypeInet PayloadCsumType = unix.NFT_PAYLOAD_CSUM_INET
 )
 
+// Possible PayloadType values.
+const (
+	PayloadLoad PayloadOperationType = iota
+	PayloadWrite
+)
+
 type Payload struct {
+	OperationType  PayloadOperationType
 	DestRegister   uint32
 	SourceRegister uint32
 	Base           PayloadBase
@@ -53,7 +61,7 @@ func (e *Payload) marshal() ([]byte, error) {
 
 	var attrs []netlink.Attribute
 
-	if e.SourceRegister > 0 {
+	if e.OperationType == PayloadWrite {
 		attrs = []netlink.Attribute{
 			{Type: unix.NFTA_PAYLOAD_SREG, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister)},
 		}

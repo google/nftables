@@ -3962,6 +3962,7 @@ func TestStatelessNAT(t *testing.T) {
 			},
 			// [ payload write reg 1 => 4b @ network header + 16 csum_type 1 csum_off 10 csum_flags 0x1 ]
 			&expr.Payload{
+				OperationType:  expr.PayloadWrite,
 				SourceRegister: 1,
 				Base:           expr.PayloadBaseNetworkHeader,
 				Offset:         16,
