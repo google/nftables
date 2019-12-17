@@ -26,6 +26,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// SetConcateTypeBits defines concatination bits, originally defined in
+// https://git.netfilter.org/iptables/tree/iptables/nft.c#n999
+const SetConcateTypeBits = 6
+
 var allocSetID uint32
 
 // SetDatatype represents a datatype declared by nft.
@@ -434,15 +438,10 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			set.IsMap = (flags & unix.NFTA_SET_TABLE) != 0
 		case unix.NFTA_SET_KEY_TYPE:
 			nftMagic := ad.Uint32()
-			for _, dt := range nftDatatypes {
-				if nftMagic == dt.nftMagic {
-					set.KeyType = dt
-					break
-				}
+			if invalidMagic, ok := validateKeyType(nftMagic); !ok {
+				return nil, fmt.Errorf("could not determine key type %+v", invalidMagic)
 			}
-			if set.KeyType.nftMagic == 0 {
-				return nil, fmt.Errorf("could not determine key type %x", nftMagic)
-			}
+			set.KeyType.nftMagic = nftMagic
 		case unix.NFTA_SET_DATA_TYPE:
 			nftMagic := ad.Uint32()
 			// Special case for the data type verdict, in the message it is stored as 0xffffff00 but it is defined as 1
@@ -462,6 +461,30 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 		}
 	}
 	return &set, nil
+}
+
+func validateKeyType(bits uint32) ([]uint32, bool) {
+	var unpackTypes []uint32
+	var invalidTypes []uint32
+	found := false
+	valid := true
+	for bits != 0 {
+		unpackTypes = append(unpackTypes, bits&0x0000003f)
+		bits = bits >> SetConcateTypeBits
+	}
+	for _, t := range unpackTypes {
+		for _, dt := range nftDatatypes {
+			if t == dt.nftMagic {
+				found = true
+			}
+		}
+		if !found {
+			invalidTypes = append(invalidTypes, t)
+			valid = false
+		}
+		found = false
+	}
+	return invalidTypes, valid
 }
 
 var elemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSETELEM)
