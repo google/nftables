@@ -26,9 +26,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// SetConcateTypeBits defines concatination bits, originally defined in
-// https://git.netfilter.org/iptables/tree/iptables/nft.c#n999
-const SetConcateTypeBits = 6
+// SetConcatTypeBits defines concatination bits, originally defined in
+// https://git.netfilter.org/iptables/tree/iptables/nft.c?id=26753888720d8e7eb422ae4311348347f5a05cb4#n1002
+const SetConcatTypeBits = 6
 
 var allocSetID uint32
 
@@ -469,8 +469,8 @@ func validateKeyType(bits uint32) ([]uint32, bool) {
 	found := false
 	valid := true
 	for bits != 0 {
-		unpackTypes = append(unpackTypes, bits&0x0000003f)
-		bits = bits >> SetConcateTypeBits
+		unpackTypes = append(unpackTypes, bits&0x3f)
+		bits = bits >> SetConcatTypeBits
 	}
 	for _, t := range unpackTypes {
 		for _, dt := range nftDatatypes {

@@ -8,7 +8,7 @@ import (
 func genSetKeyType(types ...uint32) uint32 {
 	c := types[0]
 	for i := 1; i < len(types); i++ {
-		c = c<<SetConcateTypeBits | types[i]
+		c = c<<SetConcatTypeBits | types[i]
 	}
 	return c
 }
@@ -50,7 +50,7 @@ func TestValidateNFTMagic(t *testing.T) {
 			nftMagicPacked: genSetKeyType(7, 13, 25, 26),
 			pass:           false,
 			invalid:        []uint32{26, 25},
-			// Invalid entries will apprear in reverse order
+			// Invalid entries will appear in reverse order
 		},
 	}
 
