@@ -23,6 +23,8 @@ import (
 )
 
 type PayloadBase uint32
+type PayloadCsumType uint32
+type PayloadOperationType uint32
 
 // Possible PayloadBase values.
 const (
@@ -31,20 +33,64 @@ const (
 	PayloadBaseTransportHeader PayloadBase = unix.NFT_PAYLOAD_TRANSPORT_HEADER
 )
 
+// Possible PayloadCsumType values.
+const (
+	CsumTypeNone PayloadCsumType = unix.NFT_PAYLOAD_CSUM_NONE
+	CsumTypeInet PayloadCsumType = unix.NFT_PAYLOAD_CSUM_INET
+)
+
+// Possible PayloadOperationType values.
+const (
+	PayloadLoad PayloadOperationType = iota
+	PayloadWrite
+)
+
 type Payload struct {
-	DestRegister uint32
-	Base         PayloadBase
-	Offset       uint32
-	Len          uint32
+	OperationType  PayloadOperationType
+	DestRegister   uint32
+	SourceRegister uint32
+	Base           PayloadBase
+	Offset         uint32
+	Len            uint32
+	CsumType       PayloadCsumType
+	CsumOffset     uint32
+	CsumFlags      uint32
 }
 
 func (e *Payload) marshal() ([]byte, error) {
-	data, err := netlink.MarshalAttributes([]netlink.Attribute{
-		{Type: unix.NFTA_PAYLOAD_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)},
-		{Type: unix.NFTA_PAYLOAD_BASE, Data: binaryutil.BigEndian.PutUint32(uint32(e.Base))},
-		{Type: unix.NFTA_PAYLOAD_OFFSET, Data: binaryutil.BigEndian.PutUint32(e.Offset)},
-		{Type: unix.NFTA_PAYLOAD_LEN, Data: binaryutil.BigEndian.PutUint32(e.Len)},
-	})
+
+	var attrs []netlink.Attribute
+
+	if e.OperationType == PayloadWrite {
+		attrs = []netlink.Attribute{
+			{Type: unix.NFTA_PAYLOAD_SREG, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister)},
+		}
+	} else {
+		attrs = []netlink.Attribute{
+			{Type: unix.NFTA_PAYLOAD_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)},
+		}
+	}
+
+	attrs = append(attrs,
+		netlink.Attribute{Type: unix.NFTA_PAYLOAD_BASE, Data: binaryutil.BigEndian.PutUint32(uint32(e.Base))},
+		netlink.Attribute{Type: unix.NFTA_PAYLOAD_OFFSET, Data: binaryutil.BigEndian.PutUint32(e.Offset)},
+		netlink.Attribute{Type: unix.NFTA_PAYLOAD_LEN, Data: binaryutil.BigEndian.PutUint32(e.Len)},
+	)
+
+	if e.CsumType > 0 {
+		attrs = append(attrs,
+			netlink.Attribute{Type: unix.NFTA_PAYLOAD_CSUM_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(e.CsumType))},
+			netlink.Attribute{Type: unix.NFTA_PAYLOAD_CSUM_OFFSET, Data: binaryutil.BigEndian.PutUint32(uint32(e.CsumOffset))},
+		)
+		if e.CsumFlags > 0 {
+			attrs = append(attrs,
+				netlink.Attribute{Type: unix.NFTA_PAYLOAD_CSUM_FLAGS, Data: binaryutil.BigEndian.PutUint32(e.CsumFlags)},
+			)
+		}
+	}
+
+	data, err := netlink.MarshalAttributes(attrs)
+
 	if err != nil {
 		return nil, err
 	}
@@ -64,12 +110,20 @@ func (e *Payload) unmarshal(data []byte) error {
 		switch ad.Type() {
 		case unix.NFTA_PAYLOAD_DREG:
 			e.DestRegister = ad.Uint32()
+		case unix.NFTA_PAYLOAD_SREG:
+			e.SourceRegister = ad.Uint32()
 		case unix.NFTA_PAYLOAD_BASE:
 			e.Base = PayloadBase(ad.Uint32())
 		case unix.NFTA_PAYLOAD_OFFSET:
 			e.Offset = ad.Uint32()
 		case unix.NFTA_PAYLOAD_LEN:
 			e.Len = ad.Uint32()
+		case unix.NFTA_PAYLOAD_CSUM_TYPE:
+			e.CsumType = PayloadCsumType(ad.Uint32())
+		case unix.NFTA_PAYLOAD_CSUM_OFFSET:
+			e.CsumOffset = ad.Uint32()
+		case unix.NFTA_PAYLOAD_CSUM_FLAGS:
+			e.CsumFlags = ad.Uint32()
 		}
 	}
 	return ad.Err()
