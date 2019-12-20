@@ -57,11 +57,11 @@ func (cc *Conn) Flush() error {
 	defer conn.Close()
 
 	if _, err := conn.SendMessages(batch(cc.messages)); err != nil {
-		return fmt.Errorf("SendMessages: %v", err)
+		return fmt.Errorf("SendMessages: %w", err)
 	}
 
 	if _, err := conn.Receive(); err != nil {
-		return fmt.Errorf("Receive: %v", err)
+		return fmt.Errorf("Receive: %w", err)
 	}
 
 	cc.messages = nil
