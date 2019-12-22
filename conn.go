@@ -64,7 +64,7 @@ func (cc *Conn) Flush() error {
 	}
 
 	if _, err := conn.Receive(); err != nil {
-		return fmt.Errorf("Receive:  %w", err)
+		return fmt.Errorf("Receive: %w", err)
 	}
 
 	return nil
