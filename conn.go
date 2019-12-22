@@ -41,7 +41,10 @@ type Conn struct {
 // Flush sends all buffered commands in a single batch to nftables.
 func (cc *Conn) Flush() error {
 	cc.Lock()
-	defer cc.Unlock()
+	defer func() {
+		cc.messages = nil
+		cc.Unlock()
+	}()
 	if len(cc.messages) == 0 {
 		// Messages were already programmed, returning nil
 		return nil
@@ -61,10 +64,8 @@ func (cc *Conn) Flush() error {
 	}
 
 	if _, err := conn.Receive(); err != nil {
-		return fmt.Errorf("Receive: %w", err)
+		return fmt.Errorf("Receive:  %w", err)
 	}
-
-	cc.messages = nil
 
 	return nil
 }
