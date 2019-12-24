@@ -112,7 +112,7 @@ func cleanupSystemNFTConn(t *testing.T, newNS netns.NsHandle) {
 	}
 }
 
-func TestReplaceRule(t *testing.T) {
+func TestAddRule(t *testing.T) {
 
 	want := [][]byte{
 		// batch begin
@@ -121,10 +121,18 @@ func TestReplaceRule(t *testing.T) {
 		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
 		// nft add chain ip filter base-chain { type filter hook prerouting priority 0 \; }
 		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x14\x00\x04\x80\x08\x00\x01\x00\x00\x00\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00\x0b\x00\x07\x00\x66\x69\x6c\x74\x65\x72\x00\x00"),
-		// nft replace rule filter base-chain handle 2 drop
-		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x02\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x0c\x00\x03\x00\x00\x00\x00\x00\x00\x00\x00\x02\x34\x00\x04\x80\x30\x00\x01\x80\x0e\x00\x01\x00\x69\x6d\x6d\x65\x64\x69\x61\x74\x65\x00\x00\x00\x1c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00\x10\x00\x02\x80\x0c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00"),
+		// nft add rule filter base-chain drop
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x02\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x34\x00\x04\x80\x30\x00\x01\x80\x0e\x00\x01\x00\x69\x6d\x6d\x65\x64\x69\x61\x74\x65\x00\x00\x00\x1c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00\x10\x00\x02\x80\x0c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00"),
 		// batch end
 		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	wantFlags := []netlink.HeaderFlags{
+		netlink.Request,
+		netlink.Request | netlink.Acknowledge | netlink.Atomic,
+		netlink.Request | netlink.Acknowledge | netlink.Atomic,
+		netlink.Request | netlink.Acknowledge | netlink.Echo | netlink.Create | netlink.Append,
+		netlink.Request,
 	}
 
 	c := &nftables.Conn{
@@ -145,6 +153,175 @@ func TestReplaceRule(t *testing.T) {
 				if got, want := b, want[0]; !bytes.Equal(got, want) {
 					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
 				}
+
+				if msg.Header.Flags != wantFlags[idx] {
+					t.Errorf("message %d: %s", idx, linediff(msg.Header.Flags.String(), wantFlags[idx].String()))
+				}
+
+				want = want[1:]
+			}
+			return req, nil
+		},
+	}
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	prerouting := c.AddChain(&nftables.Chain{
+		Name:     "base-chain",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: prerouting,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 drop ]
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+}
+
+func TestInsertRule(t *testing.T) {
+
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// nft add table ip filter
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+		// nft add chain ip filter base-chain { type filter hook prerouting priority 0 \; }
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x14\x00\x04\x80\x08\x00\x01\x00\x00\x00\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00\x0b\x00\x07\x00\x66\x69\x6c\x74\x65\x72\x00\x00"),
+		// nft insert rule filter base-chain drop
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x02\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x34\x00\x04\x80\x30\x00\x01\x80\x0e\x00\x01\x00\x69\x6d\x6d\x65\x64\x69\x61\x74\x65\x00\x00\x00\x1c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00\x10\x00\x02\x80\x0c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	wantFlags := []netlink.HeaderFlags{
+		netlink.Request,
+		netlink.Request | netlink.Acknowledge | netlink.Atomic,
+		netlink.Request | netlink.Acknowledge | netlink.Atomic,
+		netlink.Request | netlink.Acknowledge | netlink.Echo | netlink.Create,
+		netlink.Request,
+	}
+
+	c := &nftables.Conn{
+		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				if got, want := b, want[0]; !bytes.Equal(got, want) {
+					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
+				}
+
+				if msg.Header.Flags != wantFlags[idx] {
+					t.Errorf("message %d: %s", idx, linediff(msg.Header.Flags.String(), wantFlags[idx].String()))
+				}
+
+				want = want[1:]
+			}
+			return req, nil
+		},
+	}
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	prerouting := c.AddChain(&nftables.Chain{
+		Name:     "base-chain",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	c.InsertRule(&nftables.Rule{
+		Table: filter,
+		Chain: prerouting,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 drop ]
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+}
+
+func TestReplaceRule(t *testing.T) {
+
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// nft add table ip filter
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+		// nft add chain ip filter base-chain { type filter hook prerouting priority 0 \; }
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x14\x00\x04\x80\x08\x00\x01\x00\x00\x00\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00\x0b\x00\x07\x00\x66\x69\x6c\x74\x65\x72\x00\x00"),
+		// nft replace rule filter base-chain handle 2 drop
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x02\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x0c\x00\x03\x00\x00\x00\x00\x00\x00\x00\x00\x02\x34\x00\x04\x80\x30\x00\x01\x80\x0e\x00\x01\x00\x69\x6d\x6d\x65\x64\x69\x61\x74\x65\x00\x00\x00\x1c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00\x10\x00\x02\x80\x0c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	wantFlags := []netlink.HeaderFlags{
+		netlink.Request,
+		netlink.Request | netlink.Acknowledge | netlink.Atomic,
+		netlink.Request | netlink.Acknowledge | netlink.Atomic,
+		netlink.Request | netlink.Acknowledge | netlink.Echo | netlink.Replace,
+		netlink.Request,
+	}
+
+	c := &nftables.Conn{
+		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				if got, want := b, want[0]; !bytes.Equal(got, want) {
+					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
+				}
+
+				if msg.Header.Flags != wantFlags[idx] {
+					t.Errorf("message %d: %s", idx, linediff(msg.Header.Flags.String(), wantFlags[idx].String()))
+				}
+
 				want = want[1:]
 			}
 			return req, nil
