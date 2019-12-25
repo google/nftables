@@ -158,10 +158,18 @@ func (cc *Conn) ReplaceRule(r *Rule) *Rule {
 }
 
 func (cc *Conn) AddRule(r *Rule) *Rule {
+	if r.Handle != 0 {
+		return cc.newRule(r, operationReplace)
+	}
+
 	return cc.newRule(r, operationAdd)
 }
 
 func (cc *Conn) InsertRule(r *Rule) *Rule {
+	if r.Handle != 0 {
+		return cc.newRule(r, operationReplace)
+	}
+
 	return cc.newRule(r, operationInsert)
 }
 
