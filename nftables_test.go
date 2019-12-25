@@ -212,6 +212,30 @@ func TestRuleOperations(t *testing.T) {
 		},
 	})
 
+	c.AddRule(&nftables.Rule{
+		Table:    filter,
+		Chain:    prerouting,
+		Position: rules[2].Handle,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 drop ]
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	c.InsertRule(&nftables.Rule{
+		Table:    filter,
+		Chain:    prerouting,
+		Position: rules[2].Handle,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 queue ]
+				Kind: expr.VerdictQueue,
+			},
+		},
+	})
+
 	if err := c.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +245,9 @@ func TestRuleOperations(t *testing.T) {
 	want = []expr.VerdictKind{
 		expr.VerdictQueue,
 		expr.VerdictAccept,
+		expr.VerdictQueue,
 		expr.VerdictAccept,
+		expr.VerdictDrop,
 		expr.VerdictDrop,
 	}
 
