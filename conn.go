@@ -35,6 +35,7 @@ type Conn struct {
 	NetNS    int         // Network namespace netlink will interact with.
 	sync.Mutex
 	messages []netlink.Message
+	rules    []*Rule
 	err      error
 }
 
@@ -43,6 +44,7 @@ func (cc *Conn) Flush() error {
 	cc.Lock()
 	defer func() {
 		cc.messages = nil
+		cc.rules = nil
 		cc.Unlock()
 	}()
 	if len(cc.messages) == 0 {
@@ -63,8 +65,25 @@ func (cc *Conn) Flush() error {
 		return fmt.Errorf("SendMessages: %w", err)
 	}
 
-	if _, err := conn.Receive(); err != nil {
-		return fmt.Errorf("Receive: %w", err)
+	echoedRules := 0
+
+	for len(cc.rules) > echoedRules {
+		rmsg, err := conn.Receive()
+
+		if err != nil {
+			return fmt.Errorf("Receive: %w", err)
+		}
+
+		for _, msg := range rmsg {
+			if msg.Header.Type == ruleHeaderType {
+				rule, err := ruleFromMsg(msg)
+				if err == nil {
+					cc.rules[echoedRules].Handle = rule.Handle
+					echoedRules++
+				}
+			}
+		}
+
 	}
 
 	return nil

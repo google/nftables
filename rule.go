@@ -130,6 +130,8 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
 	})
 
+	cc.rules = append(cc.rules, r)
+
 	return r
 }
 

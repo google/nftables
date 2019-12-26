@@ -3980,3 +3980,77 @@ func TestStatelessNAT(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestHandleBack(t *testing.T) {
+
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	prerouting := c.AddChain(&nftables.Chain{
+		Name:     "base-chain",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	var rulesCreated []*nftables.Rule
+
+	rulesCreated = append(rulesCreated, c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: prerouting,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 drop ]
+				Kind: expr.VerdictDrop,
+			},
+		},
+	}))
+
+	rulesCreated = append(rulesCreated, c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: prerouting,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 drop ]
+				Kind: expr.VerdictDrop,
+			},
+		},
+	}))
+
+	for i, r := range rulesCreated {
+		if r.Handle != 0 {
+			t.Fatalf("unexpected handle value at %d", i)
+		}
+	}
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	rulesGetted, _ := c.GetRule(filter, prerouting)
+
+	if len(rulesGetted) != len(rulesCreated) {
+		t.Fatalf("Bad ruleset lenght got %d want %d", len(rulesGetted), len(rulesCreated))
+	}
+
+	for i, r := range rulesGetted {
+		if r.Handle == 0 {
+			t.Fatalf("handle value is empty at %d", i)
+		}
+
+		if r.Handle != rulesCreated[i].Handle {
+			t.Fatalf("mismatched handle at %d", i)
+		}
+	}
+}
