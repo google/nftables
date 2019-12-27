@@ -35,7 +35,7 @@ type Conn struct {
 	NetNS    int         // Network namespace netlink will interact with.
 	sync.Mutex
 	messages []netlink.Message
-	rules    []*Rule
+	rules    map[int]*Rule
 	err      error
 }
 
@@ -61,12 +61,20 @@ func (cc *Conn) Flush() error {
 
 	defer conn.Close()
 
-	if _, err := conn.SendMessages(batch(cc.messages)); err != nil {
+	smsg, err := conn.SendMessages(batch(cc.messages))
+
+	if err != nil {
 		return fmt.Errorf("SendMessages: %w", err)
 	}
 
-	echoedRules := 0
+	// Retrieving of seq number associated to rules
+	rulesBySeq := make(map[uint32]*Rule)
+	for i, rule := range cc.rules {
+		rulesBySeq[smsg[i].Header.Sequence] = rule
+	}
 
+	// Search handle in netlink messages based on requests seq
+	echoedRules := 0
 	for len(cc.rules) > echoedRules {
 		rmsg, err := conn.Receive()
 
@@ -75,10 +83,10 @@ func (cc *Conn) Flush() error {
 		}
 
 		for _, msg := range rmsg {
-			if msg.Header.Type == ruleHeaderType {
-				rule, err := ruleFromMsg(msg)
+			if srule, ok := rulesBySeq[msg.Header.Sequence]; ok {
+				rrule, err := ruleFromMsg(msg)
 				if err == nil {
-					cc.rules[echoedRules].Handle = rule.Handle
+					srule.Handle = rrule.Handle
 					echoedRules++
 				}
 			}

@@ -130,7 +130,11 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
 	})
 
-	cc.rules = append(cc.rules, r)
+	if cc.rules == nil {
+		cc.rules = make(map[int]*Rule)
+	}
+
+	cc.rules[len(cc.messages)] = r
 
 	return r
 }

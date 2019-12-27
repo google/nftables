@@ -3996,19 +3996,28 @@ func TestHandleBack(t *testing.T) {
 		Name:   "filter",
 	})
 
-	prerouting := c.AddChain(&nftables.Chain{
-		Name:     "base-chain",
+	chain1 := c.AddChain(&nftables.Chain{
+		Name:     "chain1",
 		Table:    filter,
 		Type:     nftables.ChainTypeFilter,
 		Hooknum:  nftables.ChainHookPrerouting,
 		Priority: nftables.ChainPriorityFilter,
 	})
 
-	var rulesCreated []*nftables.Rule
+	chain2 := c.AddChain(&nftables.Chain{
+		Name:     "chain2",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityFilter,
+	})
 
-	rulesCreated = append(rulesCreated, c.AddRule(&nftables.Rule{
+	var rulesCreated1 []*nftables.Rule
+	var rulesCreated2 []*nftables.Rule
+
+	rulesCreated1 = append(rulesCreated1, c.AddRule(&nftables.Rule{
 		Table: filter,
-		Chain: prerouting,
+		Chain: chain1,
 		Exprs: []expr.Any{
 			&expr.Verdict{
 				// [ immediate reg 0 drop ]
@@ -4017,9 +4026,9 @@ func TestHandleBack(t *testing.T) {
 		},
 	}))
 
-	rulesCreated = append(rulesCreated, c.AddRule(&nftables.Rule{
+	rulesCreated1 = append(rulesCreated1, c.AddRule(&nftables.Rule{
 		Table: filter,
-		Chain: prerouting,
+		Chain: chain1,
 		Exprs: []expr.Any{
 			&expr.Verdict{
 				// [ immediate reg 0 drop ]
@@ -4028,7 +4037,24 @@ func TestHandleBack(t *testing.T) {
 		},
 	}))
 
-	for i, r := range rulesCreated {
+	rulesCreated2 = append(rulesCreated2, c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: chain2,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 drop ]
+				Kind: expr.VerdictDrop,
+			},
+		},
+	}))
+
+	for i, r := range rulesCreated1 {
+		if r.Handle != 0 {
+			t.Fatalf("unexpected handle value at %d", i)
+		}
+	}
+
+	for i, r := range rulesCreated2 {
 		if r.Handle != 0 {
 			t.Fatalf("unexpected handle value at %d", i)
 		}
@@ -4038,18 +4064,33 @@ func TestHandleBack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rulesGetted, _ := c.GetRule(filter, prerouting)
+	rulesGetted1, _ := c.GetRule(filter, chain1)
+	rulesGetted2, _ := c.GetRule(filter, chain2)
 
-	if len(rulesGetted) != len(rulesCreated) {
-		t.Fatalf("Bad ruleset lenght got %d want %d", len(rulesGetted), len(rulesCreated))
+	if len(rulesGetted1) != len(rulesCreated1) {
+		t.Fatalf("Bad ruleset lenght got %d want %d", len(rulesGetted1), len(rulesCreated1))
 	}
 
-	for i, r := range rulesGetted {
+	if len(rulesGetted2) != len(rulesCreated2) {
+		t.Fatalf("Bad ruleset lenght got %d want %d", len(rulesGetted2), len(rulesCreated2))
+	}
+
+	for i, r := range rulesGetted1 {
 		if r.Handle == 0 {
 			t.Fatalf("handle value is empty at %d", i)
 		}
 
-		if r.Handle != rulesCreated[i].Handle {
+		if r.Handle != rulesCreated1[i].Handle {
+			t.Fatalf("mismatched handle at %d", i)
+		}
+	}
+
+	for i, r := range rulesGetted2 {
+		if r.Handle == 0 {
+			t.Fatalf("handle value is empty at %d", i)
+		}
+
+		if r.Handle != rulesCreated2[i].Handle {
 			t.Fatalf("mismatched handle at %d", i)
 		}
 	}
