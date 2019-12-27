@@ -4068,11 +4068,11 @@ func TestHandleBack(t *testing.T) {
 	rulesGetted2, _ := c.GetRule(filter, chain2)
 
 	if len(rulesGetted1) != len(rulesCreated1) {
-		t.Fatalf("Bad ruleset lenght got %d want %d", len(rulesGetted1), len(rulesCreated1))
+		t.Fatalf("Bad ruleset length got %d want %d", len(rulesGetted1), len(rulesCreated1))
 	}
 
 	if len(rulesGetted2) != len(rulesCreated2) {
-		t.Fatalf("Bad ruleset lenght got %d want %d", len(rulesGetted2), len(rulesCreated2))
+		t.Fatalf("Bad ruleset length got %d want %d", len(rulesGetted2), len(rulesCreated2))
 	}
 
 	for i, r := range rulesGetted1 {
