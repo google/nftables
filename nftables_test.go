@@ -3983,6 +3983,10 @@ func TestStatelessNAT(t *testing.T) {
 
 func TestHandleBack(t *testing.T) {
 
+	if os.Getenv("TRAVIS") == "true" {
+		t.SkipNow()
+	}
+
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
 	c, newNS := openSystemNFTConn(t)
