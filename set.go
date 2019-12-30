@@ -161,7 +161,7 @@ func (cc *Conn) SetAddElements(s *Set, vals []SetElement) error {
 		return errors.New("anonymous sets cannot be updated")
 	}
 
-	elements, err := s.makeElemList(vals)
+	elements, err := s.makeElemList(vals, s.ID)
 	if err != nil {
 		return err
 	}
@@ -176,7 +176,7 @@ func (cc *Conn) SetAddElements(s *Set, vals []SetElement) error {
 	return nil
 }
 
-func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
+func (s *Set) makeElemList(vals []SetElement, id uint32) ([]netlink.Attribute, error) {
 	var elements []netlink.Attribute
 
 	for i, v := range vals {
@@ -248,7 +248,8 @@ func (s *Set) makeElemList(vals []SetElement) ([]netlink.Attribute, error) {
 
 	return []netlink.Attribute{
 		{Type: unix.NFTA_SET_NAME, Data: []byte(s.Name + "\x00")},
-		{Type: unix.NFTA_SET_KEY_TYPE, Data: binaryutil.BigEndian.PutUint32(unix.NFTA_DATA_VALUE)},
+		//		{Type: unix.NFTA_SET_KEY_TYPE, Data: binaryutil.BigEndian.PutUint32(unix.NFTA_DATA_VALUE)},
+		{Type: unix.NFTA_SET_KEY_TYPE, Data: binaryutil.BigEndian.PutUint32(id)},
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},
 		{Type: unix.NFTA_SET_ELEM_LIST_ELEMENTS | unix.NLA_F_NESTED, Data: encodedElem},
 	}, nil
@@ -338,7 +339,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	// Set the values of the set if initial values were provided.
 	if len(vals) > 0 {
 		hdrType := unix.NFT_MSG_NEWSETELEM
-		elements, err := s.makeElemList(vals)
+		elements, err := s.makeElemList(vals, s.ID)
 		if err != nil {
 			return err
 		}
@@ -379,7 +380,7 @@ func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
 		return errors.New("anonymous sets cannot be updated")
 	}
 
-	elements, err := s.makeElemList(vals)
+	elements, err := s.makeElemList(vals, s.ID)
 	if err != nil {
 		return err
 	}
