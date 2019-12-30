@@ -248,7 +248,7 @@ func (s *Set) makeElemList(vals []SetElement, id uint32) ([]netlink.Attribute, e
 
 	return []netlink.Attribute{
 		{Type: unix.NFTA_SET_NAME, Data: []byte(s.Name + "\x00")},
-		{Type: unix.NFTA_SET_KEY_TYPE, Data: binaryutil.BigEndian.PutUint32(id)},
+		{Type: unix.NFTA_LOOKUP_SET_ID, Data: binaryutil.BigEndian.PutUint32(id)},
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},
 		{Type: unix.NFTA_SET_ELEM_LIST_ELEMENTS | unix.NLA_F_NESTED, Data: encodedElem},
 	}, nil
