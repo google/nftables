@@ -112,6 +112,154 @@ func cleanupSystemNFTConn(t *testing.T, newNS netns.NsHandle) {
 	}
 }
 
+func TestRuleOperations(t *testing.T) {
+
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	prerouting := c.AddChain(&nftables.Chain{
+		Name:     "base-chain",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: prerouting,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 drop ]
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: prerouting,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 drop ]
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	c.InsertRule(&nftables.Rule{
+		Table: filter,
+		Chain: prerouting,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 accept ]
+				Kind: expr.VerdictAccept,
+			},
+		},
+	})
+
+	c.InsertRule(&nftables.Rule{
+		Table: filter,
+		Chain: prerouting,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 queue ]
+				Kind: expr.VerdictQueue,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	rules, _ := c.GetRule(filter, prerouting)
+
+	want := []expr.VerdictKind{
+		expr.VerdictQueue,
+		expr.VerdictAccept,
+		expr.VerdictDrop,
+		expr.VerdictDrop,
+	}
+
+	for i, r := range rules {
+		rr, _ := r.Exprs[0].(*expr.Verdict)
+
+		if rr.Kind != want[i] {
+			t.Fatalf("bad verdict kind at %d", i)
+		}
+	}
+
+	c.ReplaceRule(&nftables.Rule{
+		Table:  filter,
+		Chain:  prerouting,
+		Handle: rules[2].Handle,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 accept ]
+				Kind: expr.VerdictAccept,
+			},
+		},
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table:    filter,
+		Chain:    prerouting,
+		Position: rules[2].Handle,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 drop ]
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	c.InsertRule(&nftables.Rule{
+		Table:    filter,
+		Chain:    prerouting,
+		Position: rules[2].Handle,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				// [ immediate reg 0 queue ]
+				Kind: expr.VerdictQueue,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	rules, _ = c.GetRule(filter, prerouting)
+
+	want = []expr.VerdictKind{
+		expr.VerdictQueue,
+		expr.VerdictAccept,
+		expr.VerdictQueue,
+		expr.VerdictAccept,
+		expr.VerdictDrop,
+		expr.VerdictDrop,
+	}
+
+	for i, r := range rules {
+		rr, _ := r.Exprs[0].(*expr.Verdict)
+
+		if rr.Kind != want[i] {
+			t.Fatalf("bad verdict kind at %d", i)
+		}
+	}
+}
+
 func TestConfigureNAT(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft add table ip nat
