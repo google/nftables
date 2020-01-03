@@ -130,11 +130,11 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
 	})
 
-	if cc.rules == nil {
-		cc.rules = make(map[int]*Rule)
+	if cc.entities == nil {
+		cc.entities = make(map[int]Entity)
 	}
 
-	cc.rules[len(cc.messages)] = r
+	cc.entities[len(cc.messages)] = r
 
 	return r
 }
@@ -164,6 +164,15 @@ func (cc *Conn) DelRule(r *Rule) error {
 	})
 
 	return nil
+}
+
+// HandleResponse retrieves Handle in netlink response
+func (r *Rule) HandleResponse(msg netlink.Message) {
+	rule, err := ruleFromMsg(msg)
+
+	if err == nil {
+		r.Handle = rule.Handle
+	}
 }
 
 func exprsFromMsg(b []byte) ([]expr.Any, error) {
