@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/nftables"
@@ -4000,102 +4001,69 @@ func TestHandleBack(t *testing.T) {
 		Name:   "filter",
 	})
 
-	chain1 := c.AddChain(&nftables.Chain{
-		Name:     "chain1",
+	chain := c.AddChain(&nftables.Chain{
+		Name:     "chain",
 		Table:    filter,
 		Type:     nftables.ChainTypeFilter,
 		Hooknum:  nftables.ChainHookPrerouting,
 		Priority: nftables.ChainPriorityFilter,
 	})
 
-	chain2 := c.AddChain(&nftables.Chain{
-		Name:     "chain2",
-		Table:    filter,
-		Type:     nftables.ChainTypeFilter,
-		Hooknum:  nftables.ChainHookPrerouting,
-		Priority: nftables.ChainPriorityFilter,
-	})
+	c.Flush()
 
-	var rulesCreated1 []*nftables.Rule
-	var rulesCreated2 []*nftables.Rule
+	execN := func(w int, n int) {
 
-	rulesCreated1 = append(rulesCreated1, c.AddRule(&nftables.Rule{
-		Table: filter,
-		Chain: chain1,
-		Exprs: []expr.Any{
-			&expr.Verdict{
-				// [ immediate reg 0 drop ]
-				Kind: expr.VerdictDrop,
-			},
-		},
-	}))
+		c := &nftables.Conn{NetNS: int(newNS)}
 
-	rulesCreated1 = append(rulesCreated1, c.AddRule(&nftables.Rule{
-		Table: filter,
-		Chain: chain1,
-		Exprs: []expr.Any{
-			&expr.Verdict{
-				// [ immediate reg 0 drop ]
-				Kind: expr.VerdictDrop,
-			},
-		},
-	}))
+		for i := 0; i < n; i++ {
 
-	rulesCreated2 = append(rulesCreated2, c.AddRule(&nftables.Rule{
-		Table: filter,
-		Chain: chain2,
-		Exprs: []expr.Any{
-			&expr.Verdict{
-				// [ immediate reg 0 drop ]
-				Kind: expr.VerdictDrop,
-			},
-		},
-	}))
+			r := c.AddRule(&nftables.Rule{
+				Table:    filter,
+				Chain:    chain,
+				UserData: []byte(fmt.Sprintf("%d-%d", w, i)),
+				Exprs: []expr.Any{
+					&expr.Verdict{
+						// [ immediate reg 0 drop ]
+						Kind: expr.VerdictDrop,
+					},
+				},
+			})
 
-	for i, r := range rulesCreated1 {
-		if r.Handle != 0 {
-			t.Fatalf("unexpected handle value at %d", i)
+			if r.Handle != 0 {
+				t.Fatalf("unexpected handle value at %d", i)
+			}
+
+			if err := c.Flush(); err != nil {
+				t.Fatal(err)
+			}
+
+			rulesGetted, _ := c.GetRule(filter, chain)
+
+			for i, rg := range rulesGetted {
+				if r.Handle == 0 {
+					t.Fatalf("handle value is empty at %d", i)
+				}
+
+				if bytes.Equal(rg.UserData, r.UserData) && rg.Handle != r.Handle {
+					t.Fatalf("mismatched handle at %d-%d, got: %d, want: %d", w, i, r.Handle, rg.Handle)
+				}
+			}
 		}
 	}
 
-	for i, r := range rulesCreated2 {
-		if r.Handle != 0 {
-			t.Fatalf("unexpected handle value at %d", i)
-		}
+	const (
+		workers    = 16
+		iterations = 256
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(n int) {
+			defer wg.Done()
+			execN(n, iterations)
+		}(i)
 	}
 
-	if err := c.Flush(); err != nil {
-		t.Fatal(err)
-	}
-
-	rulesGetted1, _ := c.GetRule(filter, chain1)
-	rulesGetted2, _ := c.GetRule(filter, chain2)
-
-	if len(rulesGetted1) != len(rulesCreated1) {
-		t.Fatalf("Bad ruleset length got %d want %d", len(rulesGetted1), len(rulesCreated1))
-	}
-
-	if len(rulesGetted2) != len(rulesCreated2) {
-		t.Fatalf("Bad ruleset length got %d want %d", len(rulesGetted2), len(rulesCreated2))
-	}
-
-	for i, r := range rulesGetted1 {
-		if r.Handle == 0 {
-			t.Fatalf("handle value is empty at %d", i)
-		}
-
-		if r.Handle != rulesCreated1[i].Handle {
-			t.Fatalf("mismatched handle at %d", i)
-		}
-	}
-
-	for i, r := range rulesGetted2 {
-		if r.Handle == 0 {
-			t.Fatalf("handle value is empty at %d", i)
-		}
-
-		if r.Handle != rulesCreated2[i].Handle {
-			t.Fatalf("mismatched handle at %d", i)
-		}
-	}
+	wg.Wait()
 }
