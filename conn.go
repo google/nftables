@@ -77,9 +77,8 @@ func (cc *Conn) Flush() error {
 		entitiesBySeq[smsg[i].Header.Sequence] = e
 	}
 
-	// Search handle in netlink messages based on requests seq
-	echoedEntities := 0
-	for len(cc.entities) > echoedEntities {
+	// Trigger entities callback
+	for checkReceive(conn) {
 		rmsg, err := conn.Receive()
 
 		if err != nil {
@@ -89,13 +88,31 @@ func (cc *Conn) Flush() error {
 		for _, msg := range rmsg {
 			if e, ok := entitiesBySeq[msg.Header.Sequence]; ok {
 				e.HandleResponse(msg)
-				echoedEntities++
 			}
 		}
-
 	}
 
 	return nil
+}
+
+func checkReceive(c *netlink.Conn) bool {
+	sc, err := c.SyscallConn()
+
+	var n int
+
+	sc.Control(func(fd uintptr) {
+		var fdSet unix.FdSet
+		fdSet.Zero()
+		fdSet.Set(int(fd))
+
+		n, err = unix.Select(int(fd)+1, &fdSet, nil, nil, &unix.Timeval{})
+	})
+
+	if err == nil && n > 0 {
+		return true
+	}
+
+	return false
 }
 
 // FlushRuleset flushes the entire ruleset. See also
