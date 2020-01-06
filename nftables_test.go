@@ -3982,11 +3982,7 @@ func TestStatelessNAT(t *testing.T) {
 	}
 }
 
-func TestHandleBack(t *testing.T) {
-
-	if os.Getenv("TRAVIS") == "true" {
-		t.SkipNow()
-	}
+func TestIntegrationAddRule(t *testing.T) {
 
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
