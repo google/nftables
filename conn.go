@@ -78,7 +78,8 @@ func (cc *Conn) Flush() error {
 	}
 
 	// Trigger entities callback
-	for cc.checkReceive(conn) {
+	msg, err := cc.checkReceive(conn)
+	for msg {
 		rmsg, err := conn.Receive()
 
 		if err != nil {
@@ -90,17 +91,22 @@ func (cc *Conn) Flush() error {
 				e.HandleResponse(msg)
 			}
 		}
+		msg, err = cc.checkReceive(conn)
 	}
 
-	return nil
+	return err
 }
 
-func (cc *Conn) checkReceive(c *netlink.Conn) bool {
+func (cc *Conn) checkReceive(c *netlink.Conn) (bool, error) {
 	if cc.TestDial != nil {
-		return false
+		return false, nil
 	}
 
 	sc, err := c.SyscallConn()
+
+	if err != nil {
+		return false, fmt.Errorf("SyscallConn error: %w", err)
+	}
 
 	var n int
 
@@ -113,10 +119,10 @@ func (cc *Conn) checkReceive(c *netlink.Conn) bool {
 	})
 
 	if err == nil && n > 0 {
-		return true
+		return true, nil
 	}
 
-	return false
+	return false, err
 }
 
 // FlushRuleset flushes the entire ruleset. See also
