@@ -78,7 +78,7 @@ func (cc *Conn) Flush() error {
 	}
 
 	// Trigger entities callback
-	for checkReceive(conn) {
+	for cc.checkReceive(conn) {
 		rmsg, err := conn.Receive()
 
 		if err != nil {
@@ -95,7 +95,11 @@ func (cc *Conn) Flush() error {
 	return nil
 }
 
-func checkReceive(c *netlink.Conn) bool {
+func (cc *Conn) checkReceive(c *netlink.Conn) bool {
+	if cc.TestDial != nil {
+		return false
+	}
+
 	sc, err := c.SyscallConn()
 
 	var n int
