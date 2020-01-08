@@ -118,7 +118,6 @@ func (cc *Conn) PutMessage(msg netlink.Message) int32 {
 
 	i := atomic.AddInt32(&cc.it, 1)
 
-	cc.messages = append(cc.messages, netlink.Message{})
 	cc.messages[i] = msg
 
 	return i
