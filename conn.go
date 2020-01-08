@@ -39,6 +39,7 @@ type Conn struct {
 	TestDial nltest.Func // for testing only; passed to nltest.Dial
 	NetNS    int         // Network namespace netlink will interact with.
 	sync.Mutex
+	put      sync.Mutex
 	messages []netlink.Message
 	entities map[int32]Entity
 	it       int32
@@ -104,8 +105,11 @@ func (cc *Conn) Flush() error {
 
 // PutMessage store netlink message to sent after
 func (cc *Conn) PutMessage(msg netlink.Message) int32 {
+	cc.put.Lock()
+	defer cc.put.Unlock()
+
 	if cc.messages == nil {
-		cc.messages = make([]netlink.Message, 128)
+		cc.messages = make([]netlink.Message, 16)
 		cc.messages[0] = netlink.Message{
 			Header: netlink.Header{
 				Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
@@ -116,6 +120,10 @@ func (cc *Conn) PutMessage(msg netlink.Message) int32 {
 	}
 
 	i := atomic.AddInt32(&cc.it, 1)
+
+	if len(cc.messages) <= int(i) {
+		cc.messages = resize(cc.messages)
+	}
 
 	cc.messages[i] = msg
 
@@ -208,6 +216,10 @@ func (cc *Conn) endBatch(messages []netlink.Message) {
 
 	i := atomic.AddInt32(&cc.it, 1)
 
+	if len(cc.messages) <= int(i) {
+		cc.messages = resize(cc.messages)
+	}
+
 	cc.messages[i] = netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_END),
@@ -215,4 +227,10 @@ func (cc *Conn) endBatch(messages []netlink.Message) {
 		},
 		Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
 	}
+}
+
+func resize(messages []netlink.Message) []netlink.Message {
+	new := make([]netlink.Message, cap(messages)*2)
+	copy(new, messages)
+	return new
 }
