@@ -123,7 +123,7 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 			{Type: unix.NFTA_CHAIN_TYPE, Data: []byte(c.Type + "\x00")},
 		})...)
 	}
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.PutMessage(netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWCHAIN),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
@@ -144,7 +144,7 @@ func (cc *Conn) DelChain(c *Chain) {
 		{Type: unix.NFTA_CHAIN_NAME, Data: []byte(c.Name + "\x00")},
 	})
 
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.PutMessage(netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELCHAIN),
 			Flags: netlink.Request | netlink.Acknowledge,
@@ -162,7 +162,7 @@ func (cc *Conn) FlushChain(c *Chain) {
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(c.Table.Name + "\x00")},
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(c.Name + "\x00")},
 	})
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.PutMessage(netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE),
 			Flags: netlink.Request | netlink.Acknowledge,

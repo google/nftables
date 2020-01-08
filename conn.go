@@ -17,6 +17,7 @@ package nftables
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
@@ -39,7 +40,8 @@ type Conn struct {
 	NetNS    int         // Network namespace netlink will interact with.
 	sync.Mutex
 	messages []netlink.Message
-	entities map[int]Entity
+	entities map[int32]Entity
+	it       int32
 	err      error
 }
 
@@ -49,6 +51,7 @@ func (cc *Conn) Flush() error {
 	defer func() {
 		cc.messages = nil
 		cc.entities = nil
+		cc.it = 0
 		cc.Unlock()
 	}()
 	if len(cc.messages) == 0 {
@@ -65,7 +68,9 @@ func (cc *Conn) Flush() error {
 
 	defer conn.Close()
 
-	smsg, err := conn.SendMessages(batch(cc.messages))
+	cc.endBatch(cc.messages)
+
+	_, err = conn.SendMessages(cc.messages[:cc.it+1])
 
 	if err != nil {
 		return fmt.Errorf("SendMessages: %w", err)
@@ -74,7 +79,7 @@ func (cc *Conn) Flush() error {
 	// Retrieving of seq number associated to entities
 	entitiesBySeq := make(map[uint32]Entity)
 	for i, e := range cc.entities {
-		entitiesBySeq[smsg[i].Header.Sequence] = e
+		entitiesBySeq[cc.messages[i].Header.Sequence] = e
 	}
 
 	// Trigger entities callback
@@ -95,6 +100,36 @@ func (cc *Conn) Flush() error {
 	}
 
 	return err
+}
+
+// PutMessage store netlink message to sent after
+func (cc *Conn) PutMessage(msg netlink.Message) int32 {
+	if cc.messages == nil {
+		cc.messages = make([]netlink.Message, 128)
+		cc.messages = append(cc.messages, netlink.Message{})
+		cc.messages[0] = netlink.Message{
+			Header: netlink.Header{
+				Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
+				Flags: netlink.Request,
+			},
+			Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
+		}
+	}
+
+	i := atomic.AddInt32(&cc.it, 1)
+
+	cc.messages = append(cc.messages, netlink.Message{})
+	cc.messages[i] = msg
+
+	return i
+}
+
+// PutEntity store entity to relate to netlink response
+func (cc *Conn) PutEntity(i int32, e Entity) {
+	if cc.entities == nil {
+		cc.entities = make(map[int32]Entity)
+	}
+	cc.entities[i] = e
 }
 
 func (cc *Conn) checkReceive(c *netlink.Conn) (bool, error) {
@@ -130,7 +165,7 @@ func (cc *Conn) checkReceive(c *netlink.Conn) (bool, error) {
 func (cc *Conn) FlushRuleset() {
 	cc.Lock()
 	defer cc.Unlock()
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.PutMessage(netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
@@ -171,26 +206,15 @@ func (cc *Conn) marshalExpr(e expr.Any) []byte {
 	return b
 }
 
-func batch(messages []netlink.Message) []netlink.Message {
-	batch := []netlink.Message{
-		{
-			Header: netlink.Header{
-				Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
-				Flags: netlink.Request,
-			},
-			Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
-		},
-	}
+func (cc *Conn) endBatch(messages []netlink.Message) {
 
-	batch = append(batch, messages...)
+	i := atomic.AddInt32(&cc.it, 1)
 
-	batch = append(batch, netlink.Message{
+	cc.messages[i] = netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_END),
 			Flags: netlink.Request,
 		},
 		Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
-	})
-
-	return batch
+	}
 }

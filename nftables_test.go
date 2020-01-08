@@ -4033,13 +4033,13 @@ func TestIntegrationAddRule(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			if r.Handle == 0 {
+				t.Fatalf("handle value is empty at %d", i)
+			}
+
 			rulesGetted, _ := c.GetRule(filter, chain)
 
 			for i, rg := range rulesGetted {
-				if r.Handle == 0 {
-					t.Fatalf("handle value is empty at %d", i)
-				}
-
 				if bytes.Equal(rg.UserData, r.UserData) && rg.Handle != r.Handle {
 					t.Fatalf("mismatched handle at %d-%d, got: %d, want: %d", w, i, r.Handle, rg.Handle)
 				}

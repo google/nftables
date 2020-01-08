@@ -122,19 +122,16 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO | unix.NLM_F_APPEND
 	}
 
-	cc.messages = append(cc.messages, netlink.Message{
+	m := netlink.Message{
 		Header: netlink.Header{
 			Type:  ruleHeaderType,
 			Flags: flags,
 		},
 		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
-	})
-
-	if cc.entities == nil {
-		cc.entities = make(map[int]Entity)
 	}
 
-	cc.entities[len(cc.messages)] = r
+	i := cc.PutMessage(m)
+	cc.PutEntity(i, r)
 
 	return r
 }
@@ -155,7 +152,7 @@ func (cc *Conn) DelRule(r *Rule) error {
 	})...)
 	flags := netlink.Request | netlink.Acknowledge
 
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.PutMessage(netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE),
 			Flags: flags,
