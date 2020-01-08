@@ -106,7 +106,6 @@ func (cc *Conn) Flush() error {
 func (cc *Conn) PutMessage(msg netlink.Message) int32 {
 	if cc.messages == nil {
 		cc.messages = make([]netlink.Message, 128)
-		cc.messages = append(cc.messages, netlink.Message{})
 		cc.messages[0] = netlink.Message{
 			Header: netlink.Header{
 				Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
