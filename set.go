@@ -170,7 +170,7 @@ func (cc *Conn) SetAddElements(s *Set, vals []SetElement) error {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSETELEM),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
-		Data: append(extraHeader(unix.NFTA_SET_NAME, 0), cc.marshalAttr(elements)...),
+		Data: append(extraHeader(uint8(s.Table.Family), 0), cc.marshalAttr(elements)...),
 	})
 
 	return nil
