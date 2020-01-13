@@ -26,6 +26,15 @@ import (
 
 var ruleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWRULE)
 
+type ruleOperation uint32
+
+// Possible PayloadOperationType values.
+const (
+	operationAdd ruleOperation = iota
+	operationInsert
+	operationReplace
+)
+
 // A Rule does something with a packet. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Simple_rule_management
 type Rule struct {
@@ -82,7 +91,7 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 }
 
 // AddRule adds the specified Rule
-func (cc *Conn) AddRule(r *Rule) *Rule {
+func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	cc.Lock()
 	defer cc.Unlock()
 	exprAttrs := make([]netlink.Attribute, len(r.Exprs))
@@ -92,12 +101,24 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 			Data: cc.marshalExpr(expr),
 		}
 	}
+
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(r.Table.Name + "\x00")},
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(r.Chain.Name + "\x00")},
-		{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_EXPRESSIONS, Data: cc.marshalAttr(exprAttrs)},
 	})
+
+	if r.Handle != 0 {
+		data = append(data, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_RULE_HANDLE, Data: binaryutil.BigEndian.PutUint64(r.Handle)},
+		})...)
+	}
+
+	data = append(data, cc.marshalAttr([]netlink.Attribute{
+		{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_EXPRESSIONS, Data: cc.marshalAttr(exprAttrs)},
+	})...)
+
 	msgData := []byte{}
+
 	msgData = append(msgData, data...)
 	var flags netlink.HeaderFlags
 	if r.UserData != nil {
@@ -105,21 +126,20 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 			{Type: unix.NFTA_RULE_USERDATA, Data: r.UserData},
 		})...)
 	}
-	if r.Handle != 0 {
+
+	switch op {
+	case operationAdd:
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO | unix.NLM_F_APPEND
+	case operationInsert:
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO
+	case operationReplace:
 		flags = netlink.Request | netlink.Acknowledge | netlink.Replace | unix.NLM_F_ECHO | unix.NLM_F_REPLACE
-		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
-			{Type: unix.NFTA_RULE_HANDLE, Data: binaryutil.BigEndian.PutUint64(r.Handle)},
-		})...)
-	} else if r.Position != 0 {
-		// when a rule's position is specified, it becomes nft insert rule operation
+	}
+
+	if r.Position != 0 {
 		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NFTA_RULE_POSITION, Data: binaryutil.BigEndian.PutUint64(r.Position)},
 		})...)
-		// when a rule's position is specified, it becomes nft insert rule operation
-		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO
-	} else {
-		// unix.NLM_F_APPEND is added when nft add rule operation is executed.
-		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO | unix.NLM_F_APPEND
 	}
 
 	cc.messages = append(cc.messages, netlink.Message{
@@ -131,6 +151,26 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 	})
 
 	return r
+}
+
+func (cc *Conn) ReplaceRule(r *Rule) *Rule {
+	return cc.newRule(r, operationReplace)
+}
+
+func (cc *Conn) AddRule(r *Rule) *Rule {
+	if r.Handle != 0 {
+		return cc.newRule(r, operationReplace)
+	}
+
+	return cc.newRule(r, operationAdd)
+}
+
+func (cc *Conn) InsertRule(r *Rule) *Rule {
+	if r.Handle != 0 {
+		return cc.newRule(r, operationReplace)
+	}
+
+	return cc.newRule(r, operationInsert)
 }
 
 // DelRule deletes the specified Rule, rule's handle cannot be 0
