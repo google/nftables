@@ -1,71 +1,367 @@
-package nftables
+package nftables_test
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/google/nftables"
+	"github.com/google/nftables/binaryutil"
+	"github.com/google/nftables/expr"
+	"golang.org/x/sys/unix"
 )
 
-func genSetKeyType(types ...uint32) uint32 {
-	c := types[0]
-	for i := 1; i < len(types); i++ {
-		c = c<<SetConcatTypeBits | types[i]
+func TestCreateUseAnonymousSet(t *testing.T) {
+	// The want byte sequences come from stracing nft(8), e.g.:
+	// strace -f -v -x -s 2048 -eraw=sendto nft add table ip nat
+	//
+	// The nft(8) command sequence was taken from:
+	// https://wiki.nftables.org/wiki-nftables/index.php/Mangle_TCP_options
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// nft flush ruleset
+		[]byte("\x00\x00\x00\x00"),
+		// nft add table ip filter
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+		// Create anonymous set with key len of 2 bytes and data len of 0 bytes
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0c\x00\x02\x00\x5f\x5f\x73\x65\x74\x25\x64\x00\x08\x00\x03\x00\x00\x00\x00\x03\x08\x00\x04\x00\x00\x00\x00\x0d\x08\x00\x05\x00\x00\x00\x00\x02\x08\x00\x0a\x00\x00\x00\x00\x01\x0c\x00\x09\x80\x08\x00\x01\x00\x00\x00\x00\x02\x0a\x00\x0d\x00\x00\x04\x02\x00\x00\x00\x00\x00"),
+		// Assign the two values to the aforementioned anonymous set
+		[]byte("\x02\x00\x00\x00\x0c\x00\x02\x00\x5f\x5f\x73\x65\x74\x25\x64\x00\x08\x00\x04\x00\x00\x00\x00\x01\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x24\x00\x03\x80\x10\x00\x01\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x00\x45\x00\x00\x10\x00\x02\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x04\x8b\x00\x00"),
+		// nft add rule filter forward tcp dport {69, 1163} drop
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0c\x00\x02\x00\x66\x6f\x72\x77\x61\x72\x64\x00\xe8\x00\x04\x80\x24\x00\x01\x80\x09\x00\x01\x00\x6d\x65\x74\x61\x00\x00\x00\x00\x14\x00\x02\x80\x08\x00\x02\x00\x00\x00\x00\x10\x08\x00\x01\x00\x00\x00\x00\x01\x2c\x00\x01\x80\x08\x00\x01\x00\x63\x6d\x70\x00\x20\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x08\x00\x02\x00\x00\x00\x00\x00\x0c\x00\x03\x80\x05\x00\x01\x00\x06\x00\x00\x00\x34\x00\x01\x80\x0c\x00\x01\x00\x70\x61\x79\x6c\x6f\x61\x64\x00\x24\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x08\x00\x02\x00\x00\x00\x00\x02\x08\x00\x03\x00\x00\x00\x00\x02\x08\x00\x04\x00\x00\x00\x00\x02\x30\x00\x01\x80\x0b\x00\x01\x00\x6c\x6f\x6f\x6b\x75\x70\x00\x00\x20\x00\x02\x80\x08\x00\x02\x00\x00\x00\x00\x01\x0c\x00\x01\x00\x5f\x5f\x73\x65\x74\x25\x64\x00\x08\x00\x04\x00\x00\x00\x00\x01\x30\x00\x01\x80\x0e\x00\x01\x00\x69\x6d\x6d\x65\x64\x69\x61\x74\x65\x00\x00\x00\x1c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00\x10\x00\x02\x80\x0c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
 	}
-	return c
+
+	c := &nftables.Conn{
+		TestDial: CheckNLReq(t, want, nil),
+	}
+
+	c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	set := &nftables.Set{
+		ID:        1,
+		Anonymous: true,
+		Constant:  true,
+		Table:     filter,
+		KeyType:   nftables.TypeInetService,
+	}
+
+	if err := c.AddSet(set, []nftables.SetElement{
+		{Key: binaryutil.BigEndian.PutUint16(69)},
+		{Key: binaryutil.BigEndian.PutUint16(1163)},
+	}); err != nil {
+		t.Errorf("c.AddSet() failed: %v", err)
+	}
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: &nftables.Chain{Name: "forward", Type: nftables.ChainTypeFilter},
+		Exprs: []expr.Any{
+			// [ meta load l4proto => reg 1 ]
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			// [ cmp eq reg 1 0x00000006 ]
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+
+			// [ payload load 2b @ transport header + 2 => reg 1 ]
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			// [ lookup reg 1 set __set%d ]
+			&expr.Lookup{
+				SourceRegister: 1,
+				SetName:        set.Name,
+				SetID:          set.ID,
+			},
+			// [ immediate reg 0 drop ]
+			&expr.Verdict{
+				Kind: expr.VerdictDrop,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
 }
 
-func TestValidateNFTMagic(t *testing.T) {
-	t.Parallel()
+func TestSet4(t *testing.T) {
+	// The want byte sequences come from stracing nft(8), e.g.:
+	// strace-4.21 -f -v -x -s 2048 -etrace=sendto nft add table ip nat
+	//
+	// Until https://github.com/strace/strace/issues/100 is resolved,
+	// you need to use strace 4.21 or apply the patch in the issue.
+	//
+	// Additional details can be obtained by specifying the --debug=all option
+	// when calling nft(8).
+	want := [][]byte{
+
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+
+		// table ip ipv4table {
+		// 	set test-set {
+		// 		type inet_service
+		// 		flags constant
+		// 		elements = { 12000, 12001, 12345, 12346 }
+		// 	}
+		//
+		// 	chain ipv4chain-2 {
+		// 		type nat hook prerouting priority dstnat; policy accept;
+		// 		tcp dport @test-set
+		// 	}
+		// }
+
+		[]byte("\x02\x00\x00\x00\x0e\x00\x01\x00\x69\x70\x76\x34\x74\x61\x62\x6c\x65\x00\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+
+		[]byte("\x02\x00\x00\x00\x0e\x00\x01\x00\x69\x70\x76\x34\x74\x61\x62\x6c\x65\x00\x00\x00\x10\x00\x03\x00\x69\x70\x76\x34\x63\x68\x61\x69\x6e\x2d\x32\x00\x14\x00\x04\x80\x08\x00\x01\x00\x00\x00\x00\x00\x08\x00\x02\x00\xff\xff\xff\x9c\x08\x00\x05\x00\x00\x00\x00\x01\x08\x00\x07\x00\x6e\x61\x74\x00"),
+
+		[]byte("\x02\x00\x00\x00\x0e\x00\x01\x00\x69\x70\x76\x34\x74\x61\x62\x6c\x65\x00\x00\x00\x0d\x00\x02\x00\x74\x65\x73\x74\x2d\x73\x65\x74\x00\x00\x00\x00\x08\x00\x03\x00\x00\x00\x00\x02\x08\x00\x04\x00\x00\x00\x00\x0d\x08\x00\x05\x00\x00\x00\x00\x02\x08\x00\x0a\x00\x00\x00\x00\x01\x0c\x00\x09\x80\x08\x00\x01\x00\x00\x00\x00\x04\x0a\x00\x0d\x00\x00\x04\x02\x00\x00\x00\x00\x00"),
+
+		[]byte("\x02\x00\x00\x00\x0d\x00\x02\x00\x74\x65\x73\x74\x2d\x73\x65\x74\x00\x00\x00\x00\x08\x00\x04\x00\x00\x00\x00\x01\x0e\x00\x01\x00\x69\x70\x76\x34\x74\x61\x62\x6c\x65\x00\x00\x00\x44\x00\x03\x80\x10\x00\x01\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x2e\xe0\x00\x00\x10\x00\x02\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x2e\xe1\x00\x00\x10\x00\x03\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x30\x39\x00\x00\x10\x00\x04\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x30\x3a\x00\x00"),
+
+		[]byte("\x02\x00\x00\x00\x0e\x00\x01\x00\x69\x70\x76\x34\x74\x61\x62\x6c\x65\x00\x00\x00\x10\x00\x02\x00\x69\x70\x76\x34\x63\x68\x61\x69\x6e\x2d\x32\x00\xbc\x00\x04\x80\x24\x00\x01\x80\x09\x00\x01\x00\x6d\x65\x74\x61\x00\x00\x00\x00\x14\x00\x02\x80\x08\x00\x02\x00\x00\x00\x00\x10\x08\x00\x01\x00\x00\x00\x00\x01\x2c\x00\x01\x80\x08\x00\x01\x00\x63\x6d\x70\x00\x20\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x08\x00\x02\x00\x00\x00\x00\x00\x0c\x00\x03\x80\x05\x00\x01\x00\x06\x00\x00\x00\x34\x00\x01\x80\x0c\x00\x01\x00\x70\x61\x79\x6c\x6f\x61\x64\x00\x24\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x01\x08\x00\x02\x00\x00\x00\x00\x02\x08\x00\x03\x00\x00\x00\x00\x02\x08\x00\x04\x00\x00\x00\x00\x02\x34\x00\x01\x80\x0b\x00\x01\x00\x6c\x6f\x6f\x6b\x75\x70\x00\x00\x24\x00\x02\x80\x08\x00\x02\x00\x00\x00\x00\x01\x0d\x00\x01\x00\x74\x65\x73\x74\x2d\x73\x65\x74\x00\x00\x00\x00\x08\x00\x04\x00\x00\x00\x00\x01"),
+
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	c := &nftables.Conn{
+		TestDial: CheckNLReq(t, want, nil),
+	}
+
+	tbl := &nftables.Table{
+		Name:   "ipv4table",
+		Family: nftables.TableFamilyIPv4,
+	}
+	defPol := nftables.ChainPolicyAccept
+	ch := &nftables.Chain{
+		Name:     "ipv4chain-2",
+		Table:    tbl,
+		Type:     nftables.ChainTypeNAT,
+		Priority: nftables.ChainPriorityNATDest,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Policy:   &defPol,
+	}
+	set := nftables.Set{
+		Anonymous: false,
+		Constant:  true,
+		Name:      "test-set",
+		ID:        uint32(1), //rand.Intn(0xffff)),
+		Table:     tbl,
+		KeyType:   nftables.TypeInetService,
+	}
+	c.AddTable(tbl)
+	c.AddChain(ch)
+
+	re := []expr.Any{}
+	re = append(re, &expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1})
+	re = append(re, &expr.Cmp{
+		Op:       expr.CmpOpEq,
+		Register: 1,
+		Data:     []byte{unix.IPPROTO_TCP},
+	})
+	re = append(re, &expr.Payload{
+		DestRegister: 1,
+		Base:         expr.PayloadBaseTransportHeader,
+		Offset:       2, // Offset for a transport protocol header
+		Len:          2, // 2 bytes for port
+	})
+	re = append(re, &expr.Lookup{
+		SourceRegister: 1,
+		Invert:         false,
+		SetID:          set.ID,
+		SetName:        set.Name,
+	})
+
+	ports := []uint16{12000, 12001, 12345, 12346}
+	setElements := make([]nftables.SetElement, len(ports))
+	for i := 0; i < len(ports); i++ {
+		setElements[i].Key = binaryutil.BigEndian.PutUint16(ports[i])
+	}
+
+	if err := c.AddSet(&set, setElements); err != nil {
+		t.Fatal(err)
+	}
+
+	c.AddRule(&nftables.Rule{
+		Table: tbl,
+		Chain: ch,
+		Exprs: re,
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMap(t *testing.T) {
 	tests := []struct {
-		name           string
-		nftMagicPacked uint32
-		pass           bool
-		invalid        []uint32
+		name    string
+		chain   *nftables.Chain
+		want    [][]byte
+		set     nftables.Set
+		element []nftables.SetElement
 	}{
 		{
-			name:           "Single valid nftMagic",
-			nftMagicPacked: genSetKeyType(7),
-			pass:           true,
-			invalid:        nil,
-		},
-		{
-			name:           "Single invalid nftMagic",
-			nftMagicPacked: genSetKeyType(25),
-			pass:           false,
-			invalid:        []uint32{25},
-		},
-		{
-			name:           "Multiple valid nftMagic",
-			nftMagicPacked: genSetKeyType(7, 13),
-			pass:           true,
-			invalid:        nil,
-		},
-		{
-			name:           "Multiple nftMagic with 1 invalid",
-			nftMagicPacked: genSetKeyType(7, 13, 25),
-			pass:           false,
-			invalid:        []uint32{25},
-		},
-		{
-			name:           "Multiple nftMagic with 2 invalid",
-			nftMagicPacked: genSetKeyType(7, 13, 25, 26),
-			pass:           false,
-			invalid:        []uint32{26, 25},
-			// Invalid entries will appear in reverse order
+			name: "map inet_service: inet_service 1 element",
+			chain: &nftables.Chain{
+				Name: "base-chain",
+			},
+			want: [][]byte{
+				// batch begin
+				[]byte("\x00\x00\x00\x0a"),
+				// nft add table ip  filter
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+				// nft add chain ip filter base-chain
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00"),
+				// nft add map ip filter test-map  { type inet_service: inet_service\; elements={ 22: 1024 } \; }
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0d\x00\x02\x00\x74\x65\x73\x74\x2d\x6d\x61\x70\x00\x00\x00\x00\x08\x00\x03\x00\x00\x00\x00\x08\x08\x00\x04\x00\x00\x00\x00\x0d\x08\x00\x05\x00\x00\x00\x00\x02\x08\x00\x0a\x00\x00\x00\x00\x01\x08\x00\x06\x00\x00\x00\x00\x0d\x08\x00\x07\x00\x00\x00\x00\x02"),
+				[]byte("\x02\x00\x00\x00\x0d\x00\x02\x00\x74\x65\x73\x74\x2d\x6d\x61\x70\x00\x00\x00\x00\x08\x00\x04\x00\x00\x00\x00\x01\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x20\x00\x03\x80\x1c\x00\x01\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x00\x16\x00\x00\x0c\x00\x02\x80\x06\x00\x01\x00\x04\x00\x00\x00"),
+				// batch end
+				[]byte("\x00\x00\x00\x0a"),
+			},
+			set: nftables.Set{
+				Name:     "test-map",
+				ID:       uint32(1),
+				KeyType:  nftables.TypeInetService,
+				DataType: nftables.TypeInetService,
+				IsMap:    true,
+			},
+			element: []nftables.SetElement{
+				{
+					Key: binaryutil.BigEndian.PutUint16(uint16(22)),
+					Val: binaryutil.BigEndian.PutUint16(uint16(1024)),
+				},
+			},
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			invalid, pass := validateKeyType(tt.nftMagicPacked)
-			if pass && !tt.pass {
-				t.Fatalf("expected to fail but succeeded")
-			}
-			if !pass && tt.pass {
-				t.Fatalf("expected to succeed but failed with invalid nftMagic: %+v", invalid)
-			}
-			if !reflect.DeepEqual(tt.invalid, invalid) {
-				t.Fatalf("Expected invalid: %+v but got: %+v", tt.invalid, invalid)
-			}
+		c := &nftables.Conn{
+			TestDial: CheckNLReq(t, tt.want, nil),
+		}
+
+		filter := c.AddTable(&nftables.Table{
+			Family: nftables.TableFamilyIPv4,
+			Name:   "filter",
 		})
+
+		tt.chain.Table = filter
+		c.AddChain(tt.chain)
+		tt.set.Table = filter
+		c.AddSet(&tt.set, tt.element)
+		if err := c.Flush(); err != nil {
+			t.Fatalf("Test \"%s\" failed with error: %+v", tt.name, err)
+		}
+	}
+}
+
+func TestVmap(t *testing.T) {
+	tests := []struct {
+		name    string
+		chain   *nftables.Chain
+		want    [][]byte
+		set     nftables.Set
+		element []nftables.SetElement
+	}{
+		{
+			name: "map inet_service: drop verdict",
+			chain: &nftables.Chain{
+				Name: "base-chain",
+			},
+			want: [][]byte{
+				// batch begin
+				[]byte("\x00\x00\x00\x0a"),
+				// nft add table ip  filter
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+				// nft add chain ip filter base-chain
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00"),
+				// nft add map ip filter test-vmap  { type inet_service: verdict\; elements={ 22: drop } \; }
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0e\x00\x02\x00\x74\x65\x73\x74\x2d\x76\x6d\x61\x70\x00\x00\x00\x08\x00\x03\x00\x00\x00\x00\x08\x08\x00\x04\x00\x00\x00\x00\x0d\x08\x00\x05\x00\x00\x00\x00\x02\x08\x00\x0a\x00\x00\x00\x00\x01\x08\x00\x06\x00\xff\xff\xff\x00\x08\x00\x07\x00\x00\x00\x00\x00"),
+				[]byte("\x02\x00\x00\x00\x0e\x00\x02\x00\x74\x65\x73\x74\x2d\x76\x6d\x61\x70\x00\x00\x00\x08\x00\x04\x00\x00\x00\x00\x01\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x24\x00\x03\x80\x20\x00\x01\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x00\x16\x00\x00\x10\x00\x02\x80\x0c\x00\x02\x80\x08\x00\x01\x00\x00\x00\x00\x00"),
+				// batch end
+				[]byte("\x00\x00\x00\x0a"),
+			},
+			set: nftables.Set{
+				Name:     "test-vmap",
+				ID:       uint32(1),
+				KeyType:  nftables.TypeInetService,
+				DataType: nftables.TypeVerdict,
+				IsMap:    true,
+			},
+			element: []nftables.SetElement{
+				{
+					Key: binaryutil.BigEndian.PutUint16(uint16(22)),
+					VerdictData: &expr.Verdict{
+						Kind: expr.VerdictDrop,
+					},
+				},
+			},
+		}, {
+			name: "map inet_service: jump to chain verdict",
+			chain: &nftables.Chain{
+				Name: "base-chain",
+			},
+			want: [][]byte{
+				// batch begin
+				[]byte("\x00\x00\x00\x0a"),
+				// nft add table ip  filter
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+				// nft add chain ip filter base-chain
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00"),
+				// nft add map ip filter test-vmap  { type inet_service: verdict\; elements={ 22: jump fake-chain } \; }
+				[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0e\x00\x02\x00\x74\x65\x73\x74\x2d\x76\x6d\x61\x70\x00\x00\x00\x08\x00\x03\x00\x00\x00\x00\x08\x08\x00\x04\x00\x00\x00\x00\x0d\x08\x00\x05\x00\x00\x00\x00\x02\x08\x00\x0a\x00\x00\x00\x00\x01\x08\x00\x06\x00\xff\xff\xff\x00\x08\x00\x07\x00\x00\x00\x00\x00"),
+				[]byte("\x02\x00\x00\x00\x0e\x00\x02\x00\x74\x65\x73\x74\x2d\x76\x6d\x61\x70\x00\x00\x00\x08\x00\x04\x00\x00\x00\x00\x01\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x34\x00\x03\x80\x30\x00\x01\x80\x0c\x00\x01\x80\x06\x00\x01\x00\x00\x16\x00\x00\x20\x00\x02\x80\x1c\x00\x02\x80\x08\x00\x01\x00\xff\xff\xff\xfd\x0f\x00\x02\x00\x66\x61\x6b\x65\x2d\x63\x68\x61\x69\x6e\x00\x00"),
+				// batch end
+				[]byte("\x00\x00\x00\x0a"),
+			},
+			set: nftables.Set{
+				Name:     "test-vmap",
+				ID:       uint32(1),
+				KeyType:  nftables.TypeInetService,
+				DataType: nftables.TypeVerdict,
+				IsMap:    true,
+			},
+			element: []nftables.SetElement{
+				{
+					Key: binaryutil.BigEndian.PutUint16(uint16(22)),
+					VerdictData: &expr.Verdict{
+						Kind:  unix.NFT_JUMP,
+						Chain: "fake-chain",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		c := &nftables.Conn{
+			TestDial: CheckNLReq(t, tt.want, nil),
+		}
+
+		filter := c.AddTable(&nftables.Table{
+			Family: nftables.TableFamilyIPv4,
+			Name:   "filter",
+		})
+
+		tt.chain.Table = filter
+		c.AddChain(tt.chain)
+		tt.set.Table = filter
+		c.AddSet(&tt.set, tt.element)
+		if err := c.Flush(); err != nil {
+			t.Fatalf("Test \"%s\" failed with error: %+v", tt.name, err)
+		}
 	}
 }

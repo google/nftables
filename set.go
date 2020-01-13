@@ -269,11 +269,12 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	if s.ID == 0 {
 		allocSetID++
 		s.ID = allocSetID
-		if s.Anonymous {
-			s.Name = "__set%d"
-			if s.IsMap {
-				s.Name = "__map%d"
-			}
+	}
+
+	if s.Anonymous {
+		s.Name = "__set%d"
+		if s.IsMap {
+			s.Name = "__map%d"
 		}
 	}
 
