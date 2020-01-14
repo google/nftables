@@ -559,6 +559,7 @@ func (cc *Conn) GetSets(t *Table) ([]*Set, error) {
 		if err != nil {
 			return nil, err
 		}
+		s.Table = &Table{Name: t.Name, Use: t.Use, Flags: t.Flags, Family: t.Family}
 		sets = append(sets, s)
 	}
 
