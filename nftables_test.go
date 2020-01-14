@@ -1252,7 +1252,7 @@ func TestGetObjReset(t *testing.T) {
 	}
 
 	filter := &nftables.Table{Name: "filter", Family: nftables.TableFamilyIPv4}
-	objs, err := c.GetObjReset(&nftables.CounterObj{
+	obj, err := c.ResetObj(&nftables.CounterObj{
 		Table: filter,
 		Name:  "fwded",
 	})
@@ -1261,11 +1261,6 @@ func TestGetObjReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, want := len(objs), 1; got != want {
-		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
-	}
-
-	obj := objs[0]
 	co, ok := obj.(*nftables.CounterObj)
 	if !ok {
 		t.Fatalf("unexpected type: got %T, want *nftables.CounterObj", obj)
@@ -1282,6 +1277,154 @@ func TestGetObjReset(t *testing.T) {
 	if got, want := co.Bytes, uint64(1121); got != want {
 		t.Errorf("unexpected number of bytes: got %d, want %d", got, want)
 	}
+}
+
+func TestObjAPI(t *testing.T) {
+	if os.Getenv("TRAVIS") == "true" {
+		t.SkipNow()
+	}
+
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	table := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	tableOther := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "foo",
+	})
+
+	chain := c.AddChain(&nftables.Chain{
+		Name:     "chain",
+		Table:    table,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPostrouting,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	counter1 := c.AddObj(&nftables.CounterObj{
+		Table:   table,
+		Name:    "fwded1",
+		Bytes:   1,
+		Packets: 1,
+	})
+
+	counter2 := c.AddObj(&nftables.CounterObj{
+		Table:   table,
+		Name:    "fwded2",
+		Bytes:   1,
+		Packets: 1,
+	})
+
+	c.AddObj(&nftables.CounterObj{
+		Table:   tableOther,
+		Name:    "fwdedOther",
+		Bytes:   0,
+		Packets: 0,
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: table,
+		Chain: chain,
+		Exprs: []expr.Any{
+			&expr.Objref{
+				Type: 1,
+				Name: "fwded1",
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	objs, err := c.GetObjs(table)
+
+	if err != nil {
+		t.Errorf("c.GetObjs(table) failed: %v failed", err)
+	}
+
+	if got := len(objs); got != 2 {
+		t.Fatalf("unexpected number of objects: got %d, want %d", got, 2)
+	}
+
+	objsOther, err := c.GetObjs(tableOther)
+
+	if err != nil {
+		t.Errorf("c.GetObjs(tableOther) failed: %v failed", err)
+	}
+
+	if got := len(objsOther); got != 1 {
+		t.Fatalf("unexpected number of objects: got %d, want %d", got, 1)
+	}
+
+	obj1, err := c.GetObj(counter1)
+
+	if err != nil {
+		t.Errorf("c.GetObj(counter1) failed: %v failed", err)
+	}
+
+	rcounter1, ok := obj1.(*nftables.CounterObj)
+
+	if !ok {
+		t.Fatalf("unexpected type: got %T, want *nftables.CounterObj", rcounter1)
+	}
+
+	if rcounter1.Name != "fwded1" {
+		t.Fatalf("unexpected counter name: got %s, want %s", rcounter1.Name, "fwded1")
+	}
+
+	obj2, err := c.GetObj(counter2)
+
+	if err != nil {
+		t.Errorf("c.GetObj(counter2) failed: %v failed", err)
+	}
+
+	rcounter2, ok := obj2.(*nftables.CounterObj)
+
+	if !ok {
+		t.Fatalf("unexpected type: got %T, want *nftables.CounterObj", rcounter2)
+	}
+
+	if rcounter2.Name != "fwded2" {
+		t.Fatalf("unexpected counter name: got %s, want %s", rcounter2.Name, "fwded2")
+	}
+
+	_, err = c.ResetObj(counter1)
+
+	if err != nil {
+		t.Errorf("c.ResetObjs(table) failed: %v failed", err)
+	}
+
+	obj1, err = c.GetObj(counter1)
+
+	if err != nil {
+		t.Errorf("c.GetObj(counter1) failed: %v failed", err)
+	}
+
+	if counter1 := obj1.(*nftables.CounterObj); counter1.Packets > 0 {
+		t.Errorf("unexpected packets number: got %d, want %d", counter1.Packets, 0)
+	}
+
+	obj2, err = c.GetObj(counter2)
+
+	if err != nil {
+		t.Errorf("c.GetObj(counter2) failed: %v failed", err)
+	}
+
+	if counter2 := obj2.(*nftables.CounterObj); counter2.Packets != 1 {
+		t.Errorf("unexpected packets number: got %d, want %d", counter2.Packets, 1)
+	}
+
 }
 
 func TestConfigureClamping(t *testing.T) {
