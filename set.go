@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/nftables/expr"
 
@@ -28,7 +29,10 @@ import (
 
 // SetConcatTypeBits defines concatination bits, originally defined in
 // https://git.netfilter.org/iptables/tree/iptables/nft.c?id=26753888720d8e7eb422ae4311348347f5a05cb4#n1002
-const SetConcatTypeBits = 6
+const (
+	SetConcatTypeBits = 6
+	SetConcatTypeMask = (1 << SetConcatTypeBits) - 1
+)
 
 var allocSetID uint32
 
@@ -76,6 +80,30 @@ var (
 		TypeMark,
 	}
 )
+
+// ConcatSetType constructs a new SetDatatype which consists of a concatenation of the passed types. It panics, if the
+// nftMagic would overflow (more than 5 types)
+func ConcatSetType(types ...SetDatatype) SetDatatype {
+	if len(types) > 32/SetConcatTypeBits {
+		panic("too many type to concat")
+	}
+
+	var magic, bytes uint32
+	names := make([]string, len(types))
+	for i, t := range types {
+		bytes += t.Bytes
+		// concatenated types pad the length to multiples of the register size (4 bytes)
+		// see https://git.netfilter.org/nftables/tree/src/datatype.c?id=488356b895024d0944b20feb1f930558726e0877#n1162
+		if t.Bytes%4 != 0 {
+			bytes += 4 - (t.Bytes % 4)
+		}
+		names[i] = t.Name
+
+		magic <<= SetConcatTypeBits
+		magic |= t.nftMagic & SetConcatTypeMask
+	}
+	return SetDatatype{Name: strings.Join(names, " . "), Bytes: bytes, nftMagic: magic}
+}
 
 // Set represents an nftables set. Anonymous sets are only valid within the
 // context of a single batch.
@@ -469,7 +497,7 @@ func validateKeyType(bits uint32) ([]uint32, bool) {
 	found := false
 	valid := true
 	for bits != 0 {
-		unpackTypes = append(unpackTypes, bits&0x3f)
+		unpackTypes = append(unpackTypes, bits&SetConcatTypeMask)
 		bits = bits >> SetConcatTypeBits
 	}
 	for _, t := range unpackTypes {
