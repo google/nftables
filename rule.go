@@ -130,7 +130,7 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
 	}
 
-	i := cc.PutMessage(m)
+	i := cc.putMessage(m)
 	cc.PutEntity(i, r)
 
 	return r
@@ -152,7 +152,7 @@ func (cc *Conn) DelRule(r *Rule) error {
 	})...)
 	flags := netlink.Request | netlink.Acknowledge
 
-	cc.PutMessage(netlink.Message{
+	cc.putMessage(netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE),
 			Flags: flags,
@@ -166,10 +166,11 @@ func (cc *Conn) DelRule(r *Rule) error {
 // HandleResponse retrieves Handle in netlink response
 func (r *Rule) HandleResponse(msg netlink.Message) {
 	rule, err := ruleFromMsg(msg)
-
-	if err == nil {
-		r.Handle = rule.Handle
+	if err != nil {
+		return
 	}
+
+	r.Handle = rule.Handle
 }
 
 func exprsFromMsg(b []byte) ([]expr.Any, error) {

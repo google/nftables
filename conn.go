@@ -35,14 +35,13 @@ type Entity interface {
 //
 // Commands are buffered. Flush sends all buffered commands in a single batch.
 type Conn struct {
-	TestDial nltest.Func // for testing only; passed to nltest.Dial
-	NetNS    int         // Network namespace netlink will interact with.
 	sync.Mutex
-	put      sync.Mutex
-	messages []netlink.Message
-	entities map[int]Entity
-	it       int32
-	err      error
+	TestDial   nltest.Func // for testing only; passed to nltest.Dial
+	NetNS      int         // Network namespace netlink will interact with.
+	entities   map[int]Entity
+	messagesMu sync.Mutex
+	messages   []netlink.Message
+	err        error
 }
 
 // Flush sends all buffered commands in a single batch to nftables.
@@ -69,9 +68,7 @@ func (cc *Conn) Flush() error {
 
 	cc.endBatch(cc.messages)
 
-	_, err = conn.SendMessages(cc.messages)
-
-	if err != nil {
+	if _, err = conn.SendMessages(cc.messages); err != nil {
 		return fmt.Errorf("SendMessages: %w", err)
 	}
 
@@ -83,9 +80,12 @@ func (cc *Conn) Flush() error {
 
 	// Trigger entities callback
 	msg, err := cc.checkReceive(conn)
+	if err != nil {
+		return err
+	}
+
 	for msg {
 		rmsg, err := conn.Receive()
-
 		if err != nil {
 			return fmt.Errorf("Receive: %w", err)
 		}
@@ -93,18 +93,22 @@ func (cc *Conn) Flush() error {
 		for _, msg := range rmsg {
 			if e, ok := entitiesBySeq[msg.Header.Sequence]; ok {
 				e.HandleResponse(msg)
+
 			}
 		}
 		msg, err = cc.checkReceive(conn)
+		if err != nil {
+			return err
+		}
 	}
 
 	return err
 }
 
-// PutMessage store netlink message to sent after
-func (cc *Conn) PutMessage(msg netlink.Message) int {
-	cc.put.Lock()
-	defer cc.put.Unlock()
+// putMessage store netlink message to sent after
+func (cc *Conn) putMessage(msg netlink.Message) int {
+	cc.messagesMu.Lock()
+	defer cc.messagesMu.Unlock()
 
 	if cc.messages == nil {
 		cc.messages = append(cc.messages, netlink.Message{
@@ -162,7 +166,7 @@ func (cc *Conn) checkReceive(c *netlink.Conn) (bool, error) {
 func (cc *Conn) FlushRuleset() {
 	cc.Lock()
 	defer cc.Unlock()
-	cc.PutMessage(netlink.Message{
+	cc.putMessage(netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
@@ -205,8 +209,8 @@ func (cc *Conn) marshalExpr(e expr.Any) []byte {
 
 func (cc *Conn) endBatch(messages []netlink.Message) {
 
-	cc.put.Lock()
-	defer cc.put.Unlock()
+	cc.messagesMu.Lock()
+	defer cc.messagesMu.Unlock()
 
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{

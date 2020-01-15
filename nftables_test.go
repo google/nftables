@@ -4008,7 +4008,6 @@ func TestIntegrationAddRule(t *testing.T) {
 	c.Flush()
 
 	execN := func(w int, n int) {
-
 		c := &nftables.Conn{NetNS: int(newNS)}
 
 		for i := 0; i < n; i++ {

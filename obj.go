@@ -43,7 +43,7 @@ func (cc *Conn) AddObj(o Obj) Obj {
 		return nil
 	}
 
-	cc.PutMessage(netlink.Message{
+	cc.putMessage(netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
