@@ -54,23 +54,38 @@ func (cc *Conn) AddObj(o Obj) Obj {
 	return o
 }
 
-// GetObj gets the specified Obj without resetting it.
-func (cc *Conn) GetObj(o Obj) (Obj, error) {
+// GetObj is a legacy method that return all Obj that belongs
+// to the same table as the given one
+func (cc *Conn) GetObj(o Obj) ([]Obj, error) {
+	return cc.getObj(nil, o.table(), unix.NFT_MSG_GETOBJ)
+}
+
+// GetObjReset is a legacy method that reset all Obj that belongs
+// the same table as the given one
+func (cc *Conn) GetObjReset(o Obj) ([]Obj, error) {
+	return cc.getObj(nil, o.table(), unix.NFT_MSG_GETOBJ_RESET)
+}
+
+
+// GetObject gets the specified Object
+func (cc *Conn) GetObject(o Obj) (Obj, error) {
 	objs, err := cc.getObj(o, o.table(), unix.NFT_MSG_GETOBJ)
 	return objs[0], err
 }
 
-func (cc *Conn) GetObjs(t *Table) ([]Obj, error) {
+// GetObjects get all the Obj that belongs to the given table
+func (cc *Conn) GetObjects(t *Table) ([]Obj, error) {
 	return cc.getObj(nil, t, unix.NFT_MSG_GETOBJ)
 }
 
-// GetObjReset gets the specified Obj and resets it.
-func (cc *Conn) ResetObj(o Obj) (Obj, error) {
+// ResetObject reset the given Obj
+func (cc *Conn) ResetObject(o Obj) (Obj, error) {
 	objs, err := cc.getObj(o, o.table(), unix.NFT_MSG_GETOBJ_RESET)
 	return objs[0], err
 }
 
-func (cc *Conn) ResetObjs(t *Table) ([]Obj, error) {
+// ResetObjects reset all the Obj that belongs to the given table
+func (cc *Conn) ResetObjects(t *Table) ([]Obj, error) {
 	return cc.getObj(nil, t, unix.NFT_MSG_GETOBJ_RESET)
 }
 
@@ -131,7 +146,6 @@ func (cc *Conn) getObj(o Obj, t *Table, msgType uint16) ([]Obj, error) {
 	defer conn.Close()
 
 	var data []byte
-	var message netlink.Message
 	var flags netlink.HeaderFlags
 
 	if o != nil {
@@ -146,7 +160,7 @@ func (cc *Conn) getObj(o Obj, t *Table, msgType uint16) ([]Obj, error) {
 		})
 	}
 
-	message = netlink.Message{
+	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | msgType),
 			Flags: netlink.Request | netlink.Acknowledge | flags,

@@ -1252,7 +1252,7 @@ func TestGetObjReset(t *testing.T) {
 	}
 
 	filter := &nftables.Table{Name: "filter", Family: nftables.TableFamilyIPv4}
-	obj, err := c.ResetObj(&nftables.CounterObj{
+	obj, err := c.ResetObject(&nftables.CounterObj{
 		Table: filter,
 		Name:  "fwded",
 	})
@@ -1347,30 +1347,30 @@ func TestObjAPI(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 
-	objs, err := c.GetObjs(table)
+	objs, err := c.GetObjects(table)
 
 	if err != nil {
-		t.Errorf("c.GetObjs(table) failed: %v failed", err)
+		t.Errorf("c.GetObjects(table) failed: %v failed", err)
 	}
 
 	if got := len(objs); got != 2 {
 		t.Fatalf("unexpected number of objects: got %d, want %d", got, 2)
 	}
 
-	objsOther, err := c.GetObjs(tableOther)
+	objsOther, err := c.GetObjects(tableOther)
 
 	if err != nil {
-		t.Errorf("c.GetObjs(tableOther) failed: %v failed", err)
+		t.Errorf("c.GetObjects(tableOther) failed: %v failed", err)
 	}
 
 	if got := len(objsOther); got != 1 {
 		t.Fatalf("unexpected number of objects: got %d, want %d", got, 1)
 	}
 
-	obj1, err := c.GetObj(counter1)
+	obj1, err := c.GetObject(counter1)
 
 	if err != nil {
-		t.Errorf("c.GetObj(counter1) failed: %v failed", err)
+		t.Errorf("c.GetObject(counter1) failed: %v failed", err)
 	}
 
 	rcounter1, ok := obj1.(*nftables.CounterObj)
@@ -1383,10 +1383,10 @@ func TestObjAPI(t *testing.T) {
 		t.Fatalf("unexpected counter name: got %s, want %s", rcounter1.Name, "fwded1")
 	}
 
-	obj2, err := c.GetObj(counter2)
+	obj2, err := c.GetObject(counter2)
 
 	if err != nil {
-		t.Errorf("c.GetObj(counter2) failed: %v failed", err)
+		t.Errorf("c.GetObject(counter2) failed: %v failed", err)
 	}
 
 	rcounter2, ok := obj2.(*nftables.CounterObj)
@@ -1399,30 +1399,50 @@ func TestObjAPI(t *testing.T) {
 		t.Fatalf("unexpected counter name: got %s, want %s", rcounter2.Name, "fwded2")
 	}
 
-	_, err = c.ResetObj(counter1)
+	_, err = c.ResetObject(counter1)
 
 	if err != nil {
-		t.Errorf("c.ResetObjs(table) failed: %v failed", err)
+		t.Errorf("c.ResetObjects(table) failed: %v failed", err)
 	}
 
-	obj1, err = c.GetObj(counter1)
+	obj1, err = c.GetObject(counter1)
 
 	if err != nil {
-		t.Errorf("c.GetObj(counter1) failed: %v failed", err)
+		t.Errorf("c.GetObject(counter1) failed: %v failed", err)
 	}
 
 	if counter1 := obj1.(*nftables.CounterObj); counter1.Packets > 0 {
 		t.Errorf("unexpected packets number: got %d, want %d", counter1.Packets, 0)
 	}
 
-	obj2, err = c.GetObj(counter2)
+	obj2, err = c.GetObject(counter2)
 
 	if err != nil {
-		t.Errorf("c.GetObj(counter2) failed: %v failed", err)
+		t.Errorf("c.GetObject(counter2) failed: %v failed", err)
 	}
 
 	if counter2 := obj2.(*nftables.CounterObj); counter2.Packets != 1 {
 		t.Errorf("unexpected packets number: got %d, want %d", counter2.Packets, 1)
+	}
+
+	legacy, err := c.GetObj(counter1)
+	
+	if err != nil {
+		t.Errorf("c.GetObj(counter1) failed: %v failed", err)
+	}
+
+	if len(legacy) != 2 {
+		t.Errorf("unexpected number of objects: got %d, want %d", len(legacy), 2)
+	}
+
+	legacyReset, err := c.GetObjReset(counter1)
+
+	if err != nil {
+		t.Errorf("c.GetObjReset(counter1) failed: %v failed", err)
+	}
+
+	if len(legacyReset) != 2 {
+		t.Errorf("unexpected number of objects: got %d, want %d", len(legacyReset), 2)
 	}
 
 }
