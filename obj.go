@@ -66,7 +66,6 @@ func (cc *Conn) GetObjReset(o Obj) ([]Obj, error) {
 	return cc.getObj(nil, o.table(), unix.NFT_MSG_GETOBJ_RESET)
 }
 
-
 // GetObject gets the specified Object
 func (cc *Conn) GetObject(o Obj) (Obj, error) {
 	objs, err := cc.getObj(o, o.table(), unix.NFT_MSG_GETOBJ)

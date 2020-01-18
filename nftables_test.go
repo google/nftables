@@ -1426,7 +1426,7 @@ func TestObjAPI(t *testing.T) {
 	}
 
 	legacy, err := c.GetObj(counter1)
-	
+
 	if err != nil {
 		t.Errorf("c.GetObj(counter1) failed: %v failed", err)
 	}
