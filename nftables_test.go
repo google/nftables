@@ -1840,6 +1840,56 @@ func TestCreateUseNamedSet(t *testing.T) {
 	}
 }
 
+func TestIP6SetAddElements(t *testing.T) {
+
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv6,
+		Name:   "filter",
+	})
+	portSet := &nftables.Set{
+		Table:   filter,
+		Name:    "ports",
+		KeyType: nftables.TypeInetService,
+	}
+	if err := c.AddSet(portSet, nil); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+	if err := c.SetAddElements(portSet, []nftables.SetElement{
+		{Key: binaryutil.BigEndian.PutUint16(22)},
+		{Key: binaryutil.BigEndian.PutUint16(80)},
+	}); err != nil {
+		t.Errorf("c.SetVal(portSet) failed: %v", err)
+	}
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	sets, err := c.GetSets(filter)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(sets) != 1 {
+		t.Fatalf("len(sets) = %d, want 1", len(sets))
+	}
+
+	elements, err := c.GetSetElements(sets[0])
+	if err != nil {
+		t.Errorf("c.GetSetElements(portSet) failed: %v", err)
+	}
+	if len(elements) != 2 {
+		t.Fatalf("len(portSetElements) = %d, want 2", len(sets))
+	}
+}
+
 func TestCreateDeleteNamedSet(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
