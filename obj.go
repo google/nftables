@@ -27,6 +27,7 @@ var objHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.N
 // Obj represents a netfilter stateful object. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Stateful_objects
 type Obj interface {
+	table() *Table
 	family() TableFamily
 	unmarshal(*netlink.AttributeDecoder) error
 	marshal(data bool) ([]byte, error)
@@ -53,14 +54,38 @@ func (cc *Conn) AddObj(o Obj) Obj {
 	return o
 }
 
-// GetObj gets the specified Obj without resetting it.
+// GetObj is a legacy method that return all Obj that belongs
+// to the same table as the given one
 func (cc *Conn) GetObj(o Obj) ([]Obj, error) {
-	return cc.getObj(o, unix.NFT_MSG_GETOBJ)
+	return cc.getObj(nil, o.table(), unix.NFT_MSG_GETOBJ)
 }
 
-// GetObjReset gets the specified Obj and resets it.
+// GetObjReset is a legacy method that reset all Obj that belongs
+// the same table as the given one
 func (cc *Conn) GetObjReset(o Obj) ([]Obj, error) {
-	return cc.getObj(o, unix.NFT_MSG_GETOBJ_RESET)
+	return cc.getObj(nil, o.table(), unix.NFT_MSG_GETOBJ_RESET)
+}
+
+// GetObject gets the specified Object
+func (cc *Conn) GetObject(o Obj) (Obj, error) {
+	objs, err := cc.getObj(o, o.table(), unix.NFT_MSG_GETOBJ)
+	return objs[0], err
+}
+
+// GetObjects get all the Obj that belongs to the given table
+func (cc *Conn) GetObjects(t *Table) ([]Obj, error) {
+	return cc.getObj(nil, t, unix.NFT_MSG_GETOBJ)
+}
+
+// ResetObject reset the given Obj
+func (cc *Conn) ResetObject(o Obj) (Obj, error) {
+	objs, err := cc.getObj(o, o.table(), unix.NFT_MSG_GETOBJ_RESET)
+	return objs[0], err
+}
+
+// ResetObjects reset all the Obj that belongs to the given table
+func (cc *Conn) ResetObjects(t *Table) ([]Obj, error) {
+	return cc.getObj(nil, t, unix.NFT_MSG_GETOBJ_RESET)
 }
 
 func objFromMsg(msg netlink.Message) (Obj, error) {
@@ -112,24 +137,34 @@ func objFromMsg(msg netlink.Message) (Obj, error) {
 	return nil, fmt.Errorf("malformed stateful object")
 }
 
-func (cc *Conn) getObj(o Obj, msgType uint16) ([]Obj, error) {
+func (cc *Conn) getObj(o Obj, t *Table, msgType uint16) ([]Obj, error) {
 	conn, err := cc.dialNetlink()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
-	data, err := o.marshal(false)
-	if err != nil {
-		return nil, err
+	var data []byte
+	var flags netlink.HeaderFlags
+
+	if o != nil {
+		data, err = o.marshal(false)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		flags = netlink.Dump
+		data, err = netlink.MarshalAttributes([]netlink.Attribute{
+			{Type: unix.NFTA_RULE_TABLE, Data: []byte(t.Name + "\x00")},
+		})
 	}
 
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | msgType),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
+			Flags: netlink.Request | netlink.Acknowledge | flags,
 		},
-		Data: append(extraHeader(uint8(o.family()), 0), data...),
+		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
 
 	if _, err := conn.SendMessages([]netlink.Message{message}); err != nil {

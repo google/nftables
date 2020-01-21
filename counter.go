@@ -41,6 +41,10 @@ func (c *CounterObj) unmarshal(ad *netlink.AttributeDecoder) error {
 	return ad.Err()
 }
 
+func (c *CounterObj) table() *Table {
+	return c.Table
+}
+
 func (c *CounterObj) family() TableFamily {
 	return c.Table.Family
 }
