@@ -76,7 +76,7 @@ func TestConcatSetType(t *testing.T) {
 	tests := []struct {
 		name        string
 		types       []SetDatatype
-		pass        bool
+		err         error
 		concatName  string
 		concatBytes uint32
 		concatMagic uint32
@@ -84,12 +84,12 @@ func TestConcatSetType(t *testing.T) {
 		{
 			name:  "Concatenate six (too many) IPv4s",
 			types: []SetDatatype{TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr},
-			pass:  false,
+			err:   ErrTooManyTypes,
 		},
 		{
 			name:        "Concatenate five IPv4s",
 			types:       []SetDatatype{TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr},
-			pass:        true,
+			err:         nil,
 			concatName:  "ipv4_addr . ipv4_addr . ipv4_addr . ipv4_addr . ipv4_addr",
 			concatBytes: 20,
 			concatMagic: 0x071c71c7,
@@ -97,7 +97,7 @@ func TestConcatSetType(t *testing.T) {
 		{
 			name:        "Concatenate IPv6 and port",
 			types:       []SetDatatype{TypeIP6Addr, TypeInetService},
-			pass:        true,
+			err:         nil,
 			concatName:  "ipv6_addr . inet_service",
 			concatBytes: 20,
 			concatMagic: 0x0000020d,
@@ -105,7 +105,7 @@ func TestConcatSetType(t *testing.T) {
 		{
 			name:        "Concatenate protocol and port",
 			types:       []SetDatatype{TypeInetProto, TypeInetService},
-			pass:        true,
+			err:         nil,
 			concatName:  "inet_proto . inet_service",
 			concatBytes: 8,
 			concatMagic: 0x0000030d,
@@ -114,14 +114,13 @@ func TestConcatSetType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if !tt.pass {
-				defer func() {
-					if recover() == nil {
-						t.Fatalf("ConcatSetType() should have paniced but did not")
-					}
-				}()
+			concat, err := ConcatSetType(tt.types...)
+			if tt.err != err {
+				t.Errorf("ConcatSetType() returned an incorrect error: expected %v but got %v", tt.err, err)
 			}
-			concat := ConcatSetType(tt.types...)
+			if err != nil {
+				return
+			}
 			if tt.concatName != concat.Name {
 				t.Errorf("invalid concatinated name: expceted %s but got %s", tt.concatName, concat.Name)
 			}

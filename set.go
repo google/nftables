@@ -81,11 +81,25 @@ var (
 	}
 )
 
-// ConcatSetType constructs a new SetDatatype which consists of a concatenation of the passed types. It panics, if the
-// nftMagic would overflow (more than 5 types)
-func ConcatSetType(types ...SetDatatype) SetDatatype {
+// ErrTooManyTypes is the error returned by ConcatSetType, if nftMagic would overflow.
+var ErrTooManyTypes = errors.New("too many types to concat")
+
+// MustConcatSetType does the same as ConcatSetType, but panics instead of an
+// error. It simplifies safe initialization of global variables.
+func MustConcatSetType(types ...SetDatatype) SetDatatype {
+	t, err := ConcatSetType(types...)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+// ConcatSetType constructs a new SetDatatype which consists of a concatenation
+// of the passed types. It returns ErrTooManyTypes, if nftMagic would overflow
+// (more than 5 types).
+func ConcatSetType(types ...SetDatatype) (SetDatatype, error) {
 	if len(types) > 32/SetConcatTypeBits {
-		panic("too many type to concat")
+		return SetDatatype{}, ErrTooManyTypes
 	}
 
 	var magic, bytes uint32
@@ -102,7 +116,7 @@ func ConcatSetType(types ...SetDatatype) SetDatatype {
 		magic <<= SetConcatTypeBits
 		magic |= t.nftMagic & SetConcatTypeMask
 	}
-	return SetDatatype{Name: strings.Join(names, " . "), Bytes: bytes, nftMagic: magic}
+	return SetDatatype{Name: strings.Join(names, " . "), Bytes: bytes, nftMagic: magic}, nil
 }
 
 // Set represents an nftables set. Anonymous sets are only valid within the
