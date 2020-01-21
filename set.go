@@ -566,6 +566,51 @@ func (cc *Conn) GetSets(t *Table) ([]*Set, error) {
 	return sets, nil
 }
 
+// GetSetByName returns the set in the specified table if matching name is found.
+func (cc *Conn) GetSetByName(t *Table, name string) (*Set, error) {
+	conn, err := cc.dialNetlink()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	data, err := netlink.MarshalAttributes([]netlink.Attribute{
+		{Type: unix.NFTA_SET_TABLE, Data: []byte(t.Name + "\x00")},
+		{Type: unix.NFTA_SET_NAME, Data: []byte(name + "\x00")},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	message := netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETSET),
+			Flags: netlink.Request | netlink.Acknowledge,
+		},
+		Data: append(extraHeader(uint8(t.Family), 0), data...),
+	}
+
+	if _, err := conn.SendMessages([]netlink.Message{message}); err != nil {
+		return nil, fmt.Errorf("SendMessages: %w", err)
+	}
+
+	reply, err := conn.Receive()
+	if err != nil {
+		return nil, fmt.Errorf("Receive: %w", err)
+	}
+
+	if len(reply) != 1 {
+		return nil, fmt.Errorf("Receive: expected to receive 1 message but got %d", len(reply))
+	}
+	rs, err := setsFromMsg(reply[0])
+	if err != nil {
+		return nil, err
+	}
+	rs.Table = &Table{Name: t.Name, Use: t.Use, Flags: t.Flags, Family: t.Family}
+
+	return rs, nil
+}
+
 // GetSetElements returns the elements in the specified set.
 func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
 	conn, err := cc.dialNetlink()
