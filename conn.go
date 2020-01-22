@@ -88,7 +88,14 @@ func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
 	if cc.TestDial != nil {
 		return nltest.Dial(cc.TestDial), nil
 	}
-	return netlink.Dial(unix.NETLINK_NETFILTER, &netlink.Config{NetNS: cc.NetNS})
+
+	disableNSLockThread := false
+	if cc.NetNS == 0 {
+		// Since process is operating in main namespace, there is no reason to have NSLockThread lock,
+		// as it causes some performance penalties.
+		disableNSLockThread = true
+	}
+	return netlink.Dial(unix.NETLINK_NETFILTER, &netlink.Config{NetNS: cc.NetNS, DisableNSLockThread: disableNSLockThread})
 }
 
 func (cc *Conn) setErr(err error) {
