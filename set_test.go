@@ -69,3 +69,67 @@ func TestValidateNFTMagic(t *testing.T) {
 		})
 	}
 }
+
+func TestConcatSetType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		types       []SetDatatype
+		err         error
+		concatName  string
+		concatBytes uint32
+		concatMagic uint32
+	}{
+		{
+			name:  "Concatenate six (too many) IPv4s",
+			types: []SetDatatype{TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr},
+			err:   ErrTooManyTypes,
+		},
+		{
+			name:        "Concatenate five IPv4s",
+			types:       []SetDatatype{TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr},
+			err:         nil,
+			concatName:  "ipv4_addr . ipv4_addr . ipv4_addr . ipv4_addr . ipv4_addr",
+			concatBytes: 20,
+			concatMagic: 0x071c71c7,
+		},
+		{
+			name:        "Concatenate IPv6 and port",
+			types:       []SetDatatype{TypeIP6Addr, TypeInetService},
+			err:         nil,
+			concatName:  "ipv6_addr . inet_service",
+			concatBytes: 20,
+			concatMagic: 0x0000020d,
+		},
+		{
+			name:        "Concatenate protocol and port",
+			types:       []SetDatatype{TypeInetProto, TypeInetService},
+			err:         nil,
+			concatName:  "inet_proto . inet_service",
+			concatBytes: 8,
+			concatMagic: 0x0000030d,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			concat, err := ConcatSetType(tt.types...)
+			if tt.err != err {
+				t.Errorf("ConcatSetType() returned an incorrect error: expected %v but got %v", tt.err, err)
+			}
+			if err != nil {
+				return
+			}
+			if tt.concatName != concat.Name {
+				t.Errorf("invalid concatinated name: expceted %s but got %s", tt.concatName, concat.Name)
+			}
+			if tt.concatBytes != concat.Bytes {
+				t.Errorf("invalid concatinated number of bytes: expceted %d but got %d", tt.concatBytes, concat.Bytes)
+			}
+			if tt.concatMagic != concat.nftMagic {
+				t.Errorf("invalid concatinated magic: expceted %08x but got %08x", tt.concatMagic, concat.nftMagic)
+			}
+		})
+	}
+}
