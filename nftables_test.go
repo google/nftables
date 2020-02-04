@@ -2487,6 +2487,104 @@ func TestGetRuleLookupVerdictImmediate(t *testing.T) {
 	}
 }
 
+func TestDynset(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+	forward := c.AddChain(&nftables.Chain{
+		Name:     "forward",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookForward,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	set := &nftables.Set{
+		Table:      filter,
+		Name:       "dynamic-set",
+		KeyType:    nftables.TypeIPAddr,
+		HasTimeout: true,
+		Timeout:    600 * 1000, // Timeout is specified in milliseconds
+	}
+	if err := c.AddSet(set, nil); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: forward,
+		Exprs: []expr.Any{
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseNetworkHeader,
+				Offset:       12,
+				Len:          4,
+			},
+			&expr.Immediate{
+				Register: 2,
+				Data:     []byte{0x0, 0x0, 0x0, 0x2},
+			},
+			&expr.Dynset{
+				SrcRegKey:  1,
+				SrcRegData: 2,
+				SetName:    set.Name,
+				SetID:      set.ID,
+				Operation:  uint32(unix.NFT_DYNSET_OP_UPDATE),
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	rules, err := c.GetRule(
+		&nftables.Table{
+			Family: nftables.TableFamilyIPv4,
+			Name:   "filter",
+		},
+		&nftables.Chain{
+			Name: "forward",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+	if got, want := len(rules[0].Exprs), 3; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	dynset, dynsetOk := rules[0].Exprs[2].(*expr.Dynset)
+	if !dynsetOk {
+		t.Fatalf("Exprs[3] is type %T, want *expr.Dynset", rules[0].Exprs[2])
+	}
+	if want := (&expr.Dynset{
+		SrcRegKey:  1,
+		SrcRegData: 2,
+		SetName:    set.Name,
+		SetID:      set.ID,
+		Operation:  uint32(unix.NFT_DYNSET_OP_UPDATE),
+	}); !reflect.DeepEqual(dynset, want) {
+		t.Errorf("dynset expr = %+v, wanted %+v", dynset, want)
+	}
+}
+
 func TestConfigureNATRedirect(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft add table ip nat
