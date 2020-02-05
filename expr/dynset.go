@@ -38,7 +38,9 @@ func (e *Dynset) marshal() ([]byte, error) {
 	// See: https://git.netfilter.org/libnftnl/tree/src/expr/dynset.c
 	var opAttrs []netlink.Attribute
 	opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_SREG_KEY, Data: binaryutil.BigEndian.PutUint32(e.SrcRegKey)})
-	opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_SREG_DATA, Data: binaryutil.BigEndian.PutUint32(e.SrcRegData)})
+	if e.SrcRegData != 0 {
+		opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_SREG_DATA, Data: binaryutil.BigEndian.PutUint32(e.SrcRegData)})
+	}
 	opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_OP, Data: binaryutil.BigEndian.PutUint32(e.Operation)})
 	if e.Timeout != 0 {
 		opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_TIMEOUT, Data: binaryutil.BigEndian.PutUint64(uint64(e.Timeout.Milliseconds()))})
@@ -76,6 +78,8 @@ func (e *Dynset) unmarshal(data []byte) error {
 			e.SrcRegKey = ad.Uint32()
 		case unix.NFTA_DYNSET_SREG_DATA:
 			e.SrcRegData = ad.Uint32()
+		case unix.NFTA_DYNSET_OP:
+			e.Operation = ad.Uint32()
 		case unix.NFTA_DYNSET_TIMEOUT:
 			e.Timeout = time.Duration(ad.Uint64() * 1000)
 		case unix.NFTA_DYNSET_FLAGS:

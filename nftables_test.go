@@ -2530,19 +2530,14 @@ func TestDynset(t *testing.T) {
 			&expr.Payload{
 				DestRegister: 1,
 				Base:         expr.PayloadBaseNetworkHeader,
-				Offset:       12,
-				Len:          4,
-			},
-			&expr.Immediate{
-				Register: 2,
-				Data:     []byte{0x0, 0x0, 0x0, 0x2},
+				Offset:       uint32(12),
+				Len:          uint32(4),
 			},
 			&expr.Dynset{
-				SrcRegKey:  1,
-				SrcRegData: 2,
-				SetName:    set.Name,
-				SetID:      set.ID,
-				Operation:  uint32(unix.NFT_DYNSET_OP_UPDATE),
+				SrcRegKey: 1,
+				SetName:   set.Name,
+				SetID:     set.ID,
+				Operation: uint32(unix.NFT_DYNSET_OP_UPDATE),
 			},
 		},
 	})
@@ -2567,20 +2562,18 @@ func TestDynset(t *testing.T) {
 	if got, want := len(rules), 1; got != want {
 		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
 	}
-	if got, want := len(rules[0].Exprs), 3; got != want {
+	if got, want := len(rules[0].Exprs), 2; got != want {
 		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
 	}
 
-	dynset, dynsetOk := rules[0].Exprs[2].(*expr.Dynset)
+	dynset, dynsetOk := rules[0].Exprs[1].(*expr.Dynset)
 	if !dynsetOk {
-		t.Fatalf("Exprs[3] is type %T, want *expr.Dynset", rules[0].Exprs[2])
+		t.Fatalf("Exprs[0] is type %T, want *expr.Dynset", rules[0].Exprs[1])
 	}
 	if want := (&expr.Dynset{
-		SrcRegKey:  1,
-		SrcRegData: 2,
-		SetName:    set.Name,
-		SetID:      set.ID,
-		Operation:  uint32(unix.NFT_DYNSET_OP_UPDATE),
+		SrcRegKey: 1,
+		SetName:   set.Name,
+		Operation: uint32(unix.NFT_DYNSET_OP_UPDATE),
 	}); !reflect.DeepEqual(dynset, want) {
 		t.Errorf("dynset expr = %+v, wanted %+v", dynset, want)
 	}
