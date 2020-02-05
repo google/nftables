@@ -16,6 +16,7 @@ package expr
 
 import (
 	"encoding/binary"
+	"time"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
@@ -29,7 +30,7 @@ type Dynset struct {
 	SetID      uint32
 	SetName    string
 	Operation  uint32
-	Timeout    uint64
+	Timeout    time.Duration
 	Invert     bool
 }
 
@@ -40,7 +41,7 @@ func (e *Dynset) marshal() ([]byte, error) {
 	opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_SREG_DATA, Data: binaryutil.BigEndian.PutUint32(e.SrcRegData)})
 	opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_OP, Data: binaryutil.BigEndian.PutUint32(e.Operation)})
 	if e.Timeout != 0 {
-		opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_TIMEOUT, Data: binaryutil.BigEndian.PutUint64(e.Timeout)})
+		opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_TIMEOUT, Data: binaryutil.BigEndian.PutUint64(uint64(e.Timeout.Milliseconds()))})
 	}
 	if e.Invert {
 		opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_FLAGS, Data: binaryutil.BigEndian.PutUint32(unix.NFT_DYNSET_F_INV)})
@@ -76,7 +77,7 @@ func (e *Dynset) unmarshal(data []byte) error {
 		case unix.NFTA_DYNSET_SREG_DATA:
 			e.SrcRegData = ad.Uint32()
 		case unix.NFTA_DYNSET_TIMEOUT:
-			e.Timeout = ad.Uint64()
+			e.Timeout = time.Duration(ad.Uint64() * 1000)
 		case unix.NFTA_DYNSET_FLAGS:
 			e.Invert = (ad.Uint32() & unix.NFT_DYNSET_F_INV) != 0
 		}

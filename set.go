@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/nftables/expr"
 
@@ -130,7 +131,7 @@ type Set struct {
 	Interval   bool
 	IsMap      bool
 	HasTimeout bool
-	Timeout    uint64
+	Timeout    time.Duration
 	KeyType    SetDatatype
 	DataType   SetDatatype
 }
@@ -145,7 +146,7 @@ type SetElement struct {
 	// and VerdictData will be wrapped into Attribute data.
 	VerdictData *expr.Verdict
 	// To support aging of set elements
-	Timeout uint64
+	Timeout time.Duration
 }
 
 func (s *SetElement) decode() func(b []byte) error {
@@ -172,7 +173,7 @@ func (s *SetElement) decode() func(b []byte) error {
 				flags := ad.Uint32()
 				s.IntervalEnd = (flags & unix.NFT_SET_ELEM_INTERVAL_END) != 0
 			case unix.NFTA_SET_ELEM_TIMEOUT:
-				s.Timeout = ad.Uint64()
+				s.Timeout = time.Duration(ad.Uint64() * 1000)
 			}
 		}
 		return ad.Err()
@@ -241,7 +242,7 @@ func (s *Set) makeElemList(vals []SetElement, id uint32) ([]netlink.Attribute, e
 		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey})
 		if s.HasTimeout && v.Timeout != 0 {
 			// Set has Timeout flag set, which means an individual element can specify its own timeout.
-			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_TIMEOUT, Data: binaryutil.BigEndian.PutUint64(v.Timeout)})
+			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_TIMEOUT, Data: binaryutil.BigEndian.PutUint64(uint64(v.Timeout.Milliseconds()))})
 		}
 		// The following switch statement deal with 3 different types of elements.
 		// 1. v is an element of vmap
@@ -365,7 +366,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	}
 	if s.HasTimeout && s.Timeout != 0 {
 		// If Set's global timeout is specified, add it to set's attributes
-		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_TIMEOUT, Data: binaryutil.BigEndian.PutUint64(s.Timeout)})
+		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_TIMEOUT, Data: binaryutil.BigEndian.PutUint64(uint64(s.Timeout.Milliseconds()))})
 	}
 	if s.Constant {
 		// nft cli tool adds the number of elements to set/map's descriptor
@@ -489,7 +490,7 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 		case unix.NFTA_SET_ID:
 			set.ID = binary.BigEndian.Uint32(ad.Bytes())
 		case unix.NFTA_SET_TIMEOUT:
-			set.Timeout = binary.BigEndian.Uint64(ad.Bytes())
+			set.Timeout = time.Duration(binary.BigEndian.Uint64(ad.Bytes()) * 1000)
 			set.HasTimeout = true
 		case unix.NFTA_SET_FLAGS:
 			flags := ad.Uint32()

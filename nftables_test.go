@@ -24,6 +24,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
@@ -2513,7 +2514,7 @@ func TestDynset(t *testing.T) {
 		Name:       "dynamic-set",
 		KeyType:    nftables.TypeIPAddr,
 		HasTimeout: true,
-		Timeout:    600 * 1000, // Timeout is specified in milliseconds
+		Timeout:    time.Duration(600 * time.Second),
 	}
 	if err := c.AddSet(set, nil); err != nil {
 		t.Errorf("c.AddSet(portSet) failed: %v", err)
