@@ -81,7 +81,7 @@ func (e *Dynset) unmarshal(data []byte) error {
 		case unix.NFTA_DYNSET_OP:
 			e.Operation = ad.Uint32()
 		case unix.NFTA_DYNSET_TIMEOUT:
-			e.Timeout = time.Duration(ad.Uint64() * 1000)
+			e.Timeout = time.Duration(time.Millisecond * time.Duration(ad.Uint64()))
 		case unix.NFTA_DYNSET_FLAGS:
 			e.Invert = (ad.Uint32() & unix.NFT_DYNSET_F_INV) != 0
 		}

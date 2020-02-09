@@ -173,7 +173,7 @@ func (s *SetElement) decode() func(b []byte) error {
 				flags := ad.Uint32()
 				s.IntervalEnd = (flags & unix.NFT_SET_ELEM_INTERVAL_END) != 0
 			case unix.NFTA_SET_ELEM_TIMEOUT:
-				s.Timeout = time.Duration(ad.Uint64() * 1000)
+				s.Timeout = time.Duration(time.Millisecond * time.Duration(ad.Uint64()))
 			}
 		}
 		return ad.Err()
@@ -490,7 +490,7 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 		case unix.NFTA_SET_ID:
 			set.ID = binary.BigEndian.Uint32(ad.Bytes())
 		case unix.NFTA_SET_TIMEOUT:
-			set.Timeout = time.Duration(binary.BigEndian.Uint64(ad.Bytes()) * 1000)
+			set.Timeout = time.Duration(time.Millisecond * time.Duration(binary.BigEndian.Uint64(ad.Bytes())))
 			set.HasTimeout = true
 		case unix.NFTA_SET_FLAGS:
 			flags := ad.Uint32()
