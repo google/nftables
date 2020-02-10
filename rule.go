@@ -240,6 +240,8 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 						e = &expr.Redir{}
 					case "nat":
 						e = &expr.NAT{}
+					case "dynset":
+						e = &expr.Dynset{}
 					}
 					if e == nil {
 						// TODO: introduce an opaque expression type so that users know

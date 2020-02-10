@@ -24,6 +24,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
@@ -2484,6 +2485,97 @@ func TestGetRuleLookupVerdictImmediate(t *testing.T) {
 		Data:     []byte("kek"),
 	}); !reflect.DeepEqual(imm, want) {
 		t.Errorf("verdict expr = %+v, wanted %+v", imm, want)
+	}
+}
+
+func TestDynset(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+	forward := c.AddChain(&nftables.Chain{
+		Name:     "forward",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookForward,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	set := &nftables.Set{
+		Table:      filter,
+		Name:       "dynamic-set",
+		KeyType:    nftables.TypeIPAddr,
+		HasTimeout: true,
+		Timeout:    time.Duration(600 * time.Second),
+	}
+	if err := c.AddSet(set, nil); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: forward,
+		Exprs: []expr.Any{
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseNetworkHeader,
+				Offset:       uint32(12),
+				Len:          uint32(4),
+			},
+			&expr.Dynset{
+				SrcRegKey: 1,
+				SetName:   set.Name,
+				SetID:     set.ID,
+				Operation: uint32(unix.NFT_DYNSET_OP_UPDATE),
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	rules, err := c.GetRule(
+		&nftables.Table{
+			Family: nftables.TableFamilyIPv4,
+			Name:   "filter",
+		},
+		&nftables.Chain{
+			Name: "forward",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+	if got, want := len(rules[0].Exprs), 2; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	dynset, dynsetOk := rules[0].Exprs[1].(*expr.Dynset)
+	if !dynsetOk {
+		t.Fatalf("Exprs[0] is type %T, want *expr.Dynset", rules[0].Exprs[1])
+	}
+	if want := (&expr.Dynset{
+		SrcRegKey: 1,
+		SetName:   set.Name,
+		Operation: uint32(unix.NFT_DYNSET_OP_UPDATE),
+	}); !reflect.DeepEqual(dynset, want) {
+		t.Errorf("dynset expr = %+v, wanted %+v", dynset, want)
 	}
 }
 
