@@ -498,6 +498,7 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			set.Anonymous = (flags & unix.NFT_SET_ANONYMOUS) != 0
 			set.Interval = (flags & unix.NFT_SET_INTERVAL) != 0
 			set.IsMap = (flags & unix.NFTA_SET_TABLE) != 0
+			set.HasTimeout = (flags & unix.NFTA_SET_TIMEOUT) != 0
 		case unix.NFTA_SET_KEY_TYPE:
 			nftMagic := ad.Uint32()
 			if invalidMagic, ok := validateKeyType(nftMagic); !ok {
