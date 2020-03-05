@@ -37,9 +37,14 @@ type Verdict struct {
 
 type VerdictKind int64
 
-// Verdicts, as per netfilter.h.
+// Verdicts, as per netfilter.h and netfilter/nf_tables.h.
 const (
-	VerdictDrop VerdictKind = iota
+	VerdictReturn VerdictKind = iota - 5
+	VerdictGoto
+	VerdictJump
+	VerdictBreak
+	VerdictContinue
+	VerdictDrop
 	VerdictAccept
 	VerdictStolen
 	VerdictQueue
