@@ -54,6 +54,27 @@ func (cc *Conn) AddObj(o Obj) Obj {
 	return o
 }
 
+// DeleteObject deletes the specified Obj
+func (cc *Conn) DeleteObject(o Obj) {
+	cc.Lock()
+	defer cc.Unlock()
+	data, err := o.marshal(false)
+	if err != nil {
+		cc.setErr(err)
+		return
+	}
+
+	data = append(data, cc.marshalAttr([]netlink.Attribute{{Type: unix.NLA_F_NESTED | unix.NFTA_OBJ_DATA}})...)
+
+	cc.messages = append(cc.messages, netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELOBJ),
+			Flags: netlink.Request | netlink.Acknowledge,
+		},
+		Data: append(extraHeader(uint8(o.family()), 0), data...),
+	})
+}
+
 // GetObj is a legacy method that return all Obj that belongs
 // to the same table as the given one
 func (cc *Conn) GetObj(o Obj) ([]Obj, error) {
@@ -69,6 +90,11 @@ func (cc *Conn) GetObjReset(o Obj) ([]Obj, error) {
 // GetObject gets the specified Object
 func (cc *Conn) GetObject(o Obj) (Obj, error) {
 	objs, err := cc.getObj(o, o.table(), unix.NFT_MSG_GETOBJ)
+
+	if len(objs) == 0 {
+		return nil, err
+	}
+
 	return objs[0], err
 }
 
@@ -80,6 +106,11 @@ func (cc *Conn) GetObjects(t *Table) ([]Obj, error) {
 // ResetObject reset the given Obj
 func (cc *Conn) ResetObject(o Obj) (Obj, error) {
 	objs, err := cc.getObj(o, o.table(), unix.NFT_MSG_GETOBJ_RESET)
+
+	if len(objs) == 0 {
+		return nil, err
+	}
+
 	return objs[0], err
 }
 
