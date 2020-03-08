@@ -33,6 +33,11 @@ type Obj interface {
 	marshal(data bool) ([]byte, error)
 }
 
+// AddObject adds the specified Obj. Alias of AddObj.
+func (cc *Conn) AddObject(o Obj) Obj {
+	return cc.AddObj(o)
+}
+
 // AddObj adds the specified Obj. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Stateful_objects
 func (cc *Conn) AddObj(o Obj) Obj {
