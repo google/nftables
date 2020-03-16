@@ -240,6 +240,8 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 						e = &expr.Redir{}
 					case "nat":
 						e = &expr.NAT{}
+					case "limit":
+						e = &expr.Limit{}
 					case "dynset":
 						e = &expr.Dynset{}
 					}
