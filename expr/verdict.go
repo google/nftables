@@ -15,6 +15,7 @@
 package expr
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 
@@ -100,6 +101,7 @@ func (e *Verdict) unmarshal(data []byte) error {
 	if err != nil {
 		return err
 	}
+
 	ad.ByteOrder = binary.BigEndian
 	for ad.Next() {
 		switch ad.Type() {
@@ -111,7 +113,10 @@ func (e *Verdict) unmarshal(data []byte) error {
 			for nestedAD.Next() {
 				switch nestedAD.Type() {
 				case unix.NFTA_DATA_VERDICT:
-					e.Kind = VerdictKind(binaryutil.BigEndian.Uint32(nestedAD.Bytes()[4:]))
+					e.Kind = VerdictKind(int32(binaryutil.BigEndian.Uint32(nestedAD.Bytes()[4:8])))
+					if len(nestedAD.Bytes()) > 12 {
+						e.Chain = string(bytes.Trim(nestedAD.Bytes()[12:], "\x00"))
+					}
 				}
 			}
 			if nestedAD.Err() != nil {
