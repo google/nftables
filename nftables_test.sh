@@ -1,0 +1,3 @@
+go test ./...
+go test -c github.com/google/nftables
+sudo ./nftables.test -test.v -run_system_tests

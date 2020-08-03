@@ -252,12 +252,27 @@ func TestRuleOperations(t *testing.T) {
 		expr.VerdictDrop,
 	}
 
+	wantStrings := []string{
+		"queue",
+		"accept",
+		"queue",
+		"accept",
+		"drop",
+		"drop",
+	}
+
 	for i, r := range rules {
 		rr, _ := r.Exprs[0].(*expr.Verdict)
 
 		if rr.Kind != want[i] {
 			t.Fatalf("bad verdict kind at %d", i)
 		}
+
+		if rr.String() != wantStrings[i] {
+			t.Fatalf("bad verdict string at %d: %s (received) vs. %s (expected)", i, rr.String(), wantStrings[i])
+		}
+
+		t.Logf("%s", rr)
 	}
 }
 
