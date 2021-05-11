@@ -222,6 +222,10 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 				case unix.NFTA_EXPR_DATA:
 					var e expr.Any
 					switch name {
+					case "ct":
+						e = &expr.Ct{}
+					case "range":
+						e = &expr.Range{}
 					case "meta":
 						e = &expr.Meta{}
 					case "cmp":
