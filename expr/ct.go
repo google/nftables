@@ -47,6 +47,12 @@ const (
 	CtKeyAVGPKT     CtKey = unix.NFT_CT_AVGPKT
 	CtKeyZONE       CtKey = unix.NFT_CT_ZONE
 	CtKeyEVENTMASK  CtKey = unix.NFT_CT_EVENTMASK
+
+	CtStatINVALID     uint32 = 1
+	CtStatESTABLISHED uint32 = 2
+	CtStatRELATED     uint32 = 4
+	CtStatNEW         uint32 = 8
+	CtStatUNTRACKED   uint32 = 64
 )
 
 // Ct defines type for NFT connection tracking
