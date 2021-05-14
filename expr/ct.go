@@ -47,6 +47,13 @@ const (
 	CtKeyAVGPKT     CtKey = unix.NFT_CT_AVGPKT
 	CtKeyZONE       CtKey = unix.NFT_CT_ZONE
 	CtKeyEVENTMASK  CtKey = unix.NFT_CT_EVENTMASK
+
+	// https://sources.debian.org/src//nftables/0.9.8-3/src/ct.c/?hl=39#L39
+	CtStateBitINVALID     uint32 = 1
+	CtStateBitESTABLISHED uint32 = 2
+	CtStateBitRELATED     uint32 = 4
+	CtStateBitNEW         uint32 = 8
+	CtStateBitUNTRACKED   uint32 = 64
 )
 
 // Ct defines type for NFT connection tracking
