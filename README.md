@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/google/nftables.svg?branch=master)](https://travis-ci.org/google/nftables)
+[![Build Status](https://github.com/google/nftables/actions/workflows/push.yml/badge.svg)](https://github.com/google/nftables/actions/workflows/push.yml)
 [![GoDoc](https://godoc.org/github.com/google/nftables?status.svg)](https://godoc.org/github.com/google/nftables)
 
 **This is not the correct repository for issues with the Linux nftables
