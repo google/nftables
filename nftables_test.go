@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -4547,4 +4548,85 @@ func TestStatelessNAT(t *testing.T) {
 	if err := c.Flush(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestIntegrationAddRule(t *testing.T) {
+
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	chain := c.AddChain(&nftables.Chain{
+		Name:     "chain",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	c.Flush()
+
+	execN := func(w int, n int) {
+		c := &nftables.Conn{NetNS: int(newNS)}
+
+		for i := 0; i < n; i++ {
+
+			r := c.AddRule(&nftables.Rule{
+				Table:    filter,
+				Chain:    chain,
+				UserData: []byte(fmt.Sprintf("%d-%d", w, i)),
+				Exprs: []expr.Any{
+					&expr.Verdict{
+						// [ immediate reg 0 drop ]
+						Kind: expr.VerdictDrop,
+					},
+				},
+			})
+
+			if r.Handle != 0 {
+				t.Fatalf("unexpected handle value at %d", i)
+			}
+
+			if err := c.Flush(); err != nil {
+				t.Fatal(err)
+			}
+
+			if r.Handle == 0 {
+				t.Fatalf("handle value is empty at %d", i)
+			}
+
+			rulesGetted, _ := c.GetRule(filter, chain)
+
+			for i, rg := range rulesGetted {
+				if bytes.Equal(rg.UserData, r.UserData) && rg.Handle != r.Handle {
+					t.Fatalf("mismatched handle at %d-%d, got: %d, want: %d", w, i, r.Handle, rg.Handle)
+				}
+			}
+		}
+	}
+
+	const (
+		workers    = 16
+		iterations = 256
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(n int) {
+			defer wg.Done()
+			execN(n, iterations)
+		}(i)
+	}
+
+	wg.Wait()
 }
