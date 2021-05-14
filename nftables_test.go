@@ -1083,7 +1083,7 @@ func TestCtStat(t *testing.T) {
 				SourceRegister: 1,
 				DestRegister:   1,
 				Len:            4,
-				Mask:           binaryutil.NativeEndian.PutUint32(expr.CtStatESTABLISHED | expr.CtStatRELATED),
+				Mask:           binaryutil.NativeEndian.PutUint32(expr.CtStatBitESTABLISHED | expr.CtStatBitRELATED),
 				Xor:            binaryutil.NativeEndian.PutUint32(0),
 			},
 			&expr.Cmp{Op: expr.CmpOpNeq, Register: 1, Data: []byte{0, 0, 0, 0}},
