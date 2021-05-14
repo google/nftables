@@ -24,6 +24,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const (
+	NFT_DROP   = 0
+	NFT_ACCEPT = 1
+	NFT_STOLEN = 2
+	NFT_QUEUE  = 3
+	NFT_REPEAT = 4
+	NFT_STOP   = 5
+)
+
 // This code assembles the verdict structure, as expected by the
 // nftables netlink API.
 // For further information, consult:
@@ -125,4 +134,38 @@ func (e *Verdict) unmarshal(data []byte) error {
 		}
 	}
 	return ad.Err()
+}
+
+func (e *Verdict) String() string {
+	var v string
+	switch e.Kind {
+	case unix.NFT_RETURN:
+		v = "return" // -0x5
+	case unix.NFT_GOTO:
+		v = "goto" // -0x4
+	case unix.NFT_JUMP:
+		v = "jump" // NFT_JUMP = -0x3
+	case unix.NFT_BREAK:
+		v = "break" // NFT_BREAK = -0x2
+	case unix.NFT_CONTINUE:
+		v = "continue" // NFT_CONTINUE = -0x1
+	case NFT_DROP:
+		v = "drop"
+	case NFT_ACCEPT:
+		v = "accept"
+	case NFT_STOLEN:
+		v = "stolen"
+	case NFT_QUEUE:
+		v = "queue"
+	case NFT_REPEAT:
+		v = "repeat"
+	case NFT_STOP:
+		v = "stop"
+	default:
+		v = fmt.Sprintf("verdict %v", e.Kind)
+	}
+	if e.Chain != "" {
+		return v + " " + e.Chain
+	}
+	return v
 }
