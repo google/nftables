@@ -591,6 +591,13 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 				return nil, fmt.Errorf("could not determine key type %+v", invalidMagic)
 			}
 			set.KeyType.nftMagic = nftMagic
+			for _, dt := range nftDatatypes {
+				// If this is a non-concatenated type, we can assign the descriptor.
+				if nftMagic == dt.nftMagic {
+					set.KeyType = dt
+					break
+				}
+			}
 		case unix.NFTA_SET_DATA_TYPE:
 			nftMagic := ad.Uint32()
 			// Special case for the data type verdict, in the message it is stored as 0xffffff00 but it is defined as 1
