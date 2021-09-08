@@ -58,28 +58,114 @@ func (s *SetDatatype) SetNFTMagic(nftMagic uint32) {
 	s.nftMagic = nftMagic
 }
 
-// NFT datatypes. See: https://git.netfilter.org/nftables/tree/src/datatype.c
+// NFT datatypes. See: https://git.netfilter.org/nftables/tree/include/datatype.h
 var (
 	TypeInvalid     = SetDatatype{Name: "invalid", nftMagic: 0}
 	TypeVerdict     = SetDatatype{Name: "verdict", Bytes: 0, nftMagic: 1}
+	TypeNFProto     = SetDatatype{Name: "nf_proto", Bytes: 1, nftMagic: 2}
+	TypeBitmask     = SetDatatype{Name: "bitmask", Bytes: 0, nftMagic: 3}
 	TypeInteger     = SetDatatype{Name: "integer", Bytes: 4, nftMagic: 4}
+	TypeString      = SetDatatype{Name: "string", Bytes: 0, nftMagic: 5}
+	TypeLLAddr      = SetDatatype{Name: "ll_addr", Bytes: 0, nftMagic: 6}
 	TypeIPAddr      = SetDatatype{Name: "ipv4_addr", Bytes: 4, nftMagic: 7}
 	TypeIP6Addr     = SetDatatype{Name: "ipv6_addr", Bytes: 16, nftMagic: 8}
 	TypeEtherAddr   = SetDatatype{Name: "ether_addr", Bytes: 6, nftMagic: 9}
+	TypeEtherType   = SetDatatype{Name: "ether_type", Bytes: 2, nftMagic: 10}
+	TypeARPOp       = SetDatatype{Name: "arp_op", Bytes: 2, nftMagic: 11}
 	TypeInetProto   = SetDatatype{Name: "inet_proto", Bytes: 1, nftMagic: 12}
 	TypeInetService = SetDatatype{Name: "inet_service", Bytes: 2, nftMagic: 13}
+	TypeICMPType    = SetDatatype{Name: "icmp_type", Bytes: 1, nftMagic: 14}
+	TypeTCPFlag     = SetDatatype{Name: "tcp_flag", Bytes: 1, nftMagic: 15}
+	TypeDCCPPktType = SetDatatype{Name: "dccp_pkttype", Bytes: 1, nftMagic: 16}
+	TypeMHType      = SetDatatype{Name: "mh_type", Bytes: 1, nftMagic: 17}
+	TypeTime        = SetDatatype{Name: "time", Bytes: 8, nftMagic: 18}
 	TypeMark        = SetDatatype{Name: "mark", Bytes: 4, nftMagic: 19}
+	TypeIFIndex     = SetDatatype{Name: "iface_index", Bytes: 4, nftMagic: 20}
+	TypeARPHRD      = SetDatatype{Name: "iface_type", Bytes: 2, nftMagic: 21}
+	TypeRealm       = SetDatatype{Name: "realm", Bytes: 4, nftMagic: 22}
+	TypeClassID     = SetDatatype{Name: "classid", Bytes: 4, nftMagic: 23}
+	TypeUID         = SetDatatype{Name: "uid", Bytes: sizeOfUIDT, nftMagic: 24}
+	TypeGID         = SetDatatype{Name: "gid", Bytes: sizeOfGIDT, nftMagic: 25}
+	TypeCTState     = SetDatatype{Name: "ct_state", Bytes: 4, nftMagic: 26}
+	TypeCTDir       = SetDatatype{Name: "ct_dir", Bytes: 1, nftMagic: 27}
+	TypeCTStatus    = SetDatatype{Name: "ct_status", Bytes: 4, nftMagic: 28}
+	TypeICMP6Type   = SetDatatype{Name: "icmpv6_type", Bytes: 1, nftMagic: 29}
+	TypeCTLabel     = SetDatatype{Name: "ct_label", Bytes: ctLabelBitSize / 8, nftMagic: 30}
+	TypePktType     = SetDatatype{Name: "pkt_type", Bytes: 1, nftMagic: 31}
+	TypeICMPCode    = SetDatatype{Name: "icmp_code", Bytes: 1, nftMagic: 32}
+	TypeICMPV6Code  = SetDatatype{Name: "icmpv6_code", Bytes: 1, nftMagic: 33}
+	TypeICMPXCode   = SetDatatype{Name: "icmpx_code", Bytes: 1, nftMagic: 34}
+	TypeDevGroup    = SetDatatype{Name: "devgroup", Bytes: 4, nftMagic: 35}
+	TypeDSCP        = SetDatatype{Name: "dscp", Bytes: 1, nftMagic: 36}
+	TypeECN         = SetDatatype{Name: "ecn", Bytes: 1, nftMagic: 37}
+	TypeFIBAddr     = SetDatatype{Name: "fib_addrtype", Bytes: 4, nftMagic: 38}
+	TypeBoolean     = SetDatatype{Name: "boolean", Bytes: 1, nftMagic: 39}
+	TypeCTEventBit  = SetDatatype{Name: "ct_event", Bytes: 4, nftMagic: 40}
+	TypeIFName      = SetDatatype{Name: "ifname", Bytes: ifNameSize, nftMagic: 41}
+	TypeIGMPType    = SetDatatype{Name: "igmp_type", Bytes: 1, nftMagic: 42}
+	TypeTimeDate    = SetDatatype{Name: "time", Bytes: 8, nftMagic: 43}
+	TypeTimeHour    = SetDatatype{Name: "hour", Bytes: 8, nftMagic: 44}
+	TypeTimeDay     = SetDatatype{Name: "day", Bytes: 1, nftMagic: 45}
+	TypeCGroupV2    = SetDatatype{Name: "cgroupsv2", Bytes: 8, nftMagic: 46}
 
 	nftDatatypes = []SetDatatype{
 		TypeVerdict,
+		TypeNFProto,
+		TypeBitmask,
 		TypeInteger,
+		TypeString,
+		TypeLLAddr,
 		TypeIPAddr,
 		TypeIP6Addr,
 		TypeEtherAddr,
+		TypeEtherType,
+		TypeARPOp,
 		TypeInetProto,
 		TypeInetService,
+		TypeICMPType,
+		TypeTCPFlag,
+		TypeDCCPPktType,
+		TypeMHType,
+		TypeTime,
 		TypeMark,
+		TypeIFIndex,
+		TypeARPHRD,
+		TypeRealm,
+		TypeClassID,
+		TypeUID,
+		TypeGID,
+		TypeCTState,
+		TypeCTDir,
+		TypeCTStatus,
+		TypeICMP6Type,
+		TypeCTLabel,
+		TypePktType,
+		TypeICMPCode,
+		TypeICMPV6Code,
+		TypeICMPXCode,
+		TypeDevGroup,
+		TypeDSCP,
+		TypeECN,
+		TypeFIBAddr,
+		TypeBoolean,
+		TypeCTEventBit,
+		TypeIFName,
+		TypeIGMPType,
+		TypeTimeDate,
+		TypeTimeHour,
+		TypeTimeDay,
+		TypeCGroupV2,
 	}
+
+	// ctLabelBitSize is defined in https://git.netfilter.org/nftables/tree/src/ct.c.
+	ctLabelBitSize uint32 = 128
+
+	// ifNameSize is called IFNAMSIZ in linux/if.h.
+	ifNameSize uint32 = 16
+
+	// bits/typesizes.h
+	sizeOfUIDT uint32 = 4
+	sizeOfGIDT uint32 = 4
 )
 
 // ErrTooManyTypes is the error returned by ConcatSetType, if nftMagic would overflow.

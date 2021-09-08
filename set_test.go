@@ -5,6 +5,10 @@ import (
 	"testing"
 )
 
+// unknownNFTMagic is an nftMagic value that's unhandled by this
+// library. We use two of them below.
+const unknownNFTMagic uint32 = 1<<SetConcatTypeBits - 2
+
 func genSetKeyType(types ...uint32) uint32 {
 	c := types[0]
 	for i := 1; i < len(types); i++ {
@@ -28,10 +32,10 @@ func TestValidateNFTMagic(t *testing.T) {
 			invalid:        nil,
 		},
 		{
-			name:           "Single invalid nftMagic",
-			nftMagicPacked: genSetKeyType(25),
+			name:           "Single unknown nftMagic",
+			nftMagicPacked: genSetKeyType(unknownNFTMagic),
 			pass:           false,
-			invalid:        []uint32{25},
+			invalid:        []uint32{unknownNFTMagic},
 		},
 		{
 			name:           "Multiple valid nftMagic",
@@ -40,16 +44,16 @@ func TestValidateNFTMagic(t *testing.T) {
 			invalid:        nil,
 		},
 		{
-			name:           "Multiple nftMagic with 1 invalid",
-			nftMagicPacked: genSetKeyType(7, 13, 25),
+			name:           "Multiple nftMagic with 1 unknown",
+			nftMagicPacked: genSetKeyType(7, 13, unknownNFTMagic),
 			pass:           false,
-			invalid:        []uint32{25},
+			invalid:        []uint32{unknownNFTMagic},
 		},
 		{
-			name:           "Multiple nftMagic with 2 invalid",
-			nftMagicPacked: genSetKeyType(7, 13, 25, 26),
+			name:           "Multiple nftMagic with 2 unknown",
+			nftMagicPacked: genSetKeyType(7, 13, unknownNFTMagic, unknownNFTMagic+1),
 			pass:           false,
-			invalid:        []uint32{26, 25},
+			invalid:        []uint32{unknownNFTMagic + 1, unknownNFTMagic},
 			// Invalid entries will appear in reverse order
 		},
 	}
