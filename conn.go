@@ -24,6 +24,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type Entity interface {
+	HandleResponse(netlink.Message)
+}
+
 // A Conn represents a netlink connection of the nftables family.
 //
 // All methods return their input, so that variables can be defined from string
@@ -31,11 +35,13 @@ import (
 //
 // Commands are buffered. Flush sends all buffered commands in a single batch.
 type Conn struct {
-	TestDial nltest.Func // for testing only; passed to nltest.Dial
-	NetNS    int         // Network namespace netlink will interact with.
 	sync.Mutex
-	messages []netlink.Message
-	err      error
+	TestDial   nltest.Func // for testing only; passed to nltest.Dial
+	NetNS      int         // Network namespace netlink will interact with.
+	entities   map[int]Entity
+	messagesMu sync.Mutex
+	messages   []netlink.Message
+	err        error
 }
 
 // Flush sends all buffered commands in a single batch to nftables.
@@ -43,6 +49,7 @@ func (cc *Conn) Flush() error {
 	cc.Lock()
 	defer func() {
 		cc.messages = nil
+		cc.entities = nil
 		cc.Unlock()
 	}()
 	if len(cc.messages) == 0 {
@@ -59,15 +66,99 @@ func (cc *Conn) Flush() error {
 
 	defer conn.Close()
 
-	if _, err := conn.SendMessages(batch(cc.messages)); err != nil {
+	cc.endBatch(cc.messages)
+
+	if _, err = conn.SendMessages(cc.messages); err != nil {
 		return fmt.Errorf("SendMessages: %w", err)
 	}
 
-	if _, err := conn.Receive(); err != nil {
-		return fmt.Errorf("Receive: %w", err)
+	// Retrieving of seq number associated to entities
+	entitiesBySeq := make(map[uint32]Entity)
+	for i, e := range cc.entities {
+		entitiesBySeq[cc.messages[i].Header.Sequence] = e
 	}
 
-	return nil
+	// Trigger entities callback
+	msg, err := cc.checkReceive(conn)
+	if err != nil {
+		return err
+	}
+
+	for msg {
+		rmsg, err := conn.Receive()
+		if err != nil {
+			return fmt.Errorf("Receive: %w", err)
+		}
+
+		for _, msg := range rmsg {
+			if e, ok := entitiesBySeq[msg.Header.Sequence]; ok {
+				e.HandleResponse(msg)
+
+			}
+		}
+		msg, err = cc.checkReceive(conn)
+		if err != nil {
+			return err
+		}
+	}
+
+	return err
+}
+
+// putMessage store netlink message to sent after
+func (cc *Conn) putMessage(msg netlink.Message) int {
+	cc.messagesMu.Lock()
+	defer cc.messagesMu.Unlock()
+
+	if cc.messages == nil {
+		cc.messages = append(cc.messages, netlink.Message{
+			Header: netlink.Header{
+				Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
+				Flags: netlink.Request,
+			},
+			Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
+		})
+	}
+
+	cc.messages = append(cc.messages, msg)
+
+	return len(cc.messages) - 1
+}
+
+// PutEntity store entity to relate to netlink response
+func (cc *Conn) PutEntity(i int, e Entity) {
+	if cc.entities == nil {
+		cc.entities = make(map[int]Entity)
+	}
+	cc.entities[i] = e
+}
+
+func (cc *Conn) checkReceive(c *netlink.Conn) (bool, error) {
+	if cc.TestDial != nil {
+		return false, nil
+	}
+
+	sc, err := c.SyscallConn()
+
+	if err != nil {
+		return false, fmt.Errorf("SyscallConn error: %w", err)
+	}
+
+	var n int
+
+	sc.Control(func(fd uintptr) {
+		var fdSet unix.FdSet
+		fdSet.Zero()
+		fdSet.Set(int(fd))
+
+		n, err = unix.Select(int(fd)+1, &fdSet, nil, nil, &unix.Timeval{})
+	})
+
+	if err == nil && n > 0 {
+		return true, nil
+	}
+
+	return false, err
 }
 
 // FlushRuleset flushes the entire ruleset. See also
@@ -75,7 +166,7 @@ func (cc *Conn) Flush() error {
 func (cc *Conn) FlushRuleset() {
 	cc.Lock()
 	defer cc.Unlock()
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.putMessage(netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
@@ -123,26 +214,16 @@ func (cc *Conn) marshalExpr(e expr.Any) []byte {
 	return b
 }
 
-func batch(messages []netlink.Message) []netlink.Message {
-	batch := []netlink.Message{
-		{
-			Header: netlink.Header{
-				Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
-				Flags: netlink.Request,
-			},
-			Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
-		},
-	}
+func (cc *Conn) endBatch(messages []netlink.Message) {
 
-	batch = append(batch, messages...)
+	cc.messagesMu.Lock()
+	defer cc.messagesMu.Unlock()
 
-	batch = append(batch, netlink.Message{
+	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_END),
 			Flags: netlink.Request,
 		},
 		Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
 	})
-
-	return batch
 }
