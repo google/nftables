@@ -84,7 +84,10 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 		if err != nil {
 			return nil, err
 		}
-		rules = append(rules, r)
+
+		if r.Table.Name == t.Name && r.Table.Family == t.Family && r.Chain.Name == c.Name {
+			rules = append(rules, r)
+		}
 	}
 
 	return rules, nil
@@ -293,6 +296,7 @@ func ruleFromMsg(msg netlink.Message) (*Rule, error) {
 		switch ad.Type() {
 		case unix.NFTA_RULE_TABLE:
 			r.Table = &Table{Name: ad.String()}
+			r.Table.Family = TableFamily(msg.Data[0])
 		case unix.NFTA_RULE_CHAIN:
 			r.Chain = &Chain{Name: ad.String()}
 		case unix.NFTA_RULE_EXPRESSIONS:

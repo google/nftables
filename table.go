@@ -45,6 +45,23 @@ type Table struct {
 	Family TableFamily
 }
 
+// GetTable gets a table by name and family
+func (cc *Conn) GetTable(name string, family TableFamily) (*Table, error) {
+	cc.Lock()
+	defer cc.Unlock()
+
+	tables, err := cc.ListTables()
+	if err != nil {
+		return nil, err
+	}
+	for _, table := range tables {
+		if table.Name == name && table.Family == family {
+			return table, nil
+		}
+	}
+	return nil, nil
+}
+
 // DelTable deletes a specific table, along with all chains/rules it contains.
 func (cc *Conn) DelTable(t *Table) {
 	cc.Lock()

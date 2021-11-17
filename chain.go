@@ -205,6 +205,20 @@ func (cc *Conn) ListChains() ([]*Chain, error) {
 	return chains, nil
 }
 
+// GetChain gets a chain by name
+func (cc *Conn) GetChain(name string) (*Chain, error) {
+	chains, err := cc.ListChains()
+	if err != nil {
+		return nil, err
+	}
+	for _, chain := range chains {
+		if chain.Name == name {
+			return chain, nil
+		}
+	}
+	return nil, nil
+}
+
 func chainFromMsg(msg netlink.Message) (*Chain, error) {
 	chainHeaderType := netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWCHAIN)
 	if got, want := msg.Header.Type, chainHeaderType; got != want {
