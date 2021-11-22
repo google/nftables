@@ -293,6 +293,7 @@ func ruleFromMsg(msg netlink.Message) (*Rule, error) {
 		switch ad.Type() {
 		case unix.NFTA_RULE_TABLE:
 			r.Table = &Table{Name: ad.String()}
+			r.Table.Family = TableFamily(msg.Data[0])
 		case unix.NFTA_RULE_CHAIN:
 			r.Chain = &Chain{Name: ad.String()}
 		case unix.NFTA_RULE_EXPRESSIONS:
