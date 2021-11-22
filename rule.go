@@ -65,7 +65,7 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETRULE),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump | unix.NLM_F_ECHO,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
@@ -293,6 +293,7 @@ func ruleFromMsg(msg netlink.Message) (*Rule, error) {
 		switch ad.Type() {
 		case unix.NFTA_RULE_TABLE:
 			r.Table = &Table{Name: ad.String()}
+			r.Table.Family = TableFamily(msg.Data[0])
 		case unix.NFTA_RULE_CHAIN:
 			r.Chain = &Chain{Name: ad.String()}
 		case unix.NFTA_RULE_EXPRESSIONS:
