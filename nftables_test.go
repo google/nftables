@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"github.com/google/nftables"
 	"net"
 	"os"
 	"reflect"
@@ -27,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
