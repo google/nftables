@@ -113,6 +113,49 @@ func cleanupSystemNFTConn(t *testing.T, newNS netns.NsHandle) {
 	}
 }
 
+func TestGetTableGetChain(t *testing.T) {
+	conn := nftables.Conn{}
+	nat2 := conn.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "nat2",
+	})
+
+	fmt.Println(nat2.Name, nat2.Family)
+	// sends all buffered commands in a single batch to nftables
+	if err := conn.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	// gets table by net family and its name
+	table, _ := conn.GetTable("nat2", nftables.TableFamilyIPv4)
+	fmt.Println(table.Name, table.Family)
+
+	postrouting := conn.AddChain(&nftables.Chain{
+		Name:     "POSTROUTING",
+		Hooknum:  nftables.ChainHookPostrouting,
+		Priority: nftables.ChainPriorityNATSource,
+		Table:    nat2,
+		Type:     nftables.ChainTypeNAT,
+	})
+
+	conn.AddRule(&nftables.Rule{
+		Table: nat2,
+		Chain: postrouting,
+		Exprs: []expr.Any{
+			&expr.Counter{},
+		},
+	})
+
+	// sends all buffered commands in a single batch to nftables
+	if err := conn.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	// gets chain by its name
+	chain, _ := conn.GetChain("POSTROUTING") // get chain
+	fmt.Println(chain.Name, chain.Table)
+}
+
 func TestRuleOperations(t *testing.T) {
 
 	// Create a new network namespace to test these operations,

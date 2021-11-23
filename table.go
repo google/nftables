@@ -45,6 +45,42 @@ type Table struct {
 	Family TableFamily
 }
 
+// GetTable gets a table by name and family
+func (cc *Conn) GetTable(name string, family TableFamily) (*Table, error) {
+	conn, err := cc.dialNetlink()
+	if err != nil {
+		return nil, err
+	}
+
+	defer conn.Close()
+
+	msg := netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETTABLE),
+			Flags: netlink.Request | netlink.Dump,
+		},
+		Data: extraHeader(uint8(unix.AF_UNSPEC), 0),
+	}
+
+	response, err := conn.Execute(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, m := range response {
+		t, err := tableFromMsg(m)
+		if err != nil {
+			return nil, err
+		}
+
+		if t.Name == name && t.Family == family {
+			return t, nil
+		}
+	}
+
+	return nil, nil
+}
+
 // DelTable deletes a specific table, along with all chains/rules it contains.
 func (cc *Conn) DelTable(t *Table) {
 	cc.Lock()
