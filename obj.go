@@ -185,14 +185,14 @@ func (cc *Conn) getObj(o Obj, t *Table, msgType uint16) ([]Obj, error) {
 
 	if o != nil {
 		data, err = o.marshal(false)
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		flags = netlink.Dump
 		data, err = netlink.MarshalAttributes([]netlink.Attribute{
 			{Type: unix.NFTA_RULE_TABLE, Data: []byte(t.Name + "\x00")},
 		})
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	message := netlink.Message{
