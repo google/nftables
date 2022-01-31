@@ -229,7 +229,7 @@ func chainFromMsg(msg netlink.Message) (*Chain, error) {
 		case unix.NFTA_CHAIN_TYPE:
 			c.Type = ChainType(ad.String())
 		case unix.NFTA_CHAIN_POLICY:
-			policy := ChainPolicy(ad.Uint32())
+			policy := ChainPolicy(binaryutil.BigEndian.Uint32(ad.Bytes()))
 			c.Policy = &policy
 		case unix.NFTA_CHAIN_HOOK:
 			ad.Do(func(b []byte) error {
