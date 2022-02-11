@@ -253,11 +253,8 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 						e = &expr.Limit{}
 					case "dynset":
 						e = &expr.Dynset{}
-					}
-					if e == nil {
-						// TODO: introduce an opaque expression type so that users know
-						// something is here.
-						continue // unsupported expression type
+					default:
+						e = &expr.Other{Type: name}
 					}
 
 					ad.Do(func(b []byte) error {
