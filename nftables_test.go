@@ -569,6 +569,73 @@ func TestConfigureNATSourceAddress(t *testing.T) {
 	}
 }
 
+func TestExprLogPrefix(t *testing.T) {
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+	input := c.AddChain(&nftables.Chain{
+		Name:     "input",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookInput,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: input,
+		Exprs: []expr.Any{
+			&expr.Log{
+				Key:  unix.NFTA_LOG_PREFIX,
+				Data: []byte("LOG INPUT"),
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	rules, err := c.GetRule(
+		&nftables.Table{
+			Family: nftables.TableFamilyIPv4,
+			Name:   "filter",
+		},
+		&nftables.Chain{
+			Name: "input",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+	if got, want := len(rules[0].Exprs), 1; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	logExpr, ok := rules[0].Exprs[0].(*expr.Log)
+	if !ok {
+		t.Fatalf("Exprs[0] is type %T, want *expr.Log", rules[0].Exprs[0])
+	}
+
+	if got, want := logExpr.Key, uint32(unix.NFTA_LOG_PREFIX); got != want {
+		t.Fatalf("unexpected *expr.Log key: got %d, want %d", got, want)
+	}
+	if got, want := string(logExpr.Data), "LOG INPUT"; got != want {
+		t.Fatalf("unexpected *expr.Log data: got %s, want %s", got, want)
+	}
+}
+
 func TestGetRule(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft list chain ip filter forward
