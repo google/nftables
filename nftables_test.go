@@ -569,6 +569,151 @@ func TestConfigureNATSourceAddress(t *testing.T) {
 	}
 }
 
+func TestExprLogOptions(t *testing.T) {
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+	input := c.AddChain(&nftables.Chain{
+		Name:     "input",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookInput,
+		Priority: nftables.ChainPriorityFilter,
+	})
+	forward := c.AddChain(&nftables.Chain{
+		Name:     "forward",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookInput,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	keyGQ := uint32((1 << unix.NFTA_LOG_GROUP) | (1 << unix.NFTA_LOG_QTHRESHOLD) | (1 << unix.NFTA_LOG_SNAPLEN))
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: input,
+		Exprs: []expr.Any{
+			&expr.Log{
+				Key:        keyGQ,
+				QThreshold: uint16(20),
+				Group:      uint16(1),
+				Snaplen:    uint32(132),
+			},
+		},
+	})
+
+	keyPL := uint32((1 << unix.NFTA_LOG_PREFIX) | (1 << unix.NFTA_LOG_LEVEL) | (1 << unix.NFTA_LOG_FLAGS))
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: forward,
+		Exprs: []expr.Any{
+			&expr.Log{
+				Key:   keyPL,
+				Data:  []byte("LOG FORWARD"),
+				Level: expr.LogLevelDebug,
+				Flags: expr.LogFlagsTCPOpt | expr.LogFlagsIPOpt,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	rules, err := c.GetRule(
+		&nftables.Table{
+			Family: nftables.TableFamilyIPv4,
+			Name:   "filter",
+		},
+		&nftables.Chain{
+			Name: "input",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+
+	rule := rules[0]
+	if got, want := len(rule.Exprs), 1; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	le, ok := rule.Exprs[0].(*expr.Log)
+	if !ok {
+		t.Fatalf("unexpected expression type: got %T, want *expr.Log", rule.Exprs[0])
+	}
+
+	if got, want := le.Key, keyGQ; got != want {
+		t.Fatalf("unexpected log key: got %d, want %d", got, want)
+	}
+
+	if got, want := le.Group, uint16(1); got != want {
+		t.Fatalf("unexpected group: got %d, want %d", got, want)
+	}
+
+	if got, want := le.QThreshold, uint16(20); got != want {
+		t.Fatalf("unexpected queue-threshold: got %d, want %d", got, want)
+	}
+
+	if got, want := le.Snaplen, uint32(132); got != want {
+		t.Fatalf("unexpected snaplen: got %d, want %d", got, want)
+	}
+
+	rules, err = c.GetRule(
+		&nftables.Table{
+			Family: nftables.TableFamilyIPv4,
+			Name:   "filter",
+		},
+		&nftables.Chain{
+			Name: "forward",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+
+	rule = rules[0]
+	if got, want := len(rule.Exprs), 1; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	le, ok = rule.Exprs[0].(*expr.Log)
+	if !ok {
+		t.Fatalf("unexpected expression type: got %T, want *expr.Log", rule.Exprs[0])
+	}
+
+	if got, want := le.Key, keyPL; got != want {
+		t.Fatalf("unexpected log key: got %d, want %d", got, want)
+	}
+
+	if got, want := string(le.Data), "LOG FORWARD"; got != want {
+		t.Fatalf("unexpected prefix data: got %s, want %s", got, want)
+	}
+
+	if got, want := le.Level, expr.LogLevelDebug; got != want {
+		t.Fatalf("unexpected log level: got %d, want %d", got, want)
+	}
+
+	if got, want := le.Flags, expr.LogFlagsTCPOpt|expr.LogFlagsIPOpt; got != want {
+		t.Fatalf("unexpected log flags: got %d, want %d", got, want)
+	}
+}
+
 func TestExprLogPrefix(t *testing.T) {
 	c, newNS := openSystemNFTConn(t)
 	defer cleanupSystemNFTConn(t, newNS)
@@ -593,7 +738,7 @@ func TestExprLogPrefix(t *testing.T) {
 		Chain: input,
 		Exprs: []expr.Any{
 			&expr.Log{
-				Key:  unix.NFTA_LOG_PREFIX,
+				Key:  1 << unix.NFTA_LOG_PREFIX,
 				Data: []byte("LOG INPUT"),
 			},
 		},
@@ -628,11 +773,16 @@ func TestExprLogPrefix(t *testing.T) {
 		t.Fatalf("Exprs[0] is type %T, want *expr.Log", rules[0].Exprs[0])
 	}
 
-	if got, want := logExpr.Key, uint32(unix.NFTA_LOG_PREFIX); got != want {
+	// nftables defaults to warn log level when no level is specified and group is not defined
+	// see https://wiki.nftables.org/wiki-nftables/index.php/Logging_traffic
+	if got, want := logExpr.Key, uint32((1<<unix.NFTA_LOG_PREFIX)|(1<<unix.NFTA_LOG_LEVEL)); got != want {
 		t.Fatalf("unexpected *expr.Log key: got %d, want %d", got, want)
 	}
 	if got, want := string(logExpr.Data), "LOG INPUT"; got != want {
 		t.Fatalf("unexpected *expr.Log data: got %s, want %s", got, want)
+	}
+	if got, want := logExpr.Level, expr.LogLevelWarning; got != want {
+		t.Fatalf("unexpected *expr.Log level: got %d, want %d", got, want)
 	}
 }
 
@@ -920,7 +1070,7 @@ func TestLog(t *testing.T) {
 		Chain: &nftables.Chain{Name: "ipv4chain-1", Type: nftables.ChainTypeFilter},
 		Exprs: []expr.Any{
 			&expr.Log{
-				Key:  unix.NFTA_LOG_PREFIX,
+				Key:  1 << unix.NFTA_LOG_PREFIX,
 				Data: []byte("nftables"),
 			},
 		},

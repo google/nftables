@@ -17,43 +17,99 @@ package expr
 import (
 	"encoding/binary"
 
+	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
 
+type LogLevel uint32
+
+const (
+	// See https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h?id=5b364657a35f4e4cd5d220ba2a45303d729c8eca#n1226
+	LogLevelEmerg LogLevel = iota
+	LogLevelAlert
+	LogLevelCrit
+	LogLevelErr
+	LogLevelWarning
+	LogLevelNotice
+	LogLevelInfo
+	LogLevelDebug
+	LogLevelAudit
+)
+
+type LogFlags uint32
+
+const (
+	// See https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_log.h?id=5b364657a35f4e4cd5d220ba2a45303d729c8eca
+	LogFlagsTCPSeq LogFlags = 0x01 << iota
+	LogFlagsTCPOpt
+	LogFlagsIPOpt
+	LogFlagsUID
+	LogFlagsNFLog
+	LogFlagsMACDecode
+	LogFlagsMask LogFlags = 0x2f
+)
+
 // Log defines type for NFT logging
+// See https://git.netfilter.org/libnftnl/tree/src/expr/log.c?id=09456c720e9c00eecc08e41ac6b7c291b3821ee5#n25
 type Log struct {
-	Key  uint32
+	Level LogLevel
+	// Refers to log flags (flags all, flags ip options, ...)
+	Flags LogFlags
+	// Equivalent to expression flags.
+	// Indicates that an option is set by setting a bit
+	// on index referred by the NFTA_LOG_* value.
+	// See https://cs.opensource.google/go/x/sys/+/3681064d:unix/ztypes_linux.go;l=2126;drc=3681064d51587c1db0324b3d5c23c2ddbcff6e8f
+	Key        uint32
+	Snaplen    uint32
+	Group      uint16
+	QThreshold uint16
+	// Log prefix string content
 	Data []byte
 }
 
 func (e *Log) marshal() ([]byte, error) {
-	var data []byte
-	var err error
-	switch e.Key {
-	case unix.NFTA_LOG_GROUP:
-		data, err = netlink.MarshalAttributes([]netlink.Attribute{
-			{Type: unix.NFTA_LOG_GROUP, Data: e.Data},
-		})
-	case unix.NFTA_LOG_PREFIX:
-		prefix := append(e.Data, '\x00')
-		data, err = netlink.MarshalAttributes([]netlink.Attribute{
-			{Type: unix.NFTA_LOG_PREFIX, Data: prefix},
-		})
-	case unix.NFTA_LOG_SNAPLEN:
-		data, err = netlink.MarshalAttributes([]netlink.Attribute{
-			{Type: unix.NFTA_LOG_SNAPLEN, Data: e.Data},
-		})
-	case unix.NFTA_LOG_QTHRESHOLD:
-		data, err = netlink.MarshalAttributes([]netlink.Attribute{
-			{Type: unix.NFTA_LOG_QTHRESHOLD, Data: e.Data},
-		})
-	case unix.NFTA_LOG_LEVEL:
-		level := append(e.Data, '\x00')
-		data, err = netlink.MarshalAttributes([]netlink.Attribute{
-			{Type: unix.NFTA_LOG_LEVEL, Data: level},
+	// Per https://git.netfilter.org/libnftnl/tree/src/expr/log.c?id=09456c720e9c00eecc08e41ac6b7c291b3821ee5#n129
+	attrs := make([]netlink.Attribute, 0)
+	if e.Key&(1<<unix.NFTA_LOG_GROUP) != 0 {
+		attrs = append(attrs, netlink.Attribute{
+			Type: unix.NFTA_LOG_GROUP,
+			Data: binaryutil.BigEndian.PutUint16(e.Group),
 		})
 	}
+	if e.Key&(1<<unix.NFTA_LOG_PREFIX) != 0 {
+		prefix := append(e.Data, '\x00')
+		attrs = append(attrs, netlink.Attribute{
+			Type: unix.NFTA_LOG_PREFIX,
+			Data: prefix,
+		})
+	}
+	if e.Key&(1<<unix.NFTA_LOG_SNAPLEN) != 0 {
+		attrs = append(attrs, netlink.Attribute{
+			Type: unix.NFTA_LOG_SNAPLEN,
+			Data: binaryutil.BigEndian.PutUint32(e.Snaplen),
+		})
+	}
+	if e.Key&(1<<unix.NFTA_LOG_QTHRESHOLD) != 0 {
+		attrs = append(attrs, netlink.Attribute{
+			Type: unix.NFTA_LOG_QTHRESHOLD,
+			Data: binaryutil.BigEndian.PutUint16(e.QThreshold),
+		})
+	}
+	if e.Key&(1<<unix.NFTA_LOG_LEVEL) != 0 {
+		attrs = append(attrs, netlink.Attribute{
+			Type: unix.NFTA_LOG_LEVEL,
+			Data: binaryutil.BigEndian.PutUint32(uint32(e.Level)),
+		})
+	}
+	if e.Key&(1<<unix.NFTA_LOG_FLAGS) != 0 {
+		attrs = append(attrs, netlink.Attribute{
+			Type: unix.NFTA_LOG_FLAGS,
+			Data: binaryutil.BigEndian.PutUint32(uint32(e.Flags)),
+		})
+	}
+
+	data, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
 		return nil, err
 	}
@@ -71,15 +127,23 @@ func (e *Log) unmarshal(data []byte) error {
 	}
 
 	ad.ByteOrder = binary.BigEndian
-	if ad.Next() {
-		e.Key = uint32(ad.Type())
-		e.Data = ad.Bytes()
-		switch e.Key {
+	for ad.Next() {
+		e.Key |= 1 << uint32(ad.Type())
+		data := ad.Bytes()
+		switch ad.Type() {
+		case unix.NFTA_LOG_GROUP:
+			e.Group = binaryutil.BigEndian.Uint16(data)
 		case unix.NFTA_LOG_PREFIX:
-			fallthrough
-		case unix.NFTA_LOG_LEVEL:
 			// Getting rid of \x00 at the end of string
-			e.Data = e.Data[:len(e.Data)-1]
+			e.Data = data[:len(data)-1]
+		case unix.NFTA_LOG_SNAPLEN:
+			e.Snaplen = binaryutil.BigEndian.Uint32(data)
+		case unix.NFTA_LOG_QTHRESHOLD:
+			e.QThreshold = binaryutil.BigEndian.Uint16(data)
+		case unix.NFTA_LOG_LEVEL:
+			e.Level = LogLevel(binaryutil.BigEndian.Uint32(data))
+		case unix.NFTA_LOG_FLAGS:
+			e.Flags = LogFlags(binaryutil.BigEndian.Uint32(data))
 		}
 	}
 	return ad.Err()
