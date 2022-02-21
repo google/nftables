@@ -26,6 +26,7 @@ type ByteOrder interface {
 	PutUint16(v uint16) []byte
 	PutUint32(v uint32) []byte
 	PutUint64(v uint64) []byte
+	Uint16(b []byte) uint16
 	Uint32(b []byte) uint32
 	Uint64(b []byte) uint64
 }
@@ -52,6 +53,10 @@ func (nativeEndian) PutUint64(v uint64) []byte {
 	buf := make([]byte, 8)
 	*(*uint64)(unsafe.Pointer(&buf[0])) = v
 	return buf
+}
+
+func (nativeEndian) Uint16(b []byte) uint16 {
+	return *(*uint16)(unsafe.Pointer(&b[0]))
 }
 
 func (nativeEndian) Uint32(b []byte) uint32 {
@@ -84,6 +89,10 @@ func (bigEndian) PutUint64(v uint64) []byte {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, v)
 	return buf
+}
+
+func (bigEndian) Uint16(b []byte) uint16 {
+	return binary.BigEndian.Uint16(b)
 }
 
 func (bigEndian) Uint32(b []byte) uint32 {
