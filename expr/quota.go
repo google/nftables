@@ -35,12 +35,14 @@ func (q *Quota) marshal() ([]byte, error) {
 		{Type: unix.NFTA_QUOTA_CONSUMED, Data: binaryutil.BigEndian.PutUint64(q.Used)},
 	}
 
+	flags := uint32(0)
 	if q.Over {
-		attrs = append(attrs, netlink.Attribute{
-			Type: unix.NFTA_QUOTA_FLAGS,
-			Data: binaryutil.BigEndian.PutUint32(unix.NFT_QUOTA_F_INV),
-		})
+		flags = unix.NFT_QUOTA_F_INV
 	}
+	attrs = append(attrs, netlink.Attribute{
+		Type: unix.NFTA_QUOTA_FLAGS,
+		Data: binaryutil.BigEndian.PutUint32(flags),
+	})
 
 	data, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
