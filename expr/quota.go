@@ -24,15 +24,15 @@ import (
 
 // Quota defines a threshold against a number of bytes.
 type Quota struct {
-	Bytes uint64
-	Used  uint64
-	Over  bool
+	Bytes    uint64
+	Consumed uint64
+	Over     bool
 }
 
 func (q *Quota) marshal() ([]byte, error) {
 	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_QUOTA_BYTES, Data: binaryutil.BigEndian.PutUint64(q.Bytes)},
-		{Type: unix.NFTA_QUOTA_CONSUMED, Data: binaryutil.BigEndian.PutUint64(q.Used)},
+		{Type: unix.NFTA_QUOTA_CONSUMED, Data: binaryutil.BigEndian.PutUint64(q.Consumed)},
 	}
 
 	flags := uint32(0)
@@ -67,7 +67,7 @@ func (q *Quota) unmarshal(data []byte) error {
 		case unix.NFTA_QUOTA_BYTES:
 			q.Bytes = ad.Uint64()
 		case unix.NFTA_QUOTA_CONSUMED:
-			q.Used = ad.Uint64()
+			q.Consumed = ad.Uint64()
 		case unix.NFTA_QUOTA_FLAGS:
 			q.Over = (ad.Uint32() & unix.NFT_QUOTA_F_INV) == 1
 		}

@@ -4827,9 +4827,9 @@ func TestQuota(t *testing.T) {
 		Exprs: []expr.Any{
 			// [ quota bytes 6 consumed 0 flags 1 ]
 			&expr.Quota{
-				Bytes: uint64(6),
-				Used:  uint64(0),
-				Over:  true,
+				Bytes:    6,
+				Consumed: 0,
+				Over:     true,
 			},
 		},
 	})
