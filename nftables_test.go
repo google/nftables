@@ -4768,6 +4768,77 @@ func TestNotrack(t *testing.T) {
 	}
 }
 
+func TestQuota(t *testing.T) {
+
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// nft flush ruleset
+		[]byte("\x00\x00\x00\x00"),
+		// nft add table ip filter
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+		// nft add chain ip filter regular-chain
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x12\x00\x03\x00\x72\x65\x67\x75\x6c\x61\x72\x2d\x63\x68\x61\x69\x6e\x00\x00\x00"),
+		// nft add rule ip filter regular-chain quota over 6 bytes
+		[]byte("\x02\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x12\x00\x02\x00\x72\x65\x67\x75\x6c\x61\x72\x2d\x63\x68\x61\x69\x6e\x00\x00\x00\x38\x00\x04\x80\x34\x00\x01\x80\x0a\x00\x01\x00\x71\x75\x6f\x74\x61\x00\x00\x00\x24\x00\x02\x80\x0c\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x06\x0c\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\x00\x02\x00\x00\x00\x00\x01"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	c := &nftables.Conn{
+		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want[idx]) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				got := b
+				if !bytes.Equal(got, want[idx]) {
+					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want[idx])))
+				}
+			}
+			return req, nil
+		},
+	}
+
+	c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	output := c.AddChain(&nftables.Chain{
+		Name:  "regular-chain",
+		Table: filter,
+	})
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: output,
+		Exprs: []expr.Any{
+			// [ quota bytes 6 consumed 0 flags 1 ]
+			&expr.Quota{
+				Bytes:    6,
+				Consumed: 0,
+				Over:     true,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStatelessNAT(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft add rule filter prerouting mark set jhash ip saddr mod 2
