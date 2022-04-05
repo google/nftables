@@ -227,6 +227,10 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 				switch ad.Type() {
 				case unix.NFTA_EXPR_NAME:
 					name = ad.String()
+					if name == "notrack" {
+						e := &expr.Notrack{}
+						exprs = append(exprs, e)
+					}
 				case unix.NFTA_EXPR_DATA:
 					var e expr.Any
 					switch name {
