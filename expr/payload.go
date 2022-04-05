@@ -112,6 +112,7 @@ func (e *Payload) unmarshal(data []byte) error {
 			e.DestRegister = ad.Uint32()
 		case unix.NFTA_PAYLOAD_SREG:
 			e.SourceRegister = ad.Uint32()
+			e.OperationType = PayloadWrite
 		case unix.NFTA_PAYLOAD_BASE:
 			e.Base = PayloadBase(ad.Uint32())
 		case unix.NFTA_PAYLOAD_OFFSET:
