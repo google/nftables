@@ -15,7 +15,7 @@
 package expr
 
 import (
-	"fmt"
+	"encoding/binary"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
@@ -40,16 +40,24 @@ type Exthdr struct {
 }
 
 func (e *Exthdr) marshal() ([]byte, error) {
-	data, err := netlink.MarshalAttributes([]netlink.Attribute{
-		{Type: unix.NFTA_EXTHDR_SREG, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister)},
+	// Operations are differentiated by the Op and whether the SourceRegister
+	// or DestRegister is set. Mixing them results in EINVAL.
+	attr := []netlink.Attribute{
 		{Type: unix.NFTA_EXTHDR_TYPE, Data: []byte{e.Type}},
 		{Type: unix.NFTA_EXTHDR_OFFSET, Data: binaryutil.BigEndian.PutUint32(e.Offset)},
 		{Type: unix.NFTA_EXTHDR_LEN, Data: binaryutil.BigEndian.PutUint32(e.Len)},
-		// TODO: these fields seem to be conditional?
-		//{Type: unix.NFTA_EXTHDR_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)},
-		//{Type: unix.NFTA_EXTHDR_FLAGS, Data: binaryutil.BigEndian.PutUint32(e.Flags)},
 		{Type: unix.NFTA_EXTHDR_OP, Data: binaryutil.BigEndian.PutUint32(uint32(e.Op))},
-	})
+	}
+	if e.SourceRegister != 0 {
+		attr = append(attr,
+			netlink.Attribute{Type: unix.NFTA_EXTHDR_SREG, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister)})
+	} else {
+		attr = append(attr,
+			netlink.Attribute{Type: unix.NFTA_EXTHDR_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)},
+			netlink.Attribute{Type: unix.NFTA_EXTHDR_FLAGS, Data: binaryutil.BigEndian.PutUint32(e.Flags)})
+	}
+
+	data, err := netlink.MarshalAttributes(attr)
 	if err != nil {
 		return nil, err
 	}
@@ -60,5 +68,28 @@ func (e *Exthdr) marshal() ([]byte, error) {
 }
 
 func (e *Exthdr) unmarshal(data []byte) error {
-	return fmt.Errorf("not yet implemented")
+	ad, err := netlink.NewAttributeDecoder(data)
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_EXTHDR_DREG:
+			e.DestRegister = ad.Uint32()
+		case unix.NFTA_EXTHDR_TYPE:
+			e.Type = ad.Uint8()
+		case unix.NFTA_EXTHDR_OFFSET:
+			e.Offset = ad.Uint32()
+		case unix.NFTA_EXTHDR_LEN:
+			e.Len = ad.Uint32()
+		case unix.NFTA_EXTHDR_FLAGS:
+			e.Flags = ad.Uint32()
+		case unix.NFTA_EXTHDR_OP:
+			e.Op = ExthdrOp(ad.Uint32())
+		case unix.NFTA_EXTHDR_SREG:
+			e.SourceRegister = ad.Uint32()
+		}
+	}
+	return ad.Err()
 }

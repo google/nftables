@@ -260,6 +260,8 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 						e = &expr.Dynset{}
 					case "log":
 						e = &expr.Log{}
+					case "exthdr":
+						e = &expr.Exthdr{}
 					}
 					if e == nil {
 						// TODO: introduce an opaque expression type so that users know
