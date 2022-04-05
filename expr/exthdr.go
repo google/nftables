@@ -40,20 +40,27 @@ type Exthdr struct {
 }
 
 func (e *Exthdr) marshal() ([]byte, error) {
+	var attr []netlink.Attribute
+
 	// Operations are differentiated by the Op and whether the SourceRegister
-	// or DestRegister is set. Mixing them results in EINVAL.
-	attr := []netlink.Attribute{
-		{Type: unix.NFTA_EXTHDR_TYPE, Data: []byte{e.Type}},
-		{Type: unix.NFTA_EXTHDR_OFFSET, Data: binaryutil.BigEndian.PutUint32(e.Offset)},
-		{Type: unix.NFTA_EXTHDR_LEN, Data: binaryutil.BigEndian.PutUint32(e.Len)},
-		{Type: unix.NFTA_EXTHDR_OP, Data: binaryutil.BigEndian.PutUint32(uint32(e.Op))},
-	}
+	// or DestRegister is set. Mixing them results in EOPNOTSUPP.
 	if e.SourceRegister != 0 {
-		attr = append(attr,
-			netlink.Attribute{Type: unix.NFTA_EXTHDR_SREG, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister)})
+		attr = []netlink.Attribute{
+			{Type: unix.NFTA_EXTHDR_SREG, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister)}}
 	} else {
+		attr = []netlink.Attribute{
+			netlink.Attribute{Type: unix.NFTA_EXTHDR_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)}}
+	}
+
+	attr = append(attr,
+		netlink.Attribute{Type: unix.NFTA_EXTHDR_TYPE, Data: []byte{e.Type}},
+		netlink.Attribute{Type: unix.NFTA_EXTHDR_OFFSET, Data: binaryutil.BigEndian.PutUint32(e.Offset)},
+		netlink.Attribute{Type: unix.NFTA_EXTHDR_LEN, Data: binaryutil.BigEndian.PutUint32(e.Len)},
+		netlink.Attribute{Type: unix.NFTA_EXTHDR_OP, Data: binaryutil.BigEndian.PutUint32(uint32(e.Op))})
+
+	// Flags is only set if DREG is set
+	if e.DestRegister != 0 {
 		attr = append(attr,
-			netlink.Attribute{Type: unix.NFTA_EXTHDR_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)},
 			netlink.Attribute{Type: unix.NFTA_EXTHDR_FLAGS, Data: binaryutil.BigEndian.PutUint32(e.Flags)})
 	}
 
