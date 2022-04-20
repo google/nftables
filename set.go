@@ -33,6 +33,13 @@ import (
 const (
 	SetConcatTypeBits = 6
 	SetConcatTypeMask = (1 << SetConcatTypeBits) - 1
+	// below consts added because not found in go unix package
+	// https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h?id=d1289bff58e1878c3162f574c603da993e29b113#n306
+	NFT_SET_CONCAT = 0x80
+	// https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h?id=d1289bff58e1878c3162f574c603da993e29b113#n330
+	NFTA_SET_DESC_CONCAT = 2
+	// https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h?id=d1289bff58e1878c3162f574c603da993e29b113#n428
+	NFTA_SET_ELEM_KEY_END = 10
 )
 
 var allocSetID uint32
@@ -108,53 +115,53 @@ var (
 	TypeTimeDay     = SetDatatype{Name: "day", Bytes: 1, nftMagic: 45}
 	TypeCGroupV2    = SetDatatype{Name: "cgroupsv2", Bytes: 8, nftMagic: 46}
 
-	nftDatatypes = []SetDatatype{
-		TypeVerdict,
-		TypeNFProto,
-		TypeBitmask,
-		TypeInteger,
-		TypeString,
-		TypeLLAddr,
-		TypeIPAddr,
-		TypeIP6Addr,
-		TypeEtherAddr,
-		TypeEtherType,
-		TypeARPOp,
-		TypeInetProto,
-		TypeInetService,
-		TypeICMPType,
-		TypeTCPFlag,
-		TypeDCCPPktType,
-		TypeMHType,
-		TypeTime,
-		TypeMark,
-		TypeIFIndex,
-		TypeARPHRD,
-		TypeRealm,
-		TypeClassID,
-		TypeUID,
-		TypeGID,
-		TypeCTState,
-		TypeCTDir,
-		TypeCTStatus,
-		TypeICMP6Type,
-		TypeCTLabel,
-		TypePktType,
-		TypeICMPCode,
-		TypeICMPV6Code,
-		TypeICMPXCode,
-		TypeDevGroup,
-		TypeDSCP,
-		TypeECN,
-		TypeFIBAddr,
-		TypeBoolean,
-		TypeCTEventBit,
-		TypeIFName,
-		TypeIGMPType,
-		TypeTimeDate,
-		TypeTimeHour,
-		TypeTimeDay,
-		TypeCGroupV2,
+	nftDatatypes = map[string]SetDatatype{
+		TypeVerdict.Name:     TypeVerdict,
+		TypeNFProto.Name:     TypeNFProto,
+		TypeBitmask.Name:     TypeBitmask,
+		TypeInteger.Name:     TypeInteger,
+		TypeString.Name:      TypeString,
+		TypeLLAddr.Name:      TypeLLAddr,
+		TypeIPAddr.Name:      TypeIPAddr,
+		TypeIP6Addr.Name:     TypeIP6Addr,
+		TypeEtherAddr.Name:   TypeEtherAddr,
+		TypeEtherType.Name:   TypeEtherType,
+		TypeARPOp.Name:       TypeARPOp,
+		TypeInetProto.Name:   TypeInetProto,
+		TypeInetService.Name: TypeInetService,
+		TypeICMPType.Name:    TypeICMPType,
+		TypeTCPFlag.Name:     TypeTCPFlag,
+		TypeDCCPPktType.Name: TypeDCCPPktType,
+		TypeMHType.Name:      TypeMHType,
+		TypeTime.Name:        TypeTime,
+		TypeMark.Name:        TypeMark,
+		TypeIFIndex.Name:     TypeIFIndex,
+		TypeARPHRD.Name:      TypeARPHRD,
+		TypeRealm.Name:       TypeRealm,
+		TypeClassID.Name:     TypeClassID,
+		TypeUID.Name:         TypeUID,
+		TypeGID.Name:         TypeGID,
+		TypeCTState.Name:     TypeCTState,
+		TypeCTDir.Name:       TypeCTDir,
+		TypeCTStatus.Name:    TypeCTStatus,
+		TypeICMP6Type.Name:   TypeICMP6Type,
+		TypeCTLabel.Name:     TypeCTLabel,
+		TypePktType.Name:     TypePktType,
+		TypeICMPCode.Name:    TypeICMPCode,
+		TypeICMPV6Code.Name:  TypeICMPV6Code,
+		TypeICMPXCode.Name:   TypeICMPXCode,
+		TypeDevGroup.Name:    TypeDevGroup,
+		TypeDSCP.Name:        TypeDSCP,
+		TypeECN.Name:         TypeECN,
+		TypeFIBAddr.Name:     TypeFIBAddr,
+		TypeBoolean.Name:     TypeBoolean,
+		TypeCTEventBit.Name:  TypeCTEventBit,
+		TypeIFName.Name:      TypeIFName,
+		TypeIGMPType.Name:    TypeIGMPType,
+		TypeTimeDate.Name:    TypeTimeDate,
+		TypeTimeHour.Name:    TypeTimeHour,
+		TypeTimeDay.Name:     TypeTimeDay,
+		TypeCGroupV2.Name:    TypeCGroupV2,
 	}
 
 	// ctLabelBitSize is defined in https://git.netfilter.org/nftables/tree/src/ct.c.
@@ -206,6 +213,17 @@ func ConcatSetType(types ...SetDatatype) (SetDatatype, error) {
 	return SetDatatype{Name: strings.Join(names, " . "), Bytes: bytes, nftMagic: magic}, nil
 }
 
+// ConcatSetTypeElements uses the ConcatSetType name to calculate and  return
+// a list of base types which were used to construct the concatenated type
+func ConcatSetTypeElements(t SetDatatype) []SetDatatype {
+	names := strings.Split(t.Name, " . ")
+	types := make([]SetDatatype, len(names))
+	for i, n := range names {
+		types[i] = nftDatatypes[n]
+	}
+	return types
+}
+
 // Set represents an nftables set. Anonymous sets are only valid within the
 // context of a single batch.
 type Set struct {
@@ -217,15 +235,21 @@ type Set struct {
 	Interval   bool
 	IsMap      bool
 	HasTimeout bool
-	Timeout    time.Duration
-	KeyType    SetDatatype
-	DataType   SetDatatype
+	// Indicates that the set contains a concatenation
+	// https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h?id=d1289bff58e1878c3162f574c603da993e29b113#n306
+	Concatenation bool
+	Timeout       time.Duration
+	KeyType       SetDatatype
+	DataType      SetDatatype
 }
 
 // SetElement represents a data point within a set.
 type SetElement struct {
-	Key         []byte
-	Val         []byte
+	Key []byte
+	Val []byte
+	// Field used for definition of ending interval value in concatenated types
+	// https://git.netfilter.org/libnftnl/tree/include/set_elem.h?id=e2514c0eff4da7e8e0aabd410f7b7d0b7564c880#n11
+	KeyEnd      []byte
 	IntervalEnd bool
 	// To support vmap, a caller must be able to pass Verdict type of data.
 	// If IsMap is true and VerdictData is not nil, then Val of SetElement will be ignored
@@ -247,6 +271,11 @@ func (s *SetElement) decode() func(b []byte) error {
 			switch ad.Type() {
 			case unix.NFTA_SET_ELEM_KEY:
 				s.Key, err = decodeElement(ad.Bytes())
+				if err != nil {
+					return err
+				}
+			case NFTA_SET_ELEM_KEY_END:
+				s.KeyEnd, err = decodeElement(ad.Bytes())
 				if err != nil {
 					return err
 				}
@@ -325,7 +354,15 @@ func (s *Set) makeElemList(vals []SetElement, id uint32) ([]netlink.Attribute, e
 		if err != nil {
 			return nil, fmt.Errorf("marshal key %d: %v", i, err)
 		}
+
 		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey})
+		if len(v.KeyEnd) > 0 {
+			encodedKeyEnd, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.KeyEnd}})
+			if err != nil {
+				return nil, fmt.Errorf("marshal key end %d: %v", i, err)
+			}
+			item = append(item, netlink.Attribute{Type: NFTA_SET_ELEM_KEY_END | unix.NLA_F_NESTED, Data: encodedKeyEnd})
+		}
 		if s.HasTimeout && v.Timeout != 0 {
 			// Set has Timeout flag set, which means an individual element can specify its own timeout.
 			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_TIMEOUT, Data: binaryutil.BigEndian.PutUint64(uint64(v.Timeout.Milliseconds()))})
@@ -431,6 +468,9 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	if s.HasTimeout {
 		flags |= unix.NFT_SET_TIMEOUT
 	}
+	if s.Concatenation {
+		flags |= NFT_SET_CONCAT
+	}
 	tableInfo := []netlink.Attribute{
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},
 		{Type: unix.NFTA_SET_NAME, Data: []byte(s.Name + "\x00")},
@@ -465,7 +505,33 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		}
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: numberOfElements})
 	}
+	if s.Concatenation {
+		// Length of concatenated types is a must, otherwise segfaults when executing nft list ruleset
+		var concatDefinition []byte
+		elements := ConcatSetTypeElements(s.KeyType)
+		for i, v := range elements {
+			// Marshal base type size value
+			valData, err := netlink.MarshalAttributes([]netlink.Attribute{
+				{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(v.Bytes)},
+			})
+			if err != nil {
+				return fmt.Errorf("fail to marshal element key size %d: %v", i, err)
+			}
+			// Marshal base type size description
+			descSize, err := netlink.MarshalAttributes([]netlink.Attribute{
+				{Type: unix.NFTA_SET_DESC_SIZE, Data: valData},
+			})
 
+			concatDefinition = append(concatDefinition, descSize...)
+		}
+		// Marshal all base type descriptions into concatenation size description
+		concatBytes, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NLA_F_NESTED | NFTA_SET_DESC_CONCAT, Data: concatDefinition}})
+		if err != nil {
+			return fmt.Errorf("fail to marshal concat definition %v", err)
+		}
+		// Marshal concat size description as set description
+		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: concatBytes})
+	}
 	if s.Anonymous || s.Constant || s.Interval {
 		tableInfo = append(tableInfo,
 			// Semantically useless - kept for binary compatability with nft
@@ -585,6 +651,7 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			set.Interval = (flags & unix.NFT_SET_INTERVAL) != 0
 			set.IsMap = (flags & unix.NFT_SET_MAP) != 0
 			set.HasTimeout = (flags & unix.NFT_SET_TIMEOUT) != 0
+			set.Concatenation = (flags & NFT_SET_CONCAT) != 0
 		case unix.NFTA_SET_KEY_TYPE:
 			nftMagic := ad.Uint32()
 			if invalidMagic, ok := validateKeyType(nftMagic); !ok {
