@@ -2571,6 +2571,76 @@ func TestFlushNamedSet(t *testing.T) {
 	}
 }
 
+func TestSetElementsInterval(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv6,
+		Name:   "filter",
+	})
+	portSet := &nftables.Set{
+		Table:         filter,
+		Name:          "ports",
+		KeyType:       nftables.MustConcatSetType(nftables.TypeIP6Addr, nftables.TypeInetService, nftables.TypeIP6Addr),
+		Interval:      true,
+		Concatenation: true,
+	}
+	if err := c.AddSet(portSet, nil); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+
+	// { 777c:ab4b:85f0:1614:49e5:d29b:aa7b:cc90 . 50000 . 8709:1cb9:163e:9b55:357f:ef64:708a:edcb }
+	keyBytes := []byte{119, 124, 171, 75, 133, 240, 22, 20, 73, 229, 210, 155, 170, 123, 204, 144, 195, 80, 0, 0, 135, 9, 28, 185, 22, 62, 155, 85, 53, 127, 239, 100, 112, 138, 237, 203}
+	// { 777c:ab4b:85f0:1614:49e5:d29b:aa7b:cc90 . 60000 . 8709:1cb9:163e:9b55:357f:ef64:708a:edcb }
+	keyEndBytes := []byte{119, 124, 171, 75, 133, 240, 22, 20, 73, 229, 210, 155, 170, 123, 204, 144, 234, 96, 0, 0, 135, 9, 28, 185, 22, 62, 155, 85, 53, 127, 239, 100, 112, 138, 237, 203}
+	// elements = { 777c:ab4b:85f0:1614:49e5:d29b:aa7b:cc90 . 50000-60000 . 8709:1cb9:163e:9b55:357f:ef64:708a:edcb }
+	if err := c.SetAddElements(portSet, []nftables.SetElement{
+		{Key: keyBytes, KeyEnd: keyEndBytes},
+	}); err != nil {
+		t.Errorf("c.SetVal(portSet) failed: %v", err)
+	}
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	sets, err := c.GetSets(filter)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(sets) != 1 {
+		t.Fatalf("len(sets) = %d, want 1", len(sets))
+	}
+
+	elements, err := c.GetSetElements(sets[0])
+	if err != nil {
+		t.Errorf("c.GetSetElements(portSet) failed: %v", err)
+	}
+	if len(elements) != 1 {
+		t.Fatalf("len(portSetElements) = %d, want 1", len(sets))
+	}
+
+	element := elements[0]
+	if len(element.Key) == 0 {
+		t.Fatal("len(portSetElements.Key) = 0")
+	}
+	if len(element.KeyEnd) == 0 {
+		t.Fatal("len(portSetElements.KeyEnd) = 0")
+	}
+	if !bytes.Equal(element.Key, keyBytes) {
+		t.Fatal("element.Key != keyBytes")
+	}
+	if !bytes.Equal(element.KeyEnd, keyEndBytes) {
+		t.Fatal("element.KeyEnd != keyEndBytes")
+	}
+}
+
 func TestFlushChain(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.

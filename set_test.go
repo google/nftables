@@ -137,3 +137,47 @@ func TestConcatSetType(t *testing.T) {
 		})
 	}
 }
+
+func TestConcatSetTypeElements(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		types []SetDatatype
+	}{
+		{
+			name:  "concat ip6 . inet_service",
+			types: []SetDatatype{TypeIP6Addr, TypeInetService},
+		},
+		{
+			name:  "concat ip . inet_service . ip6",
+			types: []SetDatatype{TypeIPAddr, TypeInetService, TypeIP6Addr},
+		},
+		{
+			name:  "concat inet_proto . inet_service",
+			types: []SetDatatype{TypeInetProto, TypeInetService},
+		},
+		{
+			name:  "concat ip . ip . ip . ip",
+			types: []SetDatatype{TypeIPAddr, TypeIPAddr, TypeIPAddr, TypeIPAddr},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			concat, err := ConcatSetType(tt.types...)
+			if err != nil {
+				return
+			}
+			elements := ConcatSetTypeElements(concat)
+			if got, want := len(elements), len(tt.types); got != want {
+				t.Errorf("invalid number of elements: expected %d, got %d", got, want)
+			}
+			for i, v := range tt.types {
+				if got, want := elements[i].GetNFTMagic(), v.GetNFTMagic(); got != want {
+					t.Errorf("invalid element on position %d: expected %d, got %d", i, got, want)
+				}
+			}
+		})
+	}
+}
