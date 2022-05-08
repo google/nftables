@@ -318,8 +318,8 @@ func decodeElement(d []byte) ([]byte, error) {
 
 // SetAddElements applies data points to an nftables set.
 func (cc *Conn) SetAddElements(s *Set, vals []SetElement) error {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	if s.Anonymous {
 		return errors.New("anonymous sets cannot be updated")
 	}
@@ -431,8 +431,8 @@ func (s *Set) makeElemList(vals []SetElement, id uint32) ([]netlink.Attribute, e
 
 // AddSet adds the specified Set.
 func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	// Based on nft implementation & linux source.
 	// Link: https://github.com/torvalds/linux/blob/49a57857aeea06ca831043acbb0fa5e0f50602fd/net/netfilter/nf_tables_api.c#L3395
 	// Another reference: https://git.netfilter.org/nftables/tree/src
@@ -567,8 +567,8 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 
 // DelSet deletes a specific set, along with all elements it contains.
 func (cc *Conn) DelSet(s *Set) {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},
 		{Type: unix.NFTA_SET_NAME, Data: []byte(s.Name + "\x00")},
@@ -584,8 +584,8 @@ func (cc *Conn) DelSet(s *Set) {
 
 // SetDeleteElements deletes data points from an nftables set.
 func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	if s.Anonymous {
 		return errors.New("anonymous sets cannot be updated")
 	}
@@ -607,8 +607,8 @@ func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
 
 // FlushSet deletes all data points from an nftables set.
 func (cc *Conn) FlushSet(s *Set) {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},
 		{Type: unix.NFTA_SET_NAME, Data: []byte(s.Name + "\x00")},
@@ -747,11 +747,11 @@ func elementsFromMsg(msg netlink.Message) ([]SetElement, error) {
 
 // GetSets returns the sets in the specified table.
 func (cc *Conn) GetSets(t *Table) ([]*Set, error) {
-	conn, err := cc.dialNetlink()
+	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = closer() }()
 
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(t.Name + "\x00")},
@@ -791,11 +791,11 @@ func (cc *Conn) GetSets(t *Table) ([]*Set, error) {
 
 // GetSetByName returns the set in the specified table if matching name is found.
 func (cc *Conn) GetSetByName(t *Table, name string) (*Set, error) {
-	conn, err := cc.dialNetlink()
+	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = closer() }()
 
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(t.Name + "\x00")},
@@ -836,11 +836,11 @@ func (cc *Conn) GetSetByName(t *Table, name string) (*Set, error) {
 
 // GetSetElements returns the elements in the specified set.
 func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
-	conn, err := cc.dialNetlink()
+	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = closer() }()
 
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_SET_TABLE, Data: []byte(s.Table.Name + "\x00")},

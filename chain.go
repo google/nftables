@@ -96,8 +96,8 @@ type Chain struct {
 // AddChain adds the specified Chain. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains#Adding_base_chains
 func (cc *Conn) AddChain(c *Chain) *Chain {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_CHAIN_TABLE, Data: []byte(c.Table.Name + "\x00")},
 		{Type: unix.NFTA_CHAIN_NAME, Data: []byte(c.Name + "\x00")},
@@ -137,8 +137,8 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 // DelChain deletes the specified Chain. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains#Deleting_chains
 func (cc *Conn) DelChain(c *Chain) {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_CHAIN_TABLE, Data: []byte(c.Table.Name + "\x00")},
 		{Type: unix.NFTA_CHAIN_NAME, Data: []byte(c.Name + "\x00")},
@@ -156,8 +156,8 @@ func (cc *Conn) DelChain(c *Chain) {
 // FlushChain removes all rules within the specified Chain. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains#Flushing_chain
 func (cc *Conn) FlushChain(c *Chain) {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(c.Table.Name + "\x00")},
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(c.Name + "\x00")},
@@ -173,11 +173,11 @@ func (cc *Conn) FlushChain(c *Chain) {
 
 // ListChains returns currently configured chains in the kernel
 func (cc *Conn) ListChains() ([]*Chain, error) {
-	conn, err := cc.dialNetlink()
+	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = closer() }()
 
 	msg := netlink.Message{
 		Header: netlink.Header{
