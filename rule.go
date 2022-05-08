@@ -52,7 +52,14 @@ type Rule struct {
 }
 
 // GetRule returns the rules in the specified table and chain.
+//
+// Deprecated: use GetRules instead.
 func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
+	return cc.GetRules(t, c)
+}
+
+// GetRules returns the rules in the specified table and chain.
+func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
 	conn, err := cc.dialNetlink()
 	if err != nil {
 		return nil, err
