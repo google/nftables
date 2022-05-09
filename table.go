@@ -47,8 +47,8 @@ type Table struct {
 
 // DelTable deletes a specific table, along with all chains/rules it contains.
 func (cc *Conn) DelTable(t *Table) {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_TABLE_NAME, Data: []byte(t.Name + "\x00")},
 		{Type: unix.NFTA_TABLE_FLAGS, Data: []byte{0, 0, 0, 0}},
@@ -65,8 +65,8 @@ func (cc *Conn) DelTable(t *Table) {
 // AddTable adds the specified Table. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_tables
 func (cc *Conn) AddTable(t *Table) *Table {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_TABLE_NAME, Data: []byte(t.Name + "\x00")},
 		{Type: unix.NFTA_TABLE_FLAGS, Data: []byte{0, 0, 0, 0}},
@@ -84,8 +84,8 @@ func (cc *Conn) AddTable(t *Table) *Table {
 // FlushTable removes all rules in all chains within the specified Table. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_tables#Flushing_tables
 func (cc *Conn) FlushTable(t *Table) {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(t.Name + "\x00")},
 	})
@@ -100,12 +100,11 @@ func (cc *Conn) FlushTable(t *Table) {
 
 // ListTables returns currently configured tables in the kernel
 func (cc *Conn) ListTables() ([]*Table, error) {
-	conn, err := cc.dialNetlink()
+	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
 	}
-
-	defer conn.Close()
+	defer func() { _ = closer() }()
 
 	msg := netlink.Message{
 		Header: netlink.Header{

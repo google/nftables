@@ -41,8 +41,8 @@ func (cc *Conn) AddObject(o Obj) Obj {
 // AddObj adds the specified Obj. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Stateful_objects
 func (cc *Conn) AddObj(o Obj) Obj {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data, err := o.marshal(true)
 	if err != nil {
 		cc.setErr(err)
@@ -61,8 +61,8 @@ func (cc *Conn) AddObj(o Obj) Obj {
 
 // DeleteObject deletes the specified Obj
 func (cc *Conn) DeleteObject(o Obj) {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data, err := o.marshal(false)
 	if err != nil {
 		cc.setErr(err)
@@ -174,11 +174,11 @@ func objFromMsg(msg netlink.Message) (Obj, error) {
 }
 
 func (cc *Conn) getObj(o Obj, t *Table, msgType uint16) ([]Obj, error) {
-	conn, err := cc.dialNetlink()
+	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = closer() }()
 
 	var data []byte
 	var flags netlink.HeaderFlags

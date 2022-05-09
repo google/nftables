@@ -16,6 +16,7 @@ package nftables_test
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -102,7 +103,11 @@ func openSystemNFTConn(t *testing.T) (*nftables.Conn, netns.NsHandle) {
 	if err != nil {
 		t.Fatalf("netns.New() failed: %v", err)
 	}
-	return &nftables.Conn{NetNS: int(ns)}, ns
+	c, err := nftables.New(nftables.WithNetNSFd(int(ns)))
+	if err != nil {
+		t.Fatalf("nftables.New() failed: %v", err)
+	}
+	return c, ns
 }
 
 func cleanupSystemNFTConn(t *testing.T, newNS netns.NsHandle) {
@@ -288,8 +293,8 @@ func TestConfigureNAT(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -309,7 +314,9 @@ func TestConfigureNAT(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -502,8 +509,8 @@ func TestConfigureNATSourceAddress(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -523,7 +530,9 @@ func TestConfigureNATSourceAddress(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -802,8 +811,8 @@ func TestGetRules(t *testing.T) {
 		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x14, Type: 0x3, Flags: 0x2, Sequence: 0x9acb0443, PID: 0xba38ef3c}, Data: []uint8{0x0, 0x0, 0x0, 0x0}}},
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -825,7 +834,9 @@ func TestGetRules(t *testing.T) {
 			rep := reply[0]
 			reply = reply[1:]
 			return rep, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	rules, err := c.GetRules(
@@ -881,8 +892,8 @@ func TestAddCounter(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -902,7 +913,9 @@ func TestAddCounter(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.AddObj(&nftables.CounterObj{
@@ -945,8 +958,8 @@ func TestDeleteCounter(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -966,7 +979,9 @@ func TestDeleteCounter(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.AddObj(&nftables.CounterObj{
@@ -996,8 +1011,8 @@ func TestDelRule(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -1017,7 +1032,9 @@ func TestDelRule(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.DelRule(&nftables.Rule{
@@ -1041,8 +1058,8 @@ func TestLog(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -1062,7 +1079,9 @@ func TestLog(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.AddRule(&nftables.Rule{
@@ -1091,8 +1110,8 @@ func TestTProxy(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -1112,7 +1131,9 @@ func TestTProxy(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.AddRule(&nftables.Rule{
@@ -1154,8 +1175,8 @@ func TestCt(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -1175,7 +1196,9 @@ func TestCt(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.AddRule(&nftables.Rule{
@@ -1207,8 +1230,8 @@ func TestCtSet(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -1228,7 +1251,9 @@ func TestCtSet(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.AddRule(&nftables.Rule{
@@ -1265,8 +1290,8 @@ func TestCtStat(t *testing.T) {
 		// batch end
 		[]byte("\x00\x00\x00\x0a"),
 	}
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -1286,7 +1311,9 @@ func TestCtStat(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.AddRule(&nftables.Rule{
@@ -1323,8 +1350,8 @@ func TestAddRuleWithPosition(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -1344,7 +1371,9 @@ func TestAddRuleWithPosition(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.AddRule(&nftables.Rule{
@@ -1385,6 +1414,73 @@ func TestAddRuleWithPosition(t *testing.T) {
 	if err := c.Flush(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestLastingConnection(t *testing.T) {
+	testdialerr := errors.New("test dial sentinel error")
+	dialCount := 0
+	c, err := nftables.New(
+		nftables.AsLasting(),
+		nftables.WithTestDial(func(req []netlink.Message) ([]netlink.Message, error) {
+			dialCount++
+			return nil, testdialerr
+		}))
+	if err != nil {
+		t.Errorf("creating lasting netlink connection failed %v", err)
+		return
+	}
+	defer func() {
+		if err := c.CloseLasting(); err != nil {
+			t.Errorf("closing lasting netlink connection failed %v", err)
+		}
+	}()
+
+	_, err = c.ListTables()
+	if !errors.Is(err, testdialerr) {
+		t.Errorf("non-testdialerr error returned from TestDial %v", err)
+		return
+	}
+	if dialCount != 1 {
+		t.Errorf("internal test error with TestDial invocations %v", dialCount)
+		return
+	}
+
+	// While a lasting netlink connection is open, replacing TestDial must be
+	// ineffective as there is no need to dial again and activating a new
+	// TestDial function. The newly set TestDial function must be getting
+	// ignored.
+	c.TestDial = func(req []netlink.Message) ([]netlink.Message, error) {
+		dialCount--
+		return nil, errors.New("transient netlink connection error")
+	}
+	_, err = c.ListTables()
+	if !errors.Is(err, testdialerr) {
+		t.Errorf("non-testdialerr error returned from TestDial %v", err)
+		return
+	}
+	if dialCount != 2 {
+		t.Errorf("internal test error with TestDial invocations %v", dialCount)
+		return
+	}
+
+	for i := 0; i < 2; i++ {
+		err = c.CloseLasting()
+		if err != nil {
+			t.Errorf("closing lasting netlink connection failed in attempt no. %d: %v", i, err)
+			return
+		}
+	}
+	_, err = c.ListTables()
+	if errors.Is(err, testdialerr) {
+		t.Error("testdialerr error returned from TestDial when expecting different error")
+		return
+	}
+	if dialCount != 1 {
+		t.Errorf("internal test error with TestDial invocations %v", dialCount)
+		return
+	}
+
+	// fall into defer'ed second CloseLasting which must not cause any errors.
 }
 
 func TestListChains(t *testing.T) {
@@ -1432,8 +1528,8 @@ func TestListChains(t *testing.T) {
 		},
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			msgReply := make([]netlink.Message, len(reply))
 			for i, r := range reply {
 				nm := &netlink.Message{}
@@ -1443,7 +1539,9 @@ func TestListChains(t *testing.T) {
 				msgReply[i] = *nm
 			}
 			return msgReply, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	chains, err := c.ListChains()
@@ -1522,8 +1620,8 @@ func TestAddChain(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c := &nftables.Conn{
-			TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+		c, err := nftables.New(nftables.WithTestDial(
+			func(req []netlink.Message) ([]netlink.Message, error) {
 				for idx, msg := range req {
 					b, err := msg.MarshalBinary()
 					if err != nil {
@@ -1543,7 +1641,9 @@ func TestAddChain(t *testing.T) {
 					}
 				}
 				return req, nil
-			},
+			}))
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		filter := c.AddTable(&nftables.Table{
@@ -1599,8 +1699,8 @@ func TestDelChain(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c := &nftables.Conn{
-			TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+		c, err := nftables.New(nftables.WithTestDial(
+			func(req []netlink.Message) ([]netlink.Message, error) {
 				for idx, msg := range req {
 					b, err := msg.MarshalBinary()
 					if err != nil {
@@ -1620,7 +1720,9 @@ func TestDelChain(t *testing.T) {
 					}
 				}
 				return req, nil
-			},
+			}))
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		tt.chain.Table = &nftables.Table{
@@ -1649,8 +1751,8 @@ func TestGetObjReset(t *testing.T) {
 		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x14, Type: 0x3, Flags: 0x2, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0x0, 0x0, 0x0, 0x0}}},
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -1672,7 +1774,9 @@ func TestGetObjReset(t *testing.T) {
 			rep := reply[0]
 			reply = reply[1:]
 			return rep, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	filter := &nftables.Table{Name: "filter", Family: nftables.TableFamilyIPv4}
@@ -1892,8 +1996,8 @@ func TestConfigureClamping(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -1913,7 +2017,9 @@ func TestConfigureClamping(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -2025,8 +2131,8 @@ func TestMatchPacketHeader(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -2046,7 +2152,9 @@ func TestMatchPacketHeader(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -2153,8 +2261,8 @@ func TestDropVerdict(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -2174,7 +2282,9 @@ func TestDropVerdict(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -2253,8 +2363,8 @@ func TestCreateUseAnonymousSet(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -2274,7 +2384,9 @@ func TestCreateUseAnonymousSet(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -3221,8 +3333,8 @@ func TestConfigureNATRedirect(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -3242,7 +3354,9 @@ func TestConfigureNATRedirect(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -3326,8 +3440,8 @@ func TestConfigureJumpVerdict(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -3347,7 +3461,9 @@ func TestConfigureJumpVerdict(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -3432,8 +3548,8 @@ func TestConfigureReturnVerdict(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -3453,7 +3569,9 @@ func TestConfigureReturnVerdict(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -3517,8 +3635,8 @@ func TestConfigureRangePort(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -3538,7 +3656,9 @@ func TestConfigureRangePort(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -3615,8 +3735,8 @@ func TestConfigureRangeIPv4(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -3636,7 +3756,9 @@ func TestConfigureRangeIPv4(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -3705,8 +3827,8 @@ func TestConfigureRangeIPv6(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -3726,7 +3848,9 @@ func TestConfigureRangeIPv6(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -3818,8 +3942,8 @@ func TestSet4(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -3839,7 +3963,9 @@ func TestSet4(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	tbl := &nftables.Table{
@@ -4004,8 +4130,8 @@ func TestMasq(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c := &nftables.Conn{
-			TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+		c, err := nftables.New(nftables.WithTestDial(
+			func(req []netlink.Message) ([]netlink.Message, error) {
 				for idx, msg := range req {
 					b, err := msg.MarshalBinary()
 					if err != nil {
@@ -4025,7 +4151,9 @@ func TestMasq(t *testing.T) {
 					}
 				}
 				return req, nil
-			},
+			}))
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		filter := c.AddTable(&nftables.Table{
@@ -4135,8 +4263,8 @@ func TestReject(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c := &nftables.Conn{
-			TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+		c, err := nftables.New(nftables.WithTestDial(
+			func(req []netlink.Message) ([]netlink.Message, error) {
 				for idx, msg := range req {
 					b, err := msg.MarshalBinary()
 					if err != nil {
@@ -4156,7 +4284,9 @@ func TestReject(t *testing.T) {
 					}
 				}
 				return req, nil
-			},
+			}))
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		filter := c.AddTable(&nftables.Table{
@@ -4263,8 +4393,8 @@ func TestFib(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c := &nftables.Conn{
-			TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+		c, err := nftables.New(nftables.WithTestDial(
+			func(req []netlink.Message) ([]netlink.Message, error) {
 				for idx, msg := range req {
 					b, err := msg.MarshalBinary()
 					if err != nil {
@@ -4284,7 +4414,9 @@ func TestFib(t *testing.T) {
 					}
 				}
 				return req, nil
-			},
+			}))
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		filter := c.AddTable(&nftables.Table{
@@ -4367,8 +4499,8 @@ func TestNumgen(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c := &nftables.Conn{
-			TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+		c, err := nftables.New(nftables.WithTestDial(
+			func(req []netlink.Message) ([]netlink.Message, error) {
 				for idx, msg := range req {
 					b, err := msg.MarshalBinary()
 					if err != nil {
@@ -4388,7 +4520,9 @@ func TestNumgen(t *testing.T) {
 					}
 				}
 				return req, nil
-			},
+			}))
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		filter := c.AddTable(&nftables.Table{
@@ -4452,8 +4586,8 @@ func TestMap(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c := &nftables.Conn{
-			TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+		c, err := nftables.New(nftables.WithTestDial(
+			func(req []netlink.Message) ([]netlink.Message, error) {
 				for idx, msg := range req {
 					b, err := msg.MarshalBinary()
 					if err != nil {
@@ -4473,7 +4607,9 @@ func TestMap(t *testing.T) {
 					}
 				}
 				return req, nil
-			},
+			}))
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		filter := c.AddTable(&nftables.Table{
@@ -4570,8 +4706,8 @@ func TestVmap(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c := &nftables.Conn{
-			TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+		c, err := nftables.New(nftables.WithTestDial(
+			func(req []netlink.Message) ([]netlink.Message, error) {
 				for idx, msg := range req {
 					b, err := msg.MarshalBinary()
 					if err != nil {
@@ -4591,7 +4727,9 @@ func TestVmap(t *testing.T) {
 					}
 				}
 				return req, nil
-			},
+			}))
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		filter := c.AddTable(&nftables.Table{
@@ -4630,8 +4768,8 @@ func TestJHash(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -4651,7 +4789,9 @@ func TestJHash(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -4731,8 +4871,8 @@ func TestDup(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -4752,7 +4892,9 @@ func TestDup(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -4831,8 +4973,8 @@ func TestDupWoDev(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -4852,7 +4994,9 @@ func TestDupWoDev(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -4913,8 +5057,8 @@ func TestNotrack(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -4934,7 +5078,9 @@ func TestNotrack(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -4983,8 +5129,8 @@ func TestQuota(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -5004,7 +5150,9 @@ func TestQuota(t *testing.T) {
 				}
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()
@@ -5058,8 +5206,8 @@ func TestStatelessNAT(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c := &nftables.Conn{
-		TestDial: func(req []netlink.Message) ([]netlink.Message, error) {
+	c, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
 			for idx, msg := range req {
 				b, err := msg.MarshalBinary()
 				if err != nil {
@@ -5079,7 +5227,9 @@ func TestStatelessNAT(t *testing.T) {
 				want = want[1:]
 			}
 			return req, nil
-		},
+		}))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	c.FlushRuleset()

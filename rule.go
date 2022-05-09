@@ -60,11 +60,11 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 
 // GetRules returns the rules in the specified table and chain.
 func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
-	conn, err := cc.dialNetlink()
+	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = closer() }()
 
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(t.Name + "\x00")},
@@ -107,8 +107,8 @@ func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
 
 // AddRule adds the specified Rule
 func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	exprAttrs := make([]netlink.Attribute, len(r.Exprs))
 	for idx, expr := range r.Exprs {
 		exprAttrs[idx] = netlink.Attribute{
@@ -190,8 +190,8 @@ func (cc *Conn) InsertRule(r *Rule) *Rule {
 
 // DelRule deletes the specified Rule, rule's handle cannot be 0
 func (cc *Conn) DelRule(r *Rule) error {
-	cc.Lock()
-	defer cc.Unlock()
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(r.Table.Name + "\x00")},
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(r.Chain.Name + "\x00")},
