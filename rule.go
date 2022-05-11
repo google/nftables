@@ -273,6 +273,10 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 						e = &expr.Log{}
 					case "exthdr":
 						e = &expr.Exthdr{}
+					case "match":
+						e = &expr.Match{}
+					case "target":
+						e = &expr.Target{}
 					}
 					if e == nil {
 						// TODO: introduce an opaque expression type so that users know
