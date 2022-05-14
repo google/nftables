@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 
 	"github.com/google/nftables/binaryutil"
+	"github.com/google/nftables/xt"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -13,7 +14,7 @@ import (
 type Match struct {
 	Name string
 	Rev  uint32
-	Info []byte
+	Info xt.InfoAny
 }
 
 func (e *Match) marshal(fam byte) ([]byte, error) {
@@ -24,10 +25,16 @@ func (e *Match) marshal(fam byte) ([]byte, error) {
 	if len(name) >= /* sic! */ XTablesExtensionNameMaxLen {
 		name = name[:XTablesExtensionNameMaxLen-1] // leave room for trailing \x00.
 	}
+	// Marshalling assumes that the correct Info type for the particular table
+	// family and Match revision has been set.
+	info, err := xt.Marshal(xt.TableFamily(fam), e.Rev, e.Info)
+	if err != nil {
+		return nil, err
+	}
 	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_MATCH_NAME, Data: []byte(name + "\x00")},
 		{Type: unix.NFTA_MATCH_REV, Data: binaryutil.BigEndian.PutUint32(e.Rev)},
-		{Type: unix.NFTA_MATCH_INFO, Data: e.Info},
+		{Type: unix.NFTA_MATCH_INFO, Data: info},
 	}
 	data, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
@@ -47,6 +54,7 @@ func (e *Match) unmarshal(fam byte, data []byte) error {
 		return err
 	}
 
+	var info []byte
 	ad.ByteOrder = binary.BigEndian
 	for ad.Next() {
 		switch ad.Type() {
@@ -56,8 +64,12 @@ func (e *Match) unmarshal(fam byte, data []byte) error {
 		case unix.NFTA_MATCH_REV:
 			e.Rev = ad.Uint32()
 		case unix.NFTA_MATCH_INFO:
-			e.Info = ad.Bytes()
+			info = ad.Bytes()
 		}
 	}
-	return ad.Err()
+	if err = ad.Err(); err != nil {
+		return err
+	}
+	e.Info, err = xt.Unmarshal(e.Name, xt.TableFamily(fam), e.Rev, info)
+	return err
 }

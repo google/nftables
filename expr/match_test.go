@@ -5,12 +5,14 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/google/nftables/xt"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
 
 func TestMatch(t *testing.T) {
 	t.Parallel()
+	payload := xt.Unknown([]byte{0xb0, 0x1d, 0xca, 0xfe, 0x00})
 	tests := []struct {
 		name string
 		mtch Match
@@ -20,7 +22,7 @@ func TestMatch(t *testing.T) {
 			mtch: Match{
 				Name: "foobar",
 				Rev:  1234567890,
-				Info: []byte{0xb0, 0x1d, 0xca, 0xfe, 0x00},
+				Info: &payload,
 			},
 		},
 	}
