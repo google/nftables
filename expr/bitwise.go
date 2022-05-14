@@ -30,7 +30,7 @@ type Bitwise struct {
 	Xor            []byte
 }
 
-func (e *Bitwise) marshal() ([]byte, error) {
+func (e *Bitwise) marshal(fam byte) ([]byte, error) {
 	mask, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_DATA_VALUE, Data: e.Mask},
 	})
@@ -60,7 +60,7 @@ func (e *Bitwise) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Bitwise) unmarshal(data []byte) error {
+func (e *Bitwise) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

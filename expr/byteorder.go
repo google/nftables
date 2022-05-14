@@ -37,7 +37,7 @@ type Byteorder struct {
 	Size           uint32
 }
 
-func (e *Byteorder) marshal() ([]byte, error) {
+func (e *Byteorder) marshal(fam byte) ([]byte, error) {
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_BYTEORDER_SREG, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister)},
 		{Type: unix.NFTA_BYTEORDER_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)},
@@ -54,6 +54,6 @@ func (e *Byteorder) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Byteorder) unmarshal(data []byte) error {
+func (e *Byteorder) unmarshal(fam byte, data []byte) error {
 	return fmt.Errorf("not yet implemented")
 }

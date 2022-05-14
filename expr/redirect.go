@@ -28,7 +28,7 @@ type Redir struct {
 	Flags            uint32
 }
 
-func (e *Redir) marshal() ([]byte, error) {
+func (e *Redir) marshal(fam byte) ([]byte, error) {
 	var attrs []netlink.Attribute
 	if e.RegisterProtoMin > 0 {
 		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_REDIR_REG_PROTO_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegisterProtoMin)})
@@ -51,7 +51,7 @@ func (e *Redir) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Redir) unmarshal(data []byte) error {
+func (e *Redir) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

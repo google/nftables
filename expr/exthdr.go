@@ -39,7 +39,7 @@ type Exthdr struct {
 	SourceRegister uint32
 }
 
-func (e *Exthdr) marshal() ([]byte, error) {
+func (e *Exthdr) marshal(fam byte) ([]byte, error) {
 	var attr []netlink.Attribute
 
 	// Operations are differentiated by the Op and whether the SourceRegister
@@ -49,7 +49,7 @@ func (e *Exthdr) marshal() ([]byte, error) {
 			{Type: unix.NFTA_EXTHDR_SREG, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister)}}
 	} else {
 		attr = []netlink.Attribute{
-			netlink.Attribute{Type: unix.NFTA_EXTHDR_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)}}
+			{Type: unix.NFTA_EXTHDR_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)}}
 	}
 
 	attr = append(attr,
@@ -74,7 +74,7 @@ func (e *Exthdr) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Exthdr) unmarshal(data []byte) error {
+func (e *Exthdr) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

@@ -30,7 +30,7 @@ type Range struct {
 	ToData   []byte
 }
 
-func (e *Range) marshal() ([]byte, error) {
+func (e *Range) marshal(fam byte) ([]byte, error) {
 	var attrs []netlink.Attribute
 	var err error
 	var rangeFromData, rangeToData []byte
@@ -64,7 +64,7 @@ func (e *Range) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Range) unmarshal(data []byte) error {
+func (e *Range) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

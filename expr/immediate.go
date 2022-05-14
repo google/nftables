@@ -28,7 +28,7 @@ type Immediate struct {
 	Data     []byte
 }
 
-func (e *Immediate) marshal() ([]byte, error) {
+func (e *Immediate) marshal(fam byte) ([]byte, error) {
 	immData, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_DATA_VALUE, Data: e.Data},
 	})
@@ -49,7 +49,7 @@ func (e *Immediate) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Immediate) unmarshal(data []byte) error {
+func (e *Immediate) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

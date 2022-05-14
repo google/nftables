@@ -63,7 +63,7 @@ type Ct struct {
 	Key            CtKey
 }
 
-func (e *Ct) marshal() ([]byte, error) {
+func (e *Ct) marshal(fam byte) ([]byte, error) {
 	regData := []byte{}
 	exprData, err := netlink.MarshalAttributes(
 		[]netlink.Attribute{
@@ -97,7 +97,7 @@ func (e *Ct) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Ct) unmarshal(data []byte) error {
+func (e *Ct) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

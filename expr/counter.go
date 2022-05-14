@@ -27,7 +27,7 @@ type Counter struct {
 	Packets uint64
 }
 
-func (e *Counter) marshal() ([]byte, error) {
+func (e *Counter) marshal(fam byte) ([]byte, error) {
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_COUNTER_BYTES, Data: binaryutil.BigEndian.PutUint64(e.Bytes)},
 		{Type: unix.NFTA_COUNTER_PACKETS, Data: binaryutil.BigEndian.PutUint64(e.Packets)},
@@ -42,7 +42,7 @@ func (e *Counter) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Counter) unmarshal(data []byte) error {
+func (e *Counter) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

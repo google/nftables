@@ -36,7 +36,7 @@ type TProxy struct {
 	RegPort     uint32
 }
 
-func (e *TProxy) marshal() ([]byte, error) {
+func (e *TProxy) marshal(fam byte) ([]byte, error) {
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: NFTA_TPROXY_FAMILY, Data: binaryutil.BigEndian.PutUint32(uint32(e.Family))},
 		{Type: NFTA_TPROXY_REG, Data: binaryutil.BigEndian.PutUint32(e.RegPort)},
@@ -50,7 +50,7 @@ func (e *TProxy) marshal() ([]byte, error) {
 	})
 }
 
-func (e *TProxy) unmarshal(data []byte) error {
+func (e *TProxy) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

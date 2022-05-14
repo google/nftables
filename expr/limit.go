@@ -71,7 +71,7 @@ type Limit struct {
 	Burst uint32
 }
 
-func (l *Limit) marshal() ([]byte, error) {
+func (l *Limit) marshal(fam byte) ([]byte, error) {
 	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_LIMIT_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(l.Type))},
 		{Type: unix.NFTA_LIMIT_RATE, Data: binaryutil.BigEndian.PutUint64(l.Rate)},
@@ -103,7 +103,7 @@ func (l *Limit) marshal() ([]byte, error) {
 	})
 }
 
-func (l *Limit) unmarshal(data []byte) error {
+func (l *Limit) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

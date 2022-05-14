@@ -68,7 +68,7 @@ type Log struct {
 	Data []byte
 }
 
-func (e *Log) marshal() ([]byte, error) {
+func (e *Log) marshal(fam byte) ([]byte, error) {
 	// Per https://git.netfilter.org/libnftnl/tree/src/expr/log.c?id=09456c720e9c00eecc08e41ac6b7c291b3821ee5#n129
 	attrs := make([]netlink.Attribute, 0)
 	if e.Key&(1<<unix.NFTA_LOG_GROUP) != 0 {
@@ -120,7 +120,7 @@ func (e *Log) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Log) unmarshal(data []byte) error {
+func (e *Log) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err
