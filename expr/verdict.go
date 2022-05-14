@@ -53,7 +53,7 @@ const (
 	VerdictStop
 )
 
-func (e *Verdict) marshal() ([]byte, error) {
+func (e *Verdict) marshal(fam byte) ([]byte, error) {
 	// A verdict is a tree of netlink attributes structured as follows:
 	// NFTA_LIST_ELEM | NLA_F_NESTED {
 	//   NFTA_EXPR_NAME { "immediate\x00" }
@@ -96,7 +96,7 @@ func (e *Verdict) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Verdict) unmarshal(data []byte) error {
+func (e *Verdict) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

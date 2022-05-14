@@ -33,7 +33,7 @@ type Lookup struct {
 	Invert  bool
 }
 
-func (e *Lookup) marshal() ([]byte, error) {
+func (e *Lookup) marshal(fam byte) ([]byte, error) {
 	// See: https://git.netfilter.org/libnftnl/tree/src/expr/lookup.c?id=6dc1c3d8bb64077da7f3f28c7368fb087d10a492#n115
 	var opAttrs []netlink.Attribute
 	if e.SourceRegister != 0 {
@@ -60,7 +60,7 @@ func (e *Lookup) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Lookup) unmarshal(data []byte) error {
+func (e *Lookup) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

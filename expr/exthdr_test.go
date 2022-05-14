@@ -44,7 +44,7 @@ func TestExthdr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			neh := Exthdr{}
-			data, err := tt.eh.marshal()
+			data, err := tt.eh.marshal(0 /* don't care in this test */)
 			if err != nil {
 				t.Fatalf("marshal error: %+v", err)
 
@@ -56,7 +56,7 @@ func TestExthdr(t *testing.T) {
 			ad.ByteOrder = binary.BigEndian
 			for ad.Next() {
 				if ad.Type() == unix.NFTA_EXPR_DATA {
-					if err := neh.unmarshal(ad.Bytes()); err != nil {
+					if err := neh.unmarshal(0, ad.Bytes()); err != nil {
 						t.Errorf("unmarshal error: %+v", err)
 						break
 					}

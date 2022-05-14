@@ -44,7 +44,7 @@ type Queue struct {
 	Flag  QueueFlag
 }
 
-func (e *Queue) marshal() ([]byte, error) {
+func (e *Queue) marshal(fam byte) ([]byte, error) {
 	if e.Total == 0 {
 		e.Total = 1 // The total default value is 1
 	}
@@ -62,7 +62,7 @@ func (e *Queue) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Queue) unmarshal(data []byte) error {
+func (e *Queue) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

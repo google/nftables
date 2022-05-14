@@ -27,7 +27,7 @@ type Reject struct {
 	Code uint8
 }
 
-func (e *Reject) marshal() ([]byte, error) {
+func (e *Reject) marshal(fam byte) ([]byte, error) {
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_REJECT_TYPE, Data: binaryutil.BigEndian.PutUint32(e.Type)},
 		{Type: unix.NFTA_REJECT_ICMP_CODE, Data: []byte{e.Code}},
@@ -41,7 +41,7 @@ func (e *Reject) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Reject) unmarshal(data []byte) error {
+func (e *Reject) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

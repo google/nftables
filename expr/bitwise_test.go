@@ -32,7 +32,7 @@ func TestBitwise(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nbw := Bitwise{}
-			data, err := tt.bw.marshal()
+			data, err := tt.bw.marshal(0 /* don't care in this test */)
 			if err != nil {
 				t.Fatalf("marshal error: %+v", err)
 
@@ -44,7 +44,7 @@ func TestBitwise(t *testing.T) {
 			ad.ByteOrder = binary.BigEndian
 			for ad.Next() {
 				if ad.Type() == unix.NFTA_EXPR_DATA {
-					if err := nbw.unmarshal(ad.Bytes()); err != nil {
+					if err := nbw.unmarshal(0, ad.Bytes()); err != nil {
 						t.Errorf("unmarshal error: %+v", err)
 						break
 					}

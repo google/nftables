@@ -19,7 +19,7 @@ type Target struct {
 	Info []byte
 }
 
-func (e *Target) marshal() ([]byte, error) {
+func (e *Target) marshal(fam byte) ([]byte, error) {
 	// Per https://git.netfilter.org/libnftnl/tree/src/expr/target.c?id=09456c720e9c00eecc08e41ac6b7c291b3821ee5#n38
 	name := e.Name
 	// limit the extension name as (some) user-space tools do and leave room for
@@ -44,7 +44,7 @@ func (e *Target) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Target) unmarshal(data []byte) error {
+func (e *Target) unmarshal(fam byte, data []byte) error {
 	// Per https://git.netfilter.org/libnftnl/tree/src/expr/target.c?id=09456c720e9c00eecc08e41ac6b7c291b3821ee5#n65
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {

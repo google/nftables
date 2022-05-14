@@ -24,19 +24,19 @@ import (
 )
 
 // Marshal serializes the specified expression into a byte slice.
-func Marshal(e Any) ([]byte, error) {
-	return e.marshal()
+func Marshal(fam byte, e Any) ([]byte, error) {
+	return e.marshal(fam)
 }
 
 // Unmarshal fills an expression from the specified byte slice.
-func Unmarshal(data []byte, e Any) error {
-	return e.unmarshal(data)
+func Unmarshal(fam byte, data []byte, e Any) error {
+	return e.unmarshal(fam, data)
 }
 
 // Any is an interface implemented by any expression type.
 type Any interface {
-	marshal() ([]byte, error)
-	unmarshal([]byte) error
+	marshal(fam byte) ([]byte, error)
+	unmarshal(fam byte, data []byte) error
 }
 
 // MetaKey specifies which piece of meta information should be loaded. See also
@@ -80,7 +80,7 @@ type Meta struct {
 	Register       uint32
 }
 
-func (e *Meta) marshal() ([]byte, error) {
+func (e *Meta) marshal(fam byte) ([]byte, error) {
 	regData := []byte{}
 	exprData, err := netlink.MarshalAttributes(
 		[]netlink.Attribute{
@@ -114,7 +114,7 @@ func (e *Meta) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Meta) unmarshal(data []byte) error {
+func (e *Meta) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err
@@ -153,7 +153,7 @@ const (
 	NF_NAT_RANGE_PERSISTENT = 0x8
 )
 
-func (e *Masq) marshal() ([]byte, error) {
+func (e *Masq) marshal(fam byte) ([]byte, error) {
 	msgData := []byte{}
 	if !e.ToPorts {
 		flags := uint32(0)
@@ -196,7 +196,7 @@ func (e *Masq) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Masq) unmarshal(data []byte) error {
+func (e *Masq) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err
@@ -238,7 +238,7 @@ type Cmp struct {
 	Data     []byte
 }
 
-func (e *Cmp) marshal() ([]byte, error) {
+func (e *Cmp) marshal(fam byte) ([]byte, error) {
 	cmpData, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_DATA_VALUE, Data: e.Data},
 	})
@@ -259,7 +259,7 @@ func (e *Cmp) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Cmp) unmarshal(data []byte) error {
+func (e *Cmp) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

@@ -28,7 +28,7 @@ func TestTarget(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ntgt := Target{}
-			data, err := tt.tgt.marshal()
+			data, err := tt.tgt.marshal(0 /* don't care in this test */)
 			if err != nil {
 				t.Fatalf("marshal error: %+v", err)
 
@@ -40,7 +40,7 @@ func TestTarget(t *testing.T) {
 			ad.ByteOrder = binary.BigEndian
 			for ad.Next() {
 				if ad.Type() == unix.NFTA_EXPR_DATA {
-					if err := ntgt.unmarshal(ad.Bytes()); err != nil {
+					if err := ntgt.unmarshal(0 /* don't care in this test */, ad.Bytes()); err != nil {
 						t.Errorf("unmarshal error: %+v", err)
 						break
 					}

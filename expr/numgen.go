@@ -31,7 +31,7 @@ type Numgen struct {
 	Offset   uint32
 }
 
-func (e *Numgen) marshal() ([]byte, error) {
+func (e *Numgen) marshal(fam byte) ([]byte, error) {
 	// Currently only two types are supported, failing if Type is not of two known types
 	switch e.Type {
 	case unix.NFT_NG_INCREMENTAL:
@@ -56,7 +56,7 @@ func (e *Numgen) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Numgen) unmarshal(data []byte) error {
+func (e *Numgen) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

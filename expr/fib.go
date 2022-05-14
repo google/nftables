@@ -36,7 +36,7 @@ type Fib struct {
 	FlagPRESENT    bool
 }
 
-func (e *Fib) marshal() ([]byte, error) {
+func (e *Fib) marshal(fam byte) ([]byte, error) {
 	data := []byte{}
 	reg, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_FIB_DREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
@@ -99,7 +99,7 @@ func (e *Fib) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Fib) unmarshal(data []byte) error {
+func (e *Fib) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

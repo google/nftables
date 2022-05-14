@@ -34,7 +34,7 @@ type Dynset struct {
 	Invert     bool
 }
 
-func (e *Dynset) marshal() ([]byte, error) {
+func (e *Dynset) marshal(fam byte) ([]byte, error) {
 	// See: https://git.netfilter.org/libnftnl/tree/src/expr/dynset.c
 	var opAttrs []netlink.Attribute
 	opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_SREG_KEY, Data: binaryutil.BigEndian.PutUint32(e.SrcRegKey)})
@@ -62,7 +62,7 @@ func (e *Dynset) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Dynset) unmarshal(data []byte) error {
+func (e *Dynset) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

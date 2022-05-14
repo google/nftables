@@ -29,7 +29,7 @@ type Quota struct {
 	Over     bool
 }
 
-func (q *Quota) marshal() ([]byte, error) {
+func (q *Quota) marshal(fam byte) ([]byte, error) {
 	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_QUOTA_BYTES, Data: binaryutil.BigEndian.PutUint64(q.Bytes)},
 		{Type: unix.NFTA_QUOTA_CONSUMED, Data: binaryutil.BigEndian.PutUint64(q.Consumed)},
@@ -55,7 +55,7 @@ func (q *Quota) marshal() ([]byte, error) {
 	})
 }
 
-func (q *Quota) unmarshal(data []byte) error {
+func (q *Quota) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

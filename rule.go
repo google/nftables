@@ -92,7 +92,7 @@ func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
 	}
 	var rules []*Rule
 	for _, msg := range reply {
-		r, err := ruleFromMsg(msg)
+		r, err := ruleFromMsg(t.Family, msg)
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +113,7 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	for idx, expr := range r.Exprs {
 		exprAttrs[idx] = netlink.Attribute{
 			Type: unix.NLA_F_NESTED | unix.NFTA_LIST_ELEM,
-			Data: cc.marshalExpr(expr),
+			Data: cc.marshalExpr(byte(r.Table.Family), expr),
 		}
 	}
 
@@ -215,7 +215,7 @@ func (cc *Conn) DelRule(r *Rule) error {
 	return nil
 }
 
-func exprsFromMsg(b []byte) ([]expr.Any, error) {
+func exprsFromMsg(fam TableFamily, b []byte) ([]expr.Any, error) {
 	ad, err := netlink.NewAttributeDecoder(b)
 	if err != nil {
 		return nil, err
@@ -285,7 +285,7 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 					}
 
 					ad.Do(func(b []byte) error {
-						if err := expr.Unmarshal(b, e); err != nil {
+						if err := expr.Unmarshal(byte(fam), b, e); err != nil {
 							return err
 						}
 						// Verdict expressions are a special-case of immediate expressions, so
@@ -293,7 +293,7 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 						// register (invalid), re-parse it as a verdict expression.
 						if imm, isImmediate := e.(*expr.Immediate); isImmediate && imm.Register == unix.NFT_REG_VERDICT && len(imm.Data) == 0 {
 							e = &expr.Verdict{}
-							if err := expr.Unmarshal(b, e); err != nil {
+							if err := expr.Unmarshal(byte(fam), b, e); err != nil {
 								return err
 							}
 						}
@@ -308,7 +308,7 @@ func exprsFromMsg(b []byte) ([]expr.Any, error) {
 	return exprs, ad.Err()
 }
 
-func ruleFromMsg(msg netlink.Message) (*Rule, error) {
+func ruleFromMsg(fam TableFamily, msg netlink.Message) (*Rule, error) {
 	if got, want := msg.Header.Type, ruleHeaderType; got != want {
 		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
 	}
@@ -321,12 +321,15 @@ func ruleFromMsg(msg netlink.Message) (*Rule, error) {
 	for ad.Next() {
 		switch ad.Type() {
 		case unix.NFTA_RULE_TABLE:
-			r.Table = &Table{Name: ad.String()}
+			r.Table = &Table{
+				Name:   ad.String(),
+				Family: fam,
+			}
 		case unix.NFTA_RULE_CHAIN:
 			r.Chain = &Chain{Name: ad.String()}
 		case unix.NFTA_RULE_EXPRESSIONS:
 			ad.Do(func(b []byte) error {
-				r.Exprs, err = exprsFromMsg(b)
+				r.Exprs, err = exprsFromMsg(fam, b)
 				return err
 			})
 		case unix.NFTA_RULE_POSITION:

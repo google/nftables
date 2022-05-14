@@ -36,7 +36,7 @@ type Rt struct {
 	Key      RtKey
 }
 
-func (e *Rt) marshal() ([]byte, error) {
+func (e *Rt) marshal(fam byte) ([]byte, error) {
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_RT_KEY, Data: binaryutil.BigEndian.PutUint32(uint32(e.Key))},
 		{Type: unix.NFTA_RT_DREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
@@ -50,6 +50,6 @@ func (e *Rt) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Rt) unmarshal(data []byte) error {
+func (e *Rt) unmarshal(fam byte, data []byte) error {
 	return fmt.Errorf("not yet implemented")
 }

@@ -40,7 +40,7 @@ type Hash struct {
 	Type           HashType
 }
 
-func (e *Hash) marshal() ([]byte, error) {
+func (e *Hash) marshal(fam byte) ([]byte, error) {
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_HASH_SREG, Data: binaryutil.BigEndian.PutUint32(uint32(e.SourceRegister))},
 		{Type: unix.NFTA_HASH_DREG, Data: binaryutil.BigEndian.PutUint32(uint32(e.DestRegister))},
@@ -59,7 +59,7 @@ func (e *Hash) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Hash) unmarshal(data []byte) error {
+func (e *Hash) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

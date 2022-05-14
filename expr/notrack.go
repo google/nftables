@@ -21,13 +21,13 @@ import (
 
 type Notrack struct{}
 
-func (e *Notrack) marshal() ([]byte, error) {
+func (e *Notrack) marshal(fam byte) ([]byte, error) {
 	return netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_EXPR_NAME, Data: []byte("notrack\x00")},
 	})
 }
 
-func (e *Notrack) unmarshal(data []byte) error {
+func (e *Notrack) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 
 	if err != nil {

@@ -28,7 +28,7 @@ type Dup struct {
 	IsRegDevSet bool
 }
 
-func (e *Dup) marshal() ([]byte, error) {
+func (e *Dup) marshal(fam byte) ([]byte, error) {
 	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_DUP_SREG_ADDR, Data: binaryutil.BigEndian.PutUint32(e.RegAddr)},
 	}
@@ -49,7 +49,7 @@ func (e *Dup) marshal() ([]byte, error) {
 	})
 }
 
-func (e *Dup) unmarshal(data []byte) error {
+func (e *Dup) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err

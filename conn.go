@@ -227,8 +227,8 @@ func (cc *Conn) marshalAttr(attrs []netlink.Attribute) []byte {
 	return b
 }
 
-func (cc *Conn) marshalExpr(e expr.Any) []byte {
-	b, err := expr.Marshal(e)
+func (cc *Conn) marshalExpr(fam byte, e expr.Any) []byte {
+	b, err := expr.Marshal(fam, e)
 	if err != nil {
 		cc.setErr(err)
 		return nil

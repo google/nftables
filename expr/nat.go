@@ -55,7 +55,7 @@ type NAT struct {
 // |00008|--|00005|	|len |flags| type| NFTA_NAT_REG_PROTO_MIN
 // | 00 00 00 02  |	|      data      |  reg 2
 
-func (e *NAT) marshal() ([]byte, error) {
+func (e *NAT) marshal(fam byte) ([]byte, error) {
 	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_NAT_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(e.Type))},
 		{Type: unix.NFTA_NAT_FAMILY, Data: binaryutil.BigEndian.PutUint32(e.Family)},
@@ -96,7 +96,7 @@ func (e *NAT) marshal() ([]byte, error) {
 	})
 }
 
-func (e *NAT) unmarshal(data []byte) error {
+func (e *NAT) unmarshal(fam byte, data []byte) error {
 	ad, err := netlink.NewAttributeDecoder(data)
 	if err != nil {
 		return err
