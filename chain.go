@@ -184,7 +184,7 @@ func (cc *Conn) ListChains() ([]*Chain, error) {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETCHAIN),
 			Flags: netlink.Request | netlink.Dump,
 		},
-		Data: extraHeader(uint8(unix.AF_UNSPEC), 0),
+		Data: extraHeader(uint8(TableFamilyUnspecified), 0),
 	}
 
 	response, err := conn.Execute(msg)

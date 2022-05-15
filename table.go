@@ -28,12 +28,13 @@ type TableFamily byte
 
 // Possible TableFamily values.
 const (
-	TableFamilyINet   TableFamily = unix.NFPROTO_INET
-	TableFamilyIPv4   TableFamily = unix.NFPROTO_IPV4
-	TableFamilyIPv6   TableFamily = unix.NFPROTO_IPV6
-	TableFamilyARP    TableFamily = unix.NFPROTO_ARP
-	TableFamilyNetdev TableFamily = unix.NFPROTO_NETDEV
-	TableFamilyBridge TableFamily = unix.NFPROTO_BRIDGE
+	TableFamilyUnspecified TableFamily = unix.NFPROTO_UNSPEC
+	TableFamilyINet        TableFamily = unix.NFPROTO_INET
+	TableFamilyIPv4        TableFamily = unix.NFPROTO_IPV4
+	TableFamilyIPv6        TableFamily = unix.NFPROTO_IPV6
+	TableFamilyARP         TableFamily = unix.NFPROTO_ARP
+	TableFamilyNetdev      TableFamily = unix.NFPROTO_NETDEV
+	TableFamilyBridge      TableFamily = unix.NFPROTO_BRIDGE
 )
 
 // A Table contains Chains. See also
@@ -111,7 +112,7 @@ func (cc *Conn) ListTables() ([]*Table, error) {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETTABLE),
 			Flags: netlink.Request | netlink.Dump,
 		},
-		Data: extraHeader(uint8(unix.AF_UNSPEC), 0),
+		Data: extraHeader(uint8(TableFamilyUnspecified), 0),
 	}
 
 	response, err := conn.Execute(msg)
