@@ -7,7 +7,7 @@ import (
 	"github.com/google/nftables/alignedbuff"
 )
 
-// See https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/nf_nat.h#L25
+// See https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/nf_nat.h#L25
 type NatIPv4Range struct {
 	Flags   uint // sic!
 	MinIP   net.IP
@@ -19,7 +19,7 @@ type NatIPv4Range struct {
 // NatIPv4MultiRangeCompat despite being a slice of NAT IPv4 ranges is currently allowed to
 // only hold exactly one element.
 //
-// See https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/nf_nat.h#L33
+// See https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/nf_nat.h#L33
 type NatIPv4MultiRangeCompat []NatIPv4Range
 
 func (x *NatIPv4MultiRangeCompat) marshal(fam TableFamily, rev uint32) ([]byte, error) {

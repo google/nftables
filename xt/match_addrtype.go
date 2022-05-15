@@ -4,7 +4,7 @@ import (
 	"github.com/google/nftables/alignedbuff"
 )
 
-// Rev. 0, see https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/xt_addrtype.h#L38
+// Rev. 0, see https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/xt_addrtype.h#L38
 type AddrType struct {
 	Source       uint16
 	Dest         uint16
@@ -29,7 +29,7 @@ const (
 	AddrTypeXresolve
 )
 
-// See https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/xt_addrtype.h#L31
+// See https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/xt_addrtype.h#L31
 type AddrTypeV1 struct {
 	Source uint16
 	Dest   uint16

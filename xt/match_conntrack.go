@@ -43,21 +43,21 @@ type ConntrackMtinfoBase struct {
 	ReplDstPort uint16
 }
 
-// See https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/xt_conntrack.h#L38
+// See https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/xt_conntrack.h#L38
 type ConntrackMtinfo1 struct {
 	ConntrackMtinfoBase
 	StateMask  uint8
 	StatusMask uint8
 }
 
-// See https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/xt_conntrack.h#L51
+// See https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/xt_conntrack.h#L51
 type ConntrackMtinfo2 struct {
 	ConntrackMtinfoBase
 	StateMask  uint16
 	StatusMask uint16
 }
 
-// See https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/xt_conntrack.h#L64
+// See https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/xt_conntrack.h#L64
 type ConntrackMtinfo3 struct {
 	ConntrackMtinfo2
 	OrigSrcPortHigh uint16

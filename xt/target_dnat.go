@@ -8,7 +8,7 @@ import (
 
 type NatRangeFlags uint
 
-// See: https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/nf_nat.h#L8
+// See: https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/nf_nat.h#L8
 const (
 	NatRangeMapIPs NatRangeFlags = (1 << iota)
 	NatRangeProtoSpecified
@@ -23,7 +23,7 @@ const (
 	NatRangeProtoRandomAll = NatRangeProtoRandom | NatRangeProtoRandomFully
 )
 
-// see: https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/nf_nat.h#L38
+// see: https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/nf_nat.h#L38
 type NatRange struct {
 	Flags   uint   // sic! platform/arch/compiler-dependent uint size
 	MinIP   net.IP // always taking up space for an IPv6 address
@@ -32,7 +32,7 @@ type NatRange struct {
 	MaxPort uint16
 }
 
-// see: https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/nf_nat.h#L46
+// see: https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/nf_nat.h#L46
 type NatRange2 struct {
 	NatRange
 	BasePort uint16

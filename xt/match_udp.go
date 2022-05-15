@@ -8,7 +8,7 @@ import (
 // (https://wiki.nftables.org/wiki-nftables/index.php/Supported_features_compared_to_xtables#tcp).
 //
 // See
-// https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/netfilter/xt_tcpudp.h#L8
+// https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/xt_tcpudp.h#L25
 type Udp struct {
 	SrcPorts [2]uint16     // min, max source port range
 	DstPorts [2]uint16     // min, max destination port range
