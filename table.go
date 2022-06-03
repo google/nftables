@@ -101,6 +101,12 @@ func (cc *Conn) FlushTable(t *Table) {
 
 // ListTables returns currently configured tables in the kernel
 func (cc *Conn) ListTables() ([]*Table, error) {
+	return cc.ListTablesOfFamily(TableFamilyUnspecified)
+}
+
+// ListTables returns currently configured tables for the specified table family
+// in the kernel. It lists all tables if family is TableFamilyUnspecified.
+func (cc *Conn) ListTablesOfFamily(family TableFamily) ([]*Table, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
@@ -112,7 +118,7 @@ func (cc *Conn) ListTables() ([]*Table, error) {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETTABLE),
 			Flags: netlink.Request | netlink.Dump,
 		},
-		Data: extraHeader(uint8(TableFamilyUnspecified), 0),
+		Data: extraHeader(uint8(family), 0),
 	}
 
 	response, err := conn.Execute(msg)

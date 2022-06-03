@@ -173,6 +173,13 @@ func (cc *Conn) FlushChain(c *Chain) {
 
 // ListChains returns currently configured chains in the kernel
 func (cc *Conn) ListChains() ([]*Chain, error) {
+	return cc.ListChainsOfTableFamily(TableFamilyUnspecified)
+}
+
+// ListChainsOfTableFamily returns currently configured chains for the specified
+// family in the kernel. It lists all chains ins all tables if family is
+// TableFamilyUnspecified.
+func (cc *Conn) ListChainsOfTableFamily(family TableFamily) ([]*Chain, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
@@ -184,7 +191,7 @@ func (cc *Conn) ListChains() ([]*Chain, error) {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETCHAIN),
 			Flags: netlink.Request | netlink.Dump,
 		},
-		Data: extraHeader(uint8(TableFamilyUnspecified), 0),
+		Data: extraHeader(uint8(family), 0),
 	}
 
 	response, err := conn.Execute(msg)
