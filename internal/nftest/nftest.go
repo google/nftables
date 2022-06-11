@@ -4,7 +4,6 @@ package nftest
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"strings"
 	"testing"
 
@@ -26,11 +25,21 @@ func (r *Recorder) Conn() (*nftables.Conn, error) {
 		func(req []netlink.Message) ([]netlink.Message, error) {
 			r.requests = append(r.requests, req...)
 
-			// TODO: generate and return acknowledgements
+			acks := make([]netlink.Message, 0, len(req))
 			for _, msg := range req {
-				log.Printf("msg: %+v", msg)
+				if msg.Header.Flags&netlink.Acknowledge != 0 {
+					acks = append(acks, netlink.Message{
+						Header: netlink.Header{
+							Length:   4,
+							Type:     netlink.Error,
+							Sequence: msg.Header.Sequence,
+							PID:      msg.Header.PID,
+						},
+						Data: []byte{0, 0, 0, 0},
+					})
+				}
 			}
-			return req, nil
+			return acks, nil
 		}))
 }
 
