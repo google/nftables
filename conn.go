@@ -182,8 +182,14 @@ func (cc *Conn) Flush() error {
 		return fmt.Errorf("SendMessages: %w", err)
 	}
 
-	if _, err := conn.Receive(); err != nil {
-		return fmt.Errorf("Receive: %w", err)
+	// Fetch the requested acknowledgement for each message we sent.
+	for _, msg := range cc.messages {
+		if msg.Header.Flags&netlink.Acknowledge == 0 {
+			continue // message did not request an acknowledgement
+		}
+		if _, err := conn.Receive(); err != nil {
+			return fmt.Errorf("conn.Receive: %w", err)
+		}
 	}
 
 	return nil
