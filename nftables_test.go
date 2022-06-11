@@ -30,6 +30,7 @@ import (
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
+	"github.com/google/nftables/internal/nftest"
 	"github.com/mdlayher/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
@@ -5057,59 +5058,31 @@ func TestNotrack(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
-	if err != nil {
-		t.Fatal(err)
-	}
+	nftest.MatchRulesetBytes(t,
+		func(c *nftables.Conn) {
+			filter := c.AddTable(&nftables.Table{
+				Family: nftables.TableFamilyIPv4,
+				Name:   "filter",
+			})
 
-	c.FlushRuleset()
+			prerouting := c.AddChain(&nftables.Chain{
+				Name:     "base-chain",
+				Table:    filter,
+				Type:     nftables.ChainTypeFilter,
+				Hooknum:  nftables.ChainHookPrerouting,
+				Priority: nftables.ChainPriorityFilter,
+			})
 
-	filter := c.AddTable(&nftables.Table{
-		Family: nftables.TableFamilyIPv4,
-		Name:   "filter",
-	})
-
-	prerouting := c.AddChain(&nftables.Chain{
-		Name:     "base-chain",
-		Table:    filter,
-		Type:     nftables.ChainTypeFilter,
-		Hooknum:  nftables.ChainHookPrerouting,
-		Priority: nftables.ChainPriorityFilter,
-	})
-
-	c.AddRule(&nftables.Rule{
-		Table: filter,
-		Chain: prerouting,
-		Exprs: []expr.Any{
-			// [ notrack ]
-			&expr.Notrack{},
+			c.AddRule(&nftables.Rule{
+				Table: filter,
+				Chain: prerouting,
+				Exprs: []expr.Any{
+					// [ notrack ]
+					&expr.Notrack{},
+				},
+			})
 		},
-	})
-
-	if err := c.Flush(); err != nil {
-		t.Fatal(err)
-	}
+		want)
 }
 
 func TestQuota(t *testing.T) {
