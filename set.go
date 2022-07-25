@@ -235,6 +235,10 @@ type Set struct {
 	Interval   bool
 	IsMap      bool
 	HasTimeout bool
+	// Can be updated per evaluation path, per `nft list ruleset`
+	// indicates that set contains "flags dynamic"
+	// https://git.netfilter.org/libnftnl/tree/include/linux/netfilter/nf_tables.h?id=84d12cfacf8ddd857a09435f3d982ab6250d250c#n298
+	Dynamic bool
 	// Indicates that the set contains a concatenation
 	// https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h?id=d1289bff58e1878c3162f574c603da993e29b113#n306
 	Concatenation bool
@@ -467,6 +471,9 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	}
 	if s.HasTimeout {
 		flags |= unix.NFT_SET_TIMEOUT
+	}
+	if s.Dynamic {
+		flags |= unix.NFT_SET_EVAL
 	}
 	if s.Concatenation {
 		flags |= NFT_SET_CONCAT

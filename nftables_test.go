@@ -3313,6 +3313,221 @@ func TestDynset(t *testing.T) {
 	}
 }
 
+func TestDynsetWithOneExpression(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+	table := &nftables.Table{
+		Name:   "filter",
+		Family: nftables.TableFamilyIPv4,
+	}
+	chain := &nftables.Chain{
+		Name:     "forward",
+		Hooknum:  nftables.ChainHookForward,
+		Table:    table,
+		Priority: 0,
+		Type:     nftables.ChainTypeFilter,
+	}
+	set := &nftables.Set{
+		Table:   table,
+		Name:    "myMeter",
+		KeyType: nftables.TypeIPAddr,
+		Dynamic: true,
+	}
+	c.AddTable(table)
+	c.AddChain(chain)
+	if err := c.AddSet(set, nil); err != nil {
+		t.Errorf("c.AddSet(myMeter) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	rule := &nftables.Rule{
+		Table: table,
+		Chain: chain,
+		Exprs: []expr.Any{
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseNetworkHeader,
+				Offset:       uint32(12),
+				Len:          uint32(4),
+			},
+			&expr.Dynset{
+				SrcRegKey: 1,
+				SetName:   set.Name,
+				Operation: uint32(unix.NFT_DYNSET_OP_ADD),
+				Exprs: []expr.Any{
+					&expr.Limit{
+						Type:  expr.LimitTypePkts,
+						Rate:  200,
+						Unit:  expr.LimitTimeSecond,
+						Burst: 5,
+					},
+				},
+			},
+			&expr.Verdict{
+				Kind: expr.VerdictDrop,
+			},
+		},
+	}
+	c.AddRule(rule)
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	rules, err := c.GetRules(table, chain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+	if got, want := len(rules[0].Exprs), 3; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	dynset, dynsetOk := rules[0].Exprs[1].(*expr.Dynset)
+	if !dynsetOk {
+		t.Fatalf("Exprs[0] is type %T, want *expr.Dynset", rules[0].Exprs[1])
+	}
+
+	if got, want := len(dynset.Exprs), 1; got != want {
+		t.Fatalf("unexpected number of dynset.Exprs: got %d, want %d", got, want)
+	}
+
+	if got, want := dynset.SetName, set.Name; got != want {
+		t.Fatalf("dynset.SetName is %s, want %s", got, want)
+	}
+
+	if want := (&expr.Limit{
+		Type:  expr.LimitTypePkts,
+		Rate:  200,
+		Unit:  expr.LimitTimeSecond,
+		Burst: 5,
+	}); !reflect.DeepEqual(dynset.Exprs[0], want) {
+		t.Errorf("dynset.Exprs[0] expr = %+v, wanted %+v", dynset.Exprs[0], want)
+	}
+}
+
+func TestDynsetWithMultipleExpressions(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+	table := &nftables.Table{
+		Name:   "filter",
+		Family: nftables.TableFamilyIPv4,
+	}
+	chain := &nftables.Chain{
+		Name:     "forward",
+		Hooknum:  nftables.ChainHookForward,
+		Table:    table,
+		Priority: 0,
+		Type:     nftables.ChainTypeFilter,
+	}
+	set := &nftables.Set{
+		Table:   table,
+		Name:    "myMeter",
+		KeyType: nftables.TypeIPAddr,
+		Dynamic: true,
+	}
+	c.AddTable(table)
+	c.AddChain(chain)
+	if err := c.AddSet(set, nil); err != nil {
+		t.Errorf("c.AddSet(myMeter) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	rule := &nftables.Rule{
+		Table: table,
+		Chain: chain,
+		Exprs: []expr.Any{
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseNetworkHeader,
+				Offset:       uint32(12),
+				Len:          uint32(4),
+			},
+			&expr.Dynset{
+				SrcRegKey: 1,
+				SetName:   set.Name,
+				Operation: uint32(unix.NFT_DYNSET_OP_ADD),
+				Exprs: []expr.Any{
+					&expr.Connlimit{
+						Count: 20,
+						Flags: 1,
+					},
+					&expr.Limit{
+						Type:  expr.LimitTypePkts,
+						Rate:  10,
+						Unit:  expr.LimitTimeSecond,
+						Burst: 2,
+					},
+				},
+			},
+			&expr.Verdict{
+				Kind: expr.VerdictDrop,
+			},
+		},
+	}
+	c.AddRule(rule)
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	rules, err := c.GetRules(table, chain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+	if got, want := len(rules[0].Exprs), 3; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	dynset, dynsetOk := rules[0].Exprs[1].(*expr.Dynset)
+	if !dynsetOk {
+		t.Fatalf("Exprs[0] is type %T, want *expr.Dynset", rules[0].Exprs[1])
+	}
+
+	if got, want := len(dynset.Exprs), 2; got != want {
+		t.Fatalf("unexpected number of dynset.Exprs: got %d, want %d", got, want)
+	}
+
+	if got, want := dynset.SetName, set.Name; got != want {
+		t.Fatalf("dynset.SetName is %s, want %s", got, want)
+	}
+
+	if want := (&expr.Connlimit{
+		Count: 20,
+		Flags: 1,
+	}); !reflect.DeepEqual(dynset.Exprs[0], want) {
+		t.Errorf("dynset.Exprs[0] expr = %+v, wanted %+v", dynset.Exprs[0], want)
+	}
+
+	if want := (&expr.Limit{
+		Type:  expr.LimitTypePkts,
+		Rate:  10,
+		Unit:  expr.LimitTimeSecond,
+		Burst: 2,
+	}); !reflect.DeepEqual(dynset.Exprs[1], want) {
+		t.Errorf("dynset.Exprs[1] expr = %+v, wanted %+v", dynset.Exprs[1], want)
+	}
+}
+
 func TestConfigureNATRedirect(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft add table ip nat
