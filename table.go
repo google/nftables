@@ -104,7 +104,7 @@ func (cc *Conn) ListTables() ([]*Table, error) {
 	return cc.ListTablesOfFamily(TableFamilyUnspecified)
 }
 
-// ListTables returns currently configured tables for the specified table family
+// ListTablesOfFamily returns currently configured tables for the specified table family
 // in the kernel. It lists all tables if family is TableFamilyUnspecified.
 func (cc *Conn) ListTablesOfFamily(family TableFamily) ([]*Table, error) {
 	conn, closer, err := cc.netlinkConn()

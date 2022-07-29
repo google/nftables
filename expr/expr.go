@@ -19,9 +19,40 @@ import (
 	"encoding/binary"
 
 	"github.com/google/nftables/binaryutil"
+	"github.com/google/nftables/internal/parseexprfunc"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
+
+func init() {
+	parseexprfunc.ParseExprBytesFunc = func(fam byte, ad *netlink.AttributeDecoder, b []byte) ([]interface{}, error) {
+		exprs, err := exprsFromBytes(fam, ad, b)
+		if err != nil {
+			return nil, err
+		}
+		result := make([]interface{}, len(exprs))
+		for idx, expr := range exprs {
+			result[idx] = expr
+		}
+		return result, nil
+	}
+	parseexprfunc.ParseExprMsgFunc = func(fam byte, b []byte) ([]interface{}, error) {
+		ad, err := netlink.NewAttributeDecoder(b)
+		if err != nil {
+			return nil, err
+		}
+		ad.ByteOrder = binary.BigEndian
+		var exprs []interface{}
+		for ad.Next() {
+			e, err := parseexprfunc.ParseExprBytesFunc(fam, ad, b)
+			if err != nil {
+				return e, err
+			}
+			exprs = append(exprs, e...)
+		}
+		return exprs, ad.Err()
+	}
+}
 
 // Marshal serializes the specified expression into a byte slice.
 func Marshal(fam byte, e Any) ([]byte, error) {
@@ -31,6 +62,96 @@ func Marshal(fam byte, e Any) ([]byte, error) {
 // Unmarshal fills an expression from the specified byte slice.
 func Unmarshal(fam byte, data []byte, e Any) error {
 	return e.unmarshal(fam, data)
+}
+
+// exprsFromBytes parses nested raw expressions bytes
+// to construct nftables expressions
+func exprsFromBytes(fam byte, ad *netlink.AttributeDecoder, b []byte) ([]Any, error) {
+	var exprs []Any
+	ad.Do(func(b []byte) error {
+		ad, err := netlink.NewAttributeDecoder(b)
+		if err != nil {
+			return err
+		}
+		ad.ByteOrder = binary.BigEndian
+		var name string
+		for ad.Next() {
+			switch ad.Type() {
+			case unix.NFTA_EXPR_NAME:
+				name = ad.String()
+				if name == "notrack" {
+					e := &Notrack{}
+					exprs = append(exprs, e)
+				}
+			case unix.NFTA_EXPR_DATA:
+				var e Any
+				switch name {
+				case "ct":
+					e = &Ct{}
+				case "range":
+					e = &Range{}
+				case "meta":
+					e = &Meta{}
+				case "cmp":
+					e = &Cmp{}
+				case "counter":
+					e = &Counter{}
+				case "payload":
+					e = &Payload{}
+				case "lookup":
+					e = &Lookup{}
+				case "immediate":
+					e = &Immediate{}
+				case "bitwise":
+					e = &Bitwise{}
+				case "redir":
+					e = &Redir{}
+				case "nat":
+					e = &NAT{}
+				case "limit":
+					e = &Limit{}
+				case "quota":
+					e = &Quota{}
+				case "dynset":
+					e = &Dynset{}
+				case "log":
+					e = &Log{}
+				case "exthdr":
+					e = &Exthdr{}
+				case "match":
+					e = &Match{}
+				case "target":
+					e = &Target{}
+				case "connlimit":
+					e = &Connlimit{}
+				}
+				if e == nil {
+					// TODO: introduce an opaque expression type so that users know
+					// something is here.
+					continue // unsupported expression type
+				}
+
+				ad.Do(func(b []byte) error {
+					if err := Unmarshal(fam, b, e); err != nil {
+						return err
+					}
+					// Verdict expressions are a special-case of immediate expressions, so
+					// if the expression is an immediate writing nothing into the verdict
+					// register (invalid), re-parse it as a verdict expression.
+					if imm, isImmediate := e.(*Immediate); isImmediate && imm.Register == unix.NFT_REG_VERDICT && len(imm.Data) == 0 {
+						e = &Verdict{}
+						if err := Unmarshal(fam, b, e); err != nil {
+							return err
+						}
+					}
+					exprs = append(exprs, e)
+					return nil
+				})
+			}
+		}
+		return ad.Err()
+	})
+	return exprs, ad.Err()
 }
 
 // Any is an interface implemented by any expression type.

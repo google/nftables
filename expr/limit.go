@@ -72,24 +72,16 @@ type Limit struct {
 }
 
 func (l *Limit) marshal(fam byte) ([]byte, error) {
+	var flags uint32
+	if l.Over {
+		flags = unix.NFT_LIMIT_F_INV
+	}
 	attrs := []netlink.Attribute{
-		{Type: unix.NFTA_LIMIT_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(l.Type))},
 		{Type: unix.NFTA_LIMIT_RATE, Data: binaryutil.BigEndian.PutUint64(l.Rate)},
 		{Type: unix.NFTA_LIMIT_UNIT, Data: binaryutil.BigEndian.PutUint64(uint64(l.Unit))},
-	}
-
-	if l.Over {
-		attrs = append(attrs, netlink.Attribute{
-			Type: unix.NFTA_LIMIT_FLAGS,
-			Data: binaryutil.BigEndian.PutUint32(unix.NFT_LIMIT_F_INV),
-		})
-	}
-
-	if l.Burst != 0 {
-		attrs = append(attrs, netlink.Attribute{
-			Type: unix.NFTA_LIMIT_BURST,
-			Data: binaryutil.BigEndian.PutUint32(l.Burst),
-		})
+		{Type: unix.NFTA_LIMIT_BURST, Data: binaryutil.BigEndian.PutUint32(l.Burst)},
+		{Type: unix.NFTA_LIMIT_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(l.Type))},
+		{Type: unix.NFTA_LIMIT_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)},
 	}
 
 	data, err := netlink.MarshalAttributes(attrs)
