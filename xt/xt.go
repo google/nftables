@@ -1,5 +1,4 @@
 /*
-
 Package xt implements dedicated types for (some) of the "Info" payload in Match
 and Target expressions that bridge between the nftables and xtables worlds.
 
@@ -45,6 +44,5 @@ uint to uint64 instead. This package currently clamps its mapping of C's
 future 128bit platforms with a differently sized C unsigned int should come into
 production, then the alignedbuff package will need to be adapted accordingly, as
 it abstracts away this data type handling.
-
 */
 package xt
