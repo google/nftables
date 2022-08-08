@@ -243,6 +243,9 @@ func (e *Meta) unmarshal(fam byte, data []byte) error {
 	ad.ByteOrder = binary.BigEndian
 	for ad.Next() {
 		switch ad.Type() {
+		case unix.NFTA_META_SREG:
+			e.Register = ad.Uint32()
+			e.SourceRegister = true
 		case unix.NFTA_META_DREG:
 			e.Register = ad.Uint32()
 		case unix.NFTA_META_KEY:
