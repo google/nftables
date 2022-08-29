@@ -76,6 +76,7 @@ func (e *Lookup) unmarshal(fam byte, data []byte) error {
 			e.SourceRegister = ad.Uint32()
 		case unix.NFTA_LOOKUP_DREG:
 			e.DestRegister = ad.Uint32()
+			e.IsDestRegSet = true
 		case unix.NFTA_LOOKUP_FLAGS:
 			e.Invert = (ad.Uint32() & unix.NFT_LOOKUP_F_INV) != 0
 		}
