@@ -543,6 +543,10 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		tableInfo = append(tableInfo,
 			// Semantically useless - kept for binary compatability with nft
 			netlink.Attribute{Type: unix.NFTA_SET_USERDATA, Data: []byte("\x00\x04\x02\x00\x00\x00")})
+	} else if !s.IsMap {
+		// Per https://git.netfilter.org/nftables/tree/src/mnl.c?id=187c6d01d35722618c2711bbc49262c286472c8f#n1165
+		tableInfo = append(tableInfo,
+			netlink.Attribute{Type: unix.NFTA_SET_USERDATA, Data: []byte("\x00\x04\x01\x00\x00\x00")})
 	}
 
 	cc.messages = append(cc.messages, netlink.Message{
