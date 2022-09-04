@@ -41,6 +41,8 @@ type ConntrackMtinfoBase struct {
 	OrigDstPort uint16
 	ReplSrcPort uint16
 	ReplDstPort uint16
+	MatchFlags  uint16
+	InvertFlags uint16
 }
 
 // See https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/xt_conntrack.h#L38
@@ -98,6 +100,8 @@ func (x *ConntrackMtinfoBase) marshalAB(fam TableFamily, rev uint32, ab *aligned
 	ab.PutUint16(x.OrigDstPort)
 	ab.PutUint16(x.ReplSrcPort)
 	ab.PutUint16(x.ReplDstPort)
+	ab.PutUint16(x.MatchFlags)
+	ab.PutUint16(x.InvertFlags)
 	return nil
 }
 
@@ -146,6 +150,12 @@ func (x *ConntrackMtinfoBase) unmarshalAB(fam TableFamily, rev uint32, ab *align
 		return err
 	}
 	if x.ReplDstPort, err = ab.Uint16(); err != nil {
+		return err
+	}
+	if x.MatchFlags, err = ab.Uint16(); err != nil {
+		return err
+	}
+	if x.InvertFlags, err = ab.Uint16(); err != nil {
 		return err
 	}
 	return nil
