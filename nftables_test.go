@@ -1143,7 +1143,7 @@ func TestTProxy(t *testing.T) {
 			Name:     "divert",
 			Type:     nftables.ChainTypeFilter,
 			Hooknum:  nftables.ChainHookPrerouting,
-			Priority: -150,
+			Priority: nftables.ChainPriorityRef(-150),
 		},
 		Exprs: []expr.Any{
 			//	[ payload load 1b @ network header + 9 => reg 1 ]
@@ -1384,7 +1384,7 @@ func TestAddRuleWithPosition(t *testing.T) {
 			Name:     "ipv4chain-1",
 			Type:     nftables.ChainTypeFilter,
 			Hooknum:  nftables.ChainHookPrerouting,
-			Priority: 0,
+			Priority: nftables.ChainPriorityRef(0),
 		},
 
 		Exprs: []expr.Any{
@@ -1523,8 +1523,8 @@ func TestListChains(t *testing.T) {
 		},
 		{
 			Name:     "undef",
-			Hooknum:  0,
-			Priority: 0,
+			Hooknum:  nil,
+			Priority: nil,
 			Policy:   nil,
 		},
 	}
@@ -1564,8 +1564,16 @@ func TestListChains(t *testing.T) {
 
 	for i, chain := range chains {
 		validate(chain.Name, want[i].Name, "name", i)
-		validate(chain.Hooknum, want[i].Hooknum, "hooknum", i)
-		validate(chain.Priority, want[i].Priority, "priority", i)
+		if want[i].Hooknum != nil && chain.Hooknum != nil {
+			validate(*chain.Hooknum, *want[i].Hooknum, "hooknum value", i)
+		} else {
+			validate(chain.Hooknum, want[i].Hooknum, "hooknum pointer", i)
+		}
+		if want[i].Priority != nil && chain.Priority != nil {
+			validate(*chain.Priority, *want[i].Priority, "priority value", i)
+		} else {
+			validate(chain.Priority, want[i].Priority, "priority pointer", i)
+		}
 		validate(chain.Type, want[i].Type, "type", i)
 
 		if want[i].Policy != nil && chain.Policy != nil {
@@ -1588,7 +1596,7 @@ func TestAddChain(t *testing.T) {
 			chain: &nftables.Chain{
 				Name:     "base-chain",
 				Hooknum:  nftables.ChainHookPrerouting,
-				Priority: 0,
+				Priority: nftables.ChainPriorityRef(0),
 				Type:     nftables.ChainTypeFilter,
 			},
 			want: [][]byte{
@@ -1671,7 +1679,7 @@ func TestDelChain(t *testing.T) {
 			chain: &nftables.Chain{
 				Name:     "base-chain",
 				Hooknum:  nftables.ChainHookPrerouting,
-				Priority: 0,
+				Priority: nftables.ChainPriorityRef(0),
 				Type:     nftables.ChainTypeFilter,
 			},
 			want: [][]byte{
@@ -3425,7 +3433,7 @@ func TestDynsetWithOneExpression(t *testing.T) {
 		Name:     "forward",
 		Hooknum:  nftables.ChainHookForward,
 		Table:    table,
-		Priority: 0,
+		Priority: nftables.ChainPriorityRef(0),
 		Type:     nftables.ChainTypeFilter,
 	}
 	set := &nftables.Set{
@@ -3527,7 +3535,7 @@ func TestDynsetWithMultipleExpressions(t *testing.T) {
 		Name:     "forward",
 		Hooknum:  nftables.ChainHookForward,
 		Table:    table,
-		Priority: 0,
+		Priority: nftables.ChainPriorityRef(0),
 		Type:     nftables.ChainTypeFilter,
 	}
 	set := &nftables.Set{
