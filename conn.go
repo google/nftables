@@ -15,14 +15,21 @@
 package nftables
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
 	"github.com/mdlayher/netlink/nltest"
 	"golang.org/x/sys/unix"
 )
+
+// errMsgNoError is returned in cases when netlink returns an error
+// message with a status 0, which means that there is no error
+// https://github.com/mdlayher/netlink/blob/9a593f9dc1a92ae1c7c45a9fc663b7dd1e111eac/message.go#L285-L289
+var errMsgNoError = errors.New("no error")
 
 // A Conn represents a netlink connection of the nftables family.
 //
@@ -128,6 +135,48 @@ func (cc *Conn) netlinkConnUnderLock() (*netlink.Conn, netlinkCloser, error) {
 		return nil, nil, err
 	}
 	return nlconn, func() error { return nlconn.Close() }, nil
+}
+
+func receiveWithRetry(nlconn *netlink.Conn) ([]netlink.Message, error) {
+	if nlconn == nil {
+		return nil, fmt.Errorf("netlink conn is not initialized")
+	}
+
+	receive := func() ([]netlink.Message, error) {
+		var err error
+		reply, err := nlconn.Receive()
+		if err != nil {
+			return nil, err
+		}
+		if len(reply) == 0 {
+			return reply, nil
+		}
+		msg := reply[0]
+		if msg.Header.Type == netlink.Error {
+			if binaryutil.BigEndian.Uint32(msg.Data[:4]) != 0 {
+				return nil, fmt.Errorf("error delivered in message: %v", msg.Data)
+			}
+			return nil, errMsgNoError
+		}
+		return reply, nil
+	}
+
+	msgs, err := receive()
+	if err != nil {
+		// when "overflowing" counter objects netlink will return multiple
+		// "no error" messages (see TestCappedErrMsgOnObj in nftables_test.go)
+		// the loop is here to filter them all out
+		for err == errMsgNoError {
+			msgs, err := receive()
+			if err == nil {
+				return msgs, nil
+			}
+			if err != errMsgNoError {
+				return nil, err
+			}
+		}
+	}
+	return msgs, err
 }
 
 // CloseLasting closes the lasting netlink connection that has been opened using

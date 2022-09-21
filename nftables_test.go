@@ -2457,6 +2457,151 @@ func TestCreateUseAnonymousSet(t *testing.T) {
 	}
 }
 
+func TestCappedErrMsgOnObj(t *testing.T) {
+	c, newNS := openSystemNFTConn(t)
+	c, err := nftables.New(nftables.WithNetNSFd(int(newNS)), nftables.AsLasting())
+	if err != nil {
+		t.Fatalf("nftables.New() failed: %v", err)
+	}
+	defer cleanupSystemNFTConn(t, newNS)
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+	if err := c.Flush(); err != nil {
+		t.Errorf("failed adding table: %v", err)
+	}
+
+	const counterLen = 500
+	counters := make([]nftables.Obj, counterLen)
+	for i := 0; i < counterLen; i++ {
+		counters[i] = &nftables.CounterObj{
+			Table:   filter,
+			Name:    fmt.Sprintf("ctr%d", i),
+			Bytes:   uint64(-1 * i),
+			Packets: uint64(-1 * i),
+		}
+		c.AddObj(counters[i])
+	}
+
+	if err := c.Flush(); err != nil {
+		// this test leverages the fact that read buffer of the netlink socket
+		// is too small to receive all ack messages sent by the kernel
+		//
+		// the Flush method tries to receive all acks after sending the messages
+		// https://github.com/google/nftables/blob/cbeb0fb1eccf9ef582c20982c72e73107d1898a5/conn.go#L185-L193
+		//
+		// buffer peeking implemented by the netlink go library fails with a "no buffer space available"
+		// https://github.com/mdlayher/netlink/blob/7fa043dcb6f27ed7e084dc90ddf5b6d4092478a9/conn_linux.go#L123-L127
+		// this results in part of "non-received" acknowledgments to end up being received
+		// in the following c.GetObj(counters[0]) call
+		//
+		// this can be fixed with extending the read buffer with conn.SetReadBuffer(size int)
+		// https://github.com/mdlayher/netlink/blob/7fa043dcb6f27ed7e084dc90ddf5b6d4092478a9/conn_linux.go#L204-L206
+		// in which case this test would still succeed
+		if got, want := fmt.Sprint(err), "no buffer space available"; !strings.Contains(got, want) {
+			t.Errorf("expected error %s, got %v", want, err)
+		}
+	}
+
+	// this GetObj call will receive some of the previously "non-received"
+	// acknowledgments which should get dropped by the receiveWithRetry
+	// function and successfully parse 500 counters
+	objs, err := c.GetObj(counters[0])
+	if err != nil {
+		t.Errorf("failed getting objects: %v", err)
+	}
+
+	if got, want := len(objs), len(counters); got != want {
+		t.Errorf("object list length not equal: got %d, want %d", got, want)
+	}
+
+	if got, want := objs, counters; !reflect.DeepEqual(got, want) {
+		t.Errorf("object list not equal: got %v, want %v", got, want)
+	}
+}
+
+func TestCappedErrMsgOnSets(t *testing.T) {
+	c, newNS := openSystemNFTConn(t)
+	c, err := nftables.New(nftables.WithNetNSFd(int(newNS)), nftables.AsLasting())
+	if err != nil {
+		t.Fatalf("nftables.New() failed: %v", err)
+	}
+	defer cleanupSystemNFTConn(t, newNS)
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+	if err := c.Flush(); err != nil {
+		t.Errorf("failed adding table: %v", err)
+	}
+	tables, err := c.ListTablesOfFamily(nftables.TableFamilyIPv4)
+	if err != nil {
+		t.Errorf("failed to list IPv4 tables: %v", err)
+	}
+
+	for _, t := range tables {
+		if t.Name == "filter" {
+			filter = t
+			break
+		}
+	}
+
+	ifSet := &nftables.Set{
+		Table:   filter,
+		Name:    "if_set",
+		KeyType: nftables.TypeIFName,
+	}
+	if err := c.AddSet(ifSet, nil); err != nil {
+		t.Errorf("c.AddSet(ifSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("failed adding set ifSet: %v", err)
+	}
+	ifSet, err = c.GetSetByName(filter, "if_set")
+	if err != nil {
+		t.Errorf("failed getting set by name: %v", err)
+	}
+
+	elems, err := c.GetSetElements(ifSet)
+	if err != nil {
+		t.Errorf("failed getting set elements (ifSet): %v", err)
+	}
+
+	if got, want := len(elems), 0; got != want {
+		t.Errorf("first GetSetElements(ifSet) call len not equal: got %d, want %d", got, want)
+	}
+
+	elements := []nftables.SetElement{
+		{Key: []byte("012345678912345\x00")},
+	}
+	if err := c.SetAddElements(ifSet, elements); err != nil {
+		t.Errorf("adding SetElements(ifSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("failed adding set elements ifSet: %v", err)
+	}
+
+	elems, err = c.GetSetElements(ifSet)
+	if err != nil {
+		t.Fatalf("failed getting set elements (ifSet): %v", err)
+	}
+
+	if got, want := len(elems), 1; got != want {
+		t.Fatalf("second GetSetElements(ifSet) call len not equal: got %d, want %d", got, want)
+	}
+
+	if got, want := elems, elements; !reflect.DeepEqual(elems, elements) {
+		t.Errorf("SetElements(ifSet) not equal: got %v, want %v", got, want)
+	}
+}
+
 func TestCreateUseNamedSet(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
