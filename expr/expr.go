@@ -96,6 +96,8 @@ func exprsFromBytes(fam byte, ad *netlink.AttributeDecoder, b []byte) ([]Any, er
 					e = &Cmp{}
 				case "counter":
 					e = &Counter{}
+				case "objref":
+					e = &Objref{}
 				case "payload":
 					e = &Payload{}
 				case "lookup":
