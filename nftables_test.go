@@ -1758,6 +1758,7 @@ func TestGetObjReset(t *testing.T) {
 		nil,
 		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x64, Type: 0xa12, Flags: 0x802, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0x2, 0x0, 0x0, 0x10, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xa, 0x0, 0x2, 0x0, 0x66, 0x77, 0x64, 0x65, 0x64, 0x0, 0x0, 0x0, 0x8, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x1, 0x8, 0x0, 0x5, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1c, 0x0, 0x4, 0x0, 0xc, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x4, 0x61, 0xc, 0x0, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x9, 0xc, 0x0, 0x6, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2}}},
 		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x14, Type: 0x3, Flags: 0x2, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0x0, 0x0, 0x0, 0x0}}},
+		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 36, Type: netlink.Error, Flags: 0x100, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0, 0, 0, 0, 88, 0, 0, 0, 12, 10, 5, 4, 143, 109, 199, 146, 236, 9, 0, 0}}},
 	}
 
 	c, err := nftables.New(nftables.WithTestDial(
@@ -2454,6 +2455,84 @@ func TestCreateUseAnonymousSet(t *testing.T) {
 
 	if err := c.Flush(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCappedErrMsgOnSets(t *testing.T) {
+	c, newNS := openSystemNFTConn(t)
+	c, err := nftables.New(nftables.WithNetNSFd(int(newNS)), nftables.AsLasting())
+	if err != nil {
+		t.Fatalf("nftables.New() failed: %v", err)
+	}
+	defer cleanupSystemNFTConn(t, newNS)
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+	if err := c.Flush(); err != nil {
+		t.Errorf("failed adding table: %v", err)
+	}
+	tables, err := c.ListTablesOfFamily(nftables.TableFamilyIPv4)
+	if err != nil {
+		t.Errorf("failed to list IPv4 tables: %v", err)
+	}
+
+	for _, t := range tables {
+		if t.Name == "filter" {
+			filter = t
+			break
+		}
+	}
+
+	ifSet := &nftables.Set{
+		Table:   filter,
+		Name:    "if_set",
+		KeyType: nftables.TypeIFName,
+	}
+	if err := c.AddSet(ifSet, nil); err != nil {
+		t.Errorf("c.AddSet(ifSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("failed adding set ifSet: %v", err)
+	}
+	ifSet, err = c.GetSetByName(filter, "if_set")
+	if err != nil {
+		t.Fatalf("failed getting set by name: %v", err)
+	}
+
+	elems, err := c.GetSetElements(ifSet)
+	if err != nil {
+		t.Errorf("failed getting set elements (ifSet): %v", err)
+	}
+
+	if got, want := len(elems), 0; got != want {
+		t.Errorf("first GetSetElements(ifSet) call len not equal: got %d, want %d", got, want)
+	}
+
+	elements := []nftables.SetElement{
+		{Key: []byte("012345678912345\x00")},
+	}
+	if err := c.SetAddElements(ifSet, elements); err != nil {
+		t.Errorf("adding SetElements(ifSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("failed adding set elements ifSet: %v", err)
+	}
+
+	elems, err = c.GetSetElements(ifSet)
+	if err != nil {
+		t.Fatalf("failed getting set elements (ifSet): %v", err)
+	}
+
+	if got, want := len(elems), 1; got != want {
+		t.Fatalf("second GetSetElements(ifSet) call len not equal: got %d, want %d", got, want)
+	}
+
+	if got, want := elems, elements; !reflect.DeepEqual(elems, elements) {
+		t.Errorf("SetElements(ifSet) not equal: got %v, want %v", got, want)
 	}
 }
 

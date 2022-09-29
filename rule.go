@@ -87,7 +87,7 @@ func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
 		return nil, fmt.Errorf("SendMessages: %v", err)
 	}
 
-	reply, err := conn.Receive()
+	reply, err := receiveAckAware(conn, message.Header.Flags)
 	if err != nil {
 		return nil, fmt.Errorf("Receive: %v", err)
 	}

@@ -15,9 +15,11 @@
 package nftables
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
 	"github.com/mdlayher/netlink/nltest"
@@ -128,6 +130,52 @@ func (cc *Conn) netlinkConnUnderLock() (*netlink.Conn, netlinkCloser, error) {
 		return nil, nil, err
 	}
 	return nlconn, func() error { return nlconn.Close() }, nil
+}
+
+func receiveAckAware(nlconn *netlink.Conn, sentMsgFlags netlink.HeaderFlags) ([]netlink.Message, error) {
+	if nlconn == nil {
+		return nil, errors.New("netlink conn is not initialized")
+	}
+
+	// first receive will be the message that we expect
+	reply, err := nlconn.Receive()
+	if err != nil {
+		return nil, err
+	}
+
+	if (sentMsgFlags & netlink.Acknowledge) == 0 {
+		// we did not request an ack
+		return reply, nil
+	}
+
+	if (sentMsgFlags & netlink.Dump) == netlink.Dump {
+		// sent message has Dump flag set, there will be no acks
+		// https://github.com/torvalds/linux/blob/7e062cda7d90543ac8c7700fc7c5527d0c0f22ad/net/netlink/af_netlink.c#L2387-L2390
+		return reply, nil
+	}
+
+	// Dump flag is not set, we expect an ack
+	ack, err := nlconn.Receive()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ack) == 0 {
+		return nil, errors.New("received an empty ack")
+	}
+
+	msg := ack[0]
+	if msg.Header.Type != netlink.Error {
+		// acks should be delivered as NLMSG_ERROR
+		return nil, fmt.Errorf("expected header %v, but got %v", netlink.Error, msg.Header.Type)
+	}
+
+	if binaryutil.BigEndian.Uint32(msg.Data[:4]) != 0 {
+		// if errno field is not set to 0 (success), this is an error
+		return nil, fmt.Errorf("error delivered in message: %v", msg.Data)
+	}
+
+	return reply, nil
 }
 
 // CloseLasting closes the lasting netlink connection that has been opened using
