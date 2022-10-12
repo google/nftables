@@ -20,6 +20,9 @@ func TestAlignmentData(t *testing.T) {
 	if uintSize == 0 {
 		t.Fatal("zero uint size")
 	}
+	if int32AlignMask == 0 {
+		t.Fatal("zero uint32 alignment mask")
+	}
 }
 
 func TestAlignedBuff8(t *testing.T) {
@@ -200,5 +203,116 @@ func TestAlignedUint(t *testing.T) {
 	v, err = b.Uint8()
 	if v != 0xAA || err != nil {
 		t.Fatalf("sentinel read failed")
+	}
+}
+
+func TestAlignedBuffInt32(t *testing.T) {
+	b0 := New()
+	b0.PutUint8(0x42)
+	b0.PutInt32(0x12345678)
+	b0.PutInt32(0x01cecafe)
+
+	b := NewWithData(b0.data)
+
+	if len(b0.Data()) != 4*4 {
+		t.Fatalf("alignment padding failed")
+	}
+
+	v, err := b.Uint8()
+	if v != 0x42 || err != nil {
+		t.Fatalf("unaligment read failed")
+	}
+	tests := []struct {
+		name string
+		v    int32
+		err  error
+	}{
+		{
+			name: "first read",
+			v:    0x12345678,
+			err:  nil,
+		},
+		{
+			name: "second read",
+			v:    0x01cecafe,
+			err:  nil,
+		},
+		{
+			name: "end of buffer",
+			v:    0,
+			err:  ErrEOF,
+		},
+	}
+
+	for _, tt := range tests {
+		v, err := b.Int32()
+		if v != tt.v || err != tt.err {
+			t.Errorf("expected: %#v %#v, got: %#v, %#v",
+				tt.v, tt.err, v, err)
+		}
+	}
+}
+
+func TestAlignedBuffPutNullTerminatedString(t *testing.T) {
+	b0 := New()
+	b0.PutUint8(0x42)
+	b0.PutString("test" + "\x00")
+
+	b := NewWithData(b0.data)
+
+	v, err := b.Uint8()
+	if v != 0x42 || err != nil {
+		t.Fatalf("unaligment read failed")
+	}
+	tests := []struct {
+		name string
+		v    string
+		err  error
+	}{
+		{
+			name: "first read",
+			v:    "test",
+			err:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		v, err := b.String()
+		if v != tt.v || err != tt.err {
+			t.Errorf("expected: %#v %#v, got: %#v, %#v",
+				tt.v, tt.err, v, err)
+		}
+	}
+}
+
+func TestAlignedBuffPutString(t *testing.T) {
+	b0 := New()
+	b0.PutUint8(0x42)
+	b0.PutString("test")
+
+	b := NewWithData(b0.data)
+
+	v, err := b.Uint8()
+	if v != 0x42 || err != nil {
+		t.Fatalf("unaligment read failed")
+	}
+	tests := []struct {
+		name string
+		v    string
+		err  error
+	}{
+		{
+			name: "first read",
+			v:    "test",
+			err:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		v, err := b.StringWithLength(len("test"))
+		if v != tt.v || err != tt.err {
+			t.Errorf("expected: %#v %#v, got: %#v, %#v",
+				tt.v, tt.err, v, err)
+		}
 	}
 }

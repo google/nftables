@@ -118,6 +118,39 @@ func (a *AlignedBuff) Uint64() (uint64, error) {
 	return v, nil
 }
 
+// Int32 unmarshals an uint32 in native endianess and alignment. It returns
+// ErrEOF when trying to read beyond the payload.
+func (a *AlignedBuff) Int32() (int32, error) {
+	if err := a.alignCheckedRead(int32AlignMask); err != nil {
+		return 0, err
+	}
+	v := binaryutil.Int32(a.data[a.pos : a.pos+4])
+	a.pos += 4
+	return v, nil
+}
+
+// String unmarshals a null terminated string
+func (a *AlignedBuff) String() (string, error) {
+	len := 0
+	for {
+		if a.data[a.pos+len] == 0x00 {
+			break
+		}
+		len++
+	}
+
+	v := binaryutil.String(a.data[a.pos : a.pos+len])
+	a.pos += len
+	return v, nil
+}
+
+// Unmarshals a string of a given length (for non-null terminated strings)
+func (a *AlignedBuff) StringWithLength(len int) (string, error) {
+	v := binaryutil.String(a.data[a.pos : a.pos+len])
+	a.pos += len
+	return v, nil
+}
+
 // Uint unmarshals an uint in native endianess and alignment for the C "unsigned
 // int" type. It returns ErrEOF when trying to read beyond the payload. Please
 // note that on 64bit platforms, the size and alignment of C's and Go's unsigned
@@ -190,6 +223,19 @@ func (a *AlignedBuff) PutUint64(v uint64) {
 	a.pos += 8
 }
 
+// PutInt32 marshals an int32 in native endianess and alignment.
+func (a *AlignedBuff) PutInt32(v int32) {
+	a.alignWrite(int32AlignMask)
+	a.data = append(a.data, binaryutil.PutInt32(v)...)
+	a.pos += 4
+}
+
+// PutString marshals a string.
+func (a *AlignedBuff) PutString(v string) {
+	a.data = append(a.data, binaryutil.PutString(v)...)
+	a.pos += len(v)
+}
+
 // PutUint marshals an uint in native endianess and alignment for the C
 // "unsigned int" type. Please note that on 64bit platforms, the size and
 // alignment of C's and Go's unsigned integer data types differ, so we
@@ -235,6 +281,8 @@ var uint16AlignMask = int(unsafe.Alignof(uint16(0)) - 1)
 var uint32AlignMask = int(unsafe.Alignof(uint32(0)) - 1)
 var uint64AlignMask = int(unsafe.Alignof(uint64(0)) - 1)
 var padding = bytes.Repeat([]byte{0}, uint64AlignMask)
+
+var int32AlignMask = int(unsafe.Alignof(int32(0)) - 1)
 
 // And this even worse.
 var uintSize = unsafe.Sizeof(uint32(0))
