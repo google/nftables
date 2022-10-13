@@ -126,6 +126,8 @@ func exprsFromBytes(fam byte, ad *netlink.AttributeDecoder, b []byte) ([]Any, er
 					e = &Target{}
 				case "connlimit":
 					e = &Connlimit{}
+				case "queue":
+					e = &Queue{}
 				}
 				if e == nil {
 					// TODO: introduce an opaque expression type so that users know

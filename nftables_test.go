@@ -5711,3 +5711,60 @@ func TestGetRulesObjref(t *testing.T) {
 		t.Errorf("objref expr = %+v, wanted %+v", objref, want)
 	}
 }
+
+func TestGetRulesQueue(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	table := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	chain := c.AddChain(&nftables.Chain{
+		Name:     "forward",
+		Table:    table,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookForward,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	queueRule := c.AddRule(&nftables.Rule{
+		Table: table,
+		Chain: chain,
+		Exprs: []expr.Any{
+			&expr.Queue{
+				Num:  1000,
+				Flag: expr.QueueFlagBypass,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	rules, err := c.GetRules(table, chain)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+	if got, want := len(rules[0].Exprs), 1; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+	queueExpr, ok := rules[0].Exprs[0].(*expr.Queue)
+	if !ok {
+		t.Fatalf("Exprs[0] is type %T, want *expr.Queue", rules[0].Exprs[0])
+	}
+	if want := queueRule.Exprs[0]; !reflect.DeepEqual(queueExpr, want) {
+		t.Errorf("queue expr = %+v, wanted %+v", queueExpr, want)
+	}
+}
