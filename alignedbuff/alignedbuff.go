@@ -118,7 +118,7 @@ func (a *AlignedBuff) Uint64() (uint64, error) {
 	return v, nil
 }
 
-// Int32 unmarshals an uint32 in native endianess and alignment. It returns
+// Int32 unmarshals an int32 in native endianess and alignment. It returns
 // ErrEOF when trying to read beyond the payload.
 func (a *AlignedBuff) Int32() (int32, error) {
 	if err := a.alignCheckedRead(int32AlignMask); err != nil {
