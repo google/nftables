@@ -16,6 +16,7 @@
 package binaryutil
 
 import (
+	"bytes"
 	"encoding/binary"
 	"unsafe"
 )
@@ -101,4 +102,24 @@ func (bigEndian) Uint32(b []byte) uint32 {
 
 func (bigEndian) Uint64(b []byte) uint64 {
 	return binary.BigEndian.Uint64(b)
+}
+
+// For dealing with types not supported by the encoding/binary interface
+
+func PutInt32(v int32) []byte {
+	buf := make([]byte, 4)
+	*(*int32)(unsafe.Pointer(&buf[0])) = v
+	return buf
+}
+
+func Int32(b []byte) int32 {
+	return *(*int32)(unsafe.Pointer(&b[0]))
+}
+
+func PutString(s string) []byte {
+	return []byte(s)
+}
+
+func String(b []byte) string {
+	return string(bytes.TrimRight(b, "\x00"))
 }

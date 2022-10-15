@@ -107,3 +107,36 @@ func TestBigEndian(t *testing.T) {
 		}
 	}
 }
+
+func TestOtherTypes(t *testing.T) {
+	tests := []struct {
+		name      string
+		expected  []byte
+		expectedv interface{}
+		actual    []byte
+		unmarshal func(b []byte) interface{}
+	}{
+		{
+			name:      "Int32",
+			expected:  []byte{0x78, 0x56, 0x34, 0x12},
+			expectedv: int32(0x12345678),
+			actual:    PutInt32(0x12345678),
+			unmarshal: func(b []byte) interface{} { return Int32(b) },
+		},
+		{
+			name:      "String",
+			expected:  []byte{0x74, 0x65, 0x73, 0x74},
+			expectedv: "test",
+			actual:    PutString("test"),
+			unmarshal: func(b []byte) interface{} { return String(b) },
+		},
+	}
+	for _, tt := range tests {
+		if bytes.Compare(tt.actual, tt.expected) != 0 {
+			t.Errorf("Put%s failure, expected: %#v, got: %#v", tt.name, tt.expected, tt.actual)
+		}
+		if actual := tt.unmarshal(tt.actual); !reflect.DeepEqual(actual, tt.expectedv) {
+			t.Errorf("%s failure, expected: %#v, got: %#v", tt.name, tt.expectedv, actual)
+		}
+	}
+}
