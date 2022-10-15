@@ -130,13 +130,6 @@ func TestOtherTypes(t *testing.T) {
 			actual:    PutString("test"),
 			unmarshal: func(b []byte) interface{} { return String(b) },
 		},
-		{
-			name:      "NullTerminatedString",
-			expected:  []byte{0x74, 0x65, 0x73, 0x74, 0x00},
-			expectedv: "test",
-			actual:    PutNullTerminatedString("test"),
-			unmarshal: func(b []byte) interface{} { return String(b) },
-		},
 	}
 	for _, tt := range tests {
 		if bytes.Compare(tt.actual, tt.expected) != 0 {

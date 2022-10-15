@@ -105,6 +105,7 @@ func (bigEndian) Uint64(b []byte) uint64 {
 }
 
 // For dealing with types not supported by the encoding/binary interface
+
 func PutInt32(v int32) []byte {
 	buf := make([]byte, 4)
 	*(*int32)(unsafe.Pointer(&buf[0])) = v
