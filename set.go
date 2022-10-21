@@ -40,6 +40,8 @@ const (
 	NFTA_SET_DESC_CONCAT = 2
 	// https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h?id=d1289bff58e1878c3162f574c603da993e29b113#n428
 	NFTA_SET_ELEM_KEY_END = 10
+	// https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h?id=d1289bff58e1878c3162f574c603da993e29b113#n429
+	NFTA_SET_ELEM_EXPRESSIONS = 0x11
 )
 
 var allocSetID uint32
@@ -235,6 +237,7 @@ type Set struct {
 	Interval   bool
 	IsMap      bool
 	HasTimeout bool
+	Counter    bool
 	// Can be updated per evaluation path, per `nft list ruleset`
 	// indicates that set contains "flags dynamic"
 	// https://git.netfilter.org/libnftnl/tree/include/linux/netfilter/nf_tables.h?id=84d12cfacf8ddd857a09435f3d982ab6250d250c#n298
@@ -547,6 +550,16 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		// Per https://git.netfilter.org/nftables/tree/src/mnl.c?id=187c6d01d35722618c2711bbc49262c286472c8f#n1165
 		tableInfo = append(tableInfo,
 			netlink.Attribute{Type: unix.NFTA_SET_USERDATA, Data: []byte("\x00\x04\x01\x00\x00\x00")})
+	}
+	if s.Counter {
+		data, err := netlink.MarshalAttributes([]netlink.Attribute{
+			{Type: unix.NFTA_LIST_ELEM, Data: []byte("counter\x00")},
+			{Type: unix.NFTA_SET_ELEM_PAD | unix.NFTA_SET_ELEM_DATA, Data: []byte{}},
+		})
+		if err != nil {
+			return err
+		}
+		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | NFTA_SET_ELEM_EXPRESSIONS, Data: data})
 	}
 
 	cc.messages = append(cc.messages, netlink.Message{
