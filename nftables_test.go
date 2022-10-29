@@ -2552,7 +2552,7 @@ func TestCreateUseNamedSet(t *testing.T) {
 
 	portSet := &nftables.Set{
 		Table:   filter,
-		Name:    "kek",
+		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
 	if err := c.AddSet(portSet, nil); err != nil {
@@ -2584,8 +2584,8 @@ func TestCreateUseNamedSet(t *testing.T) {
 	if len(sets) != 2 {
 		t.Fatalf("len(sets) = %d, want 2", len(sets))
 	}
-	if sets[0].Name != "kek" {
-		t.Errorf("set[0].Name = %q, want kek", sets[0].Name)
+	if sets[0].Name != "test" {
+		t.Errorf("set[0].Name = %q, want test", sets[0].Name)
 	}
 	if sets[1].Name != "IPs_4_dayz" {
 		t.Errorf("set[1].Name = %q, want IPs_4_dayz", sets[1].Name)
@@ -2681,7 +2681,7 @@ func TestCreateUseCounterSet(t *testing.T) {
 		t.Fatalf("len(sets) = %d, want 1", len(sets))
 	}
 	if sets[0].Name != "test" {
-		t.Errorf("set[0].Name = %q, want kek", sets[0].Name)
+		t.Errorf("set[0].Name = %q, want test", sets[0].Name)
 	}
 }
 
@@ -2701,7 +2701,7 @@ func TestCreateDeleteNamedSet(t *testing.T) {
 
 	portSet := &nftables.Set{
 		Table:   filter,
-		Name:    "kek",
+		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
 	if err := c.AddSet(portSet, nil); err != nil {
@@ -2742,7 +2742,7 @@ func TestDeleteElementNamedSet(t *testing.T) {
 
 	portSet := &nftables.Set{
 		Table:   filter,
-		Name:    "kek",
+		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
 	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}}); err != nil {
@@ -2789,7 +2789,7 @@ func TestFlushNamedSet(t *testing.T) {
 
 	portSet := &nftables.Set{
 		Table:   filter,
-		Name:    "kek",
+		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
 	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}}); err != nil {
@@ -3245,7 +3245,7 @@ func TestGetLookupExprDestSet(t *testing.T) {
 
 	set := &nftables.Set{
 		Table:    filter,
-		Name:     "kek",
+		Name:     "test",
 		IsMap:    true,
 		KeyType:  nftables.TypeInetService,
 		DataType: nftables.TypeVerdict,
@@ -3344,7 +3344,7 @@ func TestGetRuleLookupVerdictImmediate(t *testing.T) {
 
 	set := &nftables.Set{
 		Table:   filter,
-		Name:    "kek",
+		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
 	if err := c.AddSet(set, nil); err != nil {
@@ -3383,10 +3383,10 @@ func TestGetRuleLookupVerdictImmediate(t *testing.T) {
 			&expr.Verdict{
 				Kind: expr.VerdictAccept,
 			},
-			// [ immediate reg 2 kek ]
+			// [ immediate reg 2 test ]
 			&expr.Immediate{
 				Register: 2,
-				Data:     []byte("kek"),
+				Data:     []byte("test"),
 			},
 		},
 	})
@@ -3442,7 +3442,7 @@ func TestGetRuleLookupVerdictImmediate(t *testing.T) {
 	}
 	if want := (&expr.Immediate{
 		Register: 2,
-		Data:     []byte("kek"),
+		Data:     []byte("test"),
 	}); !reflect.DeepEqual(imm, want) {
 		t.Errorf("verdict expr = %+v, wanted %+v", imm, want)
 	}
