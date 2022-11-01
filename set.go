@@ -113,7 +113,7 @@ var (
 	TypeIFName      = SetDatatype{Name: "ifname", Bytes: ifNameSize, nftMagic: 41}
 	TypeIGMPType    = SetDatatype{Name: "igmp_type", Bytes: 1, nftMagic: 42}
 	TypeTimeDate    = SetDatatype{Name: "time", Bytes: 8, nftMagic: 43}
-	TypeTimeHour    = SetDatatype{Name: "hour", Bytes: 8, nftMagic: 44}
+	TypeTimeHour    = SetDatatype{Name: "hour", Bytes: 4, nftMagic: 44}
 	TypeTimeDay     = SetDatatype{Name: "day", Bytes: 1, nftMagic: 45}
 	TypeCGroupV2    = SetDatatype{Name: "cgroupsv2", Bytes: 8, nftMagic: 46}
 
