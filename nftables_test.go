@@ -2884,6 +2884,234 @@ func TestSetElementsInterval(t *testing.T) {
 	}
 }
 
+func TestCreateListFlowtable(t *testing.T) {
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := &nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	}
+
+	flowtable := &nftables.Flowtable{
+		Table: filter,
+		Name:  "flowtable_test",
+	}
+
+	c.AddTable(filter)
+	c.AddFlowtable(flowtable)
+
+	if err := c.Flush(); err != nil {
+		t.Fatalf("c.Flush() failed: %v", err)
+	}
+
+	flowtables, err := c.ListFlowtables(filter)
+	if err != nil {
+		t.Fatalf("c.ListFlowtables() failed: %v", err)
+	}
+
+	if got, want := len(flowtables), 1; got != want {
+		t.Fatalf("flowtable entry length mismatch: got %d, want %d", got, want)
+	}
+}
+
+func TestCreateListFlowtableWithDevices(t *testing.T) {
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := &nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	}
+
+	lo, err := net.InterfaceByName("lo")
+	if err != nil {
+		t.Fatalf("net.InterfaceByName() failed: %v", err)
+	}
+
+	flowtable := &nftables.Flowtable{
+		Table:    filter,
+		Name:     "flowtable_test",
+		Devices:  []string{lo.Name},
+		Hooknum:  nftables.FlowtableHookIngress,
+		Priority: nftables.FlowtablePriorityRef(5),
+	}
+
+	c.AddTable(filter)
+	c.AddFlowtable(flowtable)
+
+	if err := c.Flush(); err != nil {
+		t.Fatalf("c.Flush() failed: %v", err)
+	}
+
+	flowtables, err := c.ListFlowtables(filter)
+	if err != nil {
+		t.Fatalf("c.ListFlowtables() failed: %v", err)
+	}
+
+	if got, want := len(flowtables), 1; got != want {
+		t.Fatalf("flowtable entry length mismatch: got %d, want %d", got, want)
+	}
+
+	sysFlowtable := flowtables[0]
+	if got, want := sysFlowtable.Table, flowtable.Table; got != want {
+		t.Errorf("flowtables table mismatch: got %v, want %v", got, want)
+	}
+
+	if got, want := sysFlowtable.Name, flowtable.Name; got != want {
+		t.Errorf("flowtables name mismatch: got %s, want %s", got, want)
+	}
+
+	if len(sysFlowtable.Devices) != 1 {
+		t.Fatalf("expected 1 device in flowtable, got %d", len(sysFlowtable.Devices))
+	}
+
+	if got, want := sysFlowtable.Devices, flowtable.Devices; !reflect.DeepEqual(got, want) {
+		t.Errorf("flowtables device mismatch: got %v, want %v", got, want)
+	}
+
+	if got, want := *sysFlowtable.Hooknum, *flowtable.Hooknum; got != want {
+		t.Errorf("flowtables hook mismatch: got %v, want %v", got, want)
+	}
+
+	if got, want := *sysFlowtable.Priority, *flowtable.Priority; got != want {
+		t.Errorf("flowtables prio mismatch: got %v, want %v", got, want)
+	}
+}
+
+func TestCreateDeleteFlowtable(t *testing.T) {
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := &nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	}
+
+	flowtable := &nftables.Flowtable{
+		Table: filter,
+		Name:  "flowtable_test",
+	}
+
+	c.AddTable(filter)
+	c.AddFlowtable(flowtable)
+	flowtable.Name = "flowtable_test_to_delete"
+	c.AddFlowtable(flowtable)
+
+	if err := c.Flush(); err != nil {
+		t.Fatalf("c.Flush() failed: %v", err)
+	}
+
+	flowtables, err := c.ListFlowtables(filter)
+	if err != nil {
+		t.Fatalf("c.ListFlowtables() failed: %v", err)
+	}
+
+	if got, want := len(flowtables), 2; got != want {
+		t.Fatalf("flowtable entry length mismatch: got %d, want %d", got, want)
+	}
+
+	c.DelFlowtable(flowtable)
+	if err := c.Flush(); err != nil {
+		t.Fatalf("c.Flush() failed: %v", err)
+	}
+
+	flowtables, err = c.ListFlowtables(filter)
+	if err != nil {
+		t.Fatalf("c.ListFlowtables() after deletion failed: %v", err)
+	}
+
+	if got, want := len(flowtables), 1; got != want {
+		t.Errorf("flowtable entry length mismatch: got %d, want %d", got, want)
+	}
+
+	if got, removed := flowtables[0].Name, flowtable.Name; got == removed {
+		t.Errorf("wrong flowtable entry deleted")
+	}
+}
+
+func TestOffload(t *testing.T) {
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := &nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	}
+
+	accept := nftables.ChainPolicyAccept
+	forward := &nftables.Chain{
+		Name:     "forward",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Priority: nftables.ChainPriorityFilter,
+		Hooknum:  nftables.ChainHookForward,
+		Policy:   &accept,
+	}
+
+	flowtable := &nftables.Flowtable{
+		Table: filter,
+		Name:  "flowtable_test",
+	}
+
+	c.AddTable(filter)
+	c.AddChain(forward)
+	c.AddFlowtable(flowtable)
+
+	if err := c.Flush(); err != nil {
+		t.Fatalf("c.Flush() failed: %v", err)
+	}
+
+	rule := &nftables.Rule{
+		Table: filter,
+		Chain: forward,
+		Exprs: []expr.Any{
+			&expr.Payload{
+				OperationType: expr.PayloadLoad,
+				Base:          expr.PayloadBaseNetworkHeader,
+				Len:           1,
+				Offset:        9,
+				DestRegister:  1,
+			},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{0x06, 0x00, 0x00, 0x00},
+			},
+			&expr.FlowOffload{
+				Name: flowtable.Name,
+			},
+		},
+	}
+	c.AddRule(rule)
+
+	if err := c.Flush(); err != nil {
+		t.Fatalf("c.Flush() offload failed: %v", err)
+	}
+
+	rules, err := c.GetRule(filter, forward)
+	if err != nil {
+		t.Fatalf("c.GetRule() failed: %v", err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("rule count mismatch: got %d, want %d", got, want)
+	}
+
+	sysRule := rules[0]
+	if got, want := sysRule.Exprs, rule.Exprs; !reflect.DeepEqual(got, want) {
+		t.Errorf("rule content mismatch: got %v, want %v", got, want)
+	}
+}
+
 func TestFlushChain(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
