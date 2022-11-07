@@ -130,6 +130,8 @@ func exprsFromBytes(fam byte, ad *netlink.AttributeDecoder, b []byte) ([]Any, er
 					e = &Queue{}
 				case "flow_offload":
 					e = &FlowOffload{}
+				case "reject":
+					e = &Reject{}
 				}
 				if e == nil {
 					// TODO: introduce an opaque expression type so that users know
