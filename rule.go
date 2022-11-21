@@ -133,6 +133,17 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 		{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_EXPRESSIONS, Data: cc.marshalAttr(exprAttrs)},
 	})...)
 
+	if compatPolicy, err := getCompatPolicy(r.Exprs); err != nil {
+		cc.setErr(err)
+	} else if compatPolicy != nil {
+		data = append(data, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_COMPAT, Data: cc.marshalAttr([]netlink.Attribute{
+				{Type: unix.NFTA_RULE_COMPAT_PROTO, Data: binaryutil.BigEndian.PutUint32(compatPolicy.Proto)},
+				{Type: unix.NFTA_RULE_COMPAT_FLAGS, Data: binaryutil.BigEndian.PutUint32(compatPolicy.Flag & nft_RULE_COMPAT_F_MASK)},
+			})},
+		})...)
+	}
+
 	msgData := []byte{}
 
 	msgData = append(msgData, data...)
