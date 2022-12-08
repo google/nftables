@@ -31,6 +31,7 @@ import (
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/google/nftables/internal/nftest"
+	"github.com/google/nftables/xt"
 	"github.com/mdlayher/netlink"
 	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
@@ -6037,5 +6038,125 @@ func TestGetRulesQueue(t *testing.T) {
 	}
 	if want := queueRule.Exprs[0]; !reflect.DeepEqual(queueExpr, want) {
 		t.Errorf("queue expr = %+v, wanted %+v", queueExpr, want)
+	}
+}
+
+func TestNftablesCompat(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	input := c.AddChain(&nftables.Chain{
+		Name:     "input",
+		Table:    filter,
+		Type:     nftables.ChainTypeFilter,
+		Hooknum:  nftables.ChainHookInput,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	// -tcp --dport 0:65534 --sport 0:65534
+	tcpMatch := &expr.Match{
+		Name: "tcp",
+		Info: &xt.Tcp{
+			SrcPorts: [2]uint16{0, 65534},
+			DstPorts: [2]uint16{0, 65534},
+		},
+	}
+
+	// -udp --dport 0:65534 --sport 0:65534
+	udpMatch := &expr.Match{
+		Name: "udp",
+		Info: &xt.Udp{
+			SrcPorts: [2]uint16{0, 65534},
+			DstPorts: [2]uint16{0, 65534},
+		},
+	}
+
+	// - j TCPMSS --set-mss 1460
+	mess := xt.Unknown([]byte{1460 & 0xff, (1460 >> 8) & 0xff})
+	tcpMessTarget := &expr.Target{
+		Name: "TCPMSS",
+		Info: &mess,
+	}
+
+	// -m state --state ESTABLISHED
+	ctMatch := &expr.Match{
+		Name: "conntrack",
+		Rev:  1,
+		Info: &xt.ConntrackMtinfo1{
+			ConntrackMtinfoBase: xt.ConntrackMtinfoBase{
+				MatchFlags: 0x2001,
+			},
+			StateMask: 0x02,
+		},
+	}
+
+	// -p tcp --dport --dport 0:65534 --sport 0:65534 -m state --state ESTABLISHED -j TCPMSS --set-mss 1460
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: input,
+		Exprs: []expr.Any{
+			tcpMatch,
+			ctMatch,
+			tcpMessTarget,
+		},
+	})
+	if err := c.Flush(); err != nil {
+		t.Fatalf("add rule fail %#v", err)
+	}
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: input,
+		Exprs: []expr.Any{
+			udpMatch,
+			&expr.Verdict{
+				Kind: expr.VerdictAccept,
+			},
+		},
+	})
+	if err := c.Flush(); err != nil {
+		t.Fatalf("add rule %#v fail", err)
+	}
+
+	// -m state --state ESTABLISHED -j ACCEPT
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: input,
+		Exprs: []expr.Any{
+			ctMatch,
+			&expr.Verdict{
+				Kind: expr.VerdictAccept,
+			},
+		},
+	})
+	if err := c.Flush(); err != nil {
+		t.Fatalf("add rule %#v fail", err)
+	}
+
+	// -p udp --dport --dport 0:65534 --sport 0:65534 -m state --state ESTABLISHED -j ACCEPT
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: input,
+		Exprs: []expr.Any{
+			tcpMatch,
+			udpMatch,
+			ctMatch,
+			&expr.Verdict{
+				Kind: expr.VerdictAccept,
+			},
+		},
+	})
+	if err := c.Flush(); err == nil {
+		t.Fatalf("compat policy should conflict and err should not be err")
 	}
 }
