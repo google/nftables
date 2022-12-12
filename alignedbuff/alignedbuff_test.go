@@ -103,7 +103,15 @@ func TestAlignedBuff32(t *testing.T) {
 
 	b := NewWithData(b0.data)
 
-	if len(b0.Data()) != 4*4 {
+	// Sigh. The Linux kernel expects certain nftables payloads to be padded to
+	// the uint64 next alignment. Now, on 64bit platforms this will be a 64bit
+	// alignment, yet on 32bit platforms this will be a 32bit alignment. So, we
+	// should calculate the expected data length here separately from our
+	// implementation to be fail safe! However, this might be rather a recipe
+	// for a safe fail...
+	expectedlen := 2*(uint32AlignMask+1) + (uint64AlignMask + 1)
+
+	if len(b0.Data()) != expectedlen {
 		t.Fatalf("alignment padding failed")
 	}
 
@@ -214,7 +222,15 @@ func TestAlignedBuffInt32(t *testing.T) {
 
 	b := NewWithData(b0.data)
 
-	if len(b0.Data()) != 4*4 {
+	// Sigh. The Linux kernel expects certain nftables payloads to be padded to
+	// the uint64 next alignment. Now, on 64bit platforms this will be a 64bit
+	// alignment, yet on 32bit platforms this will be a 32bit alignment. So, we
+	// should calculate the expected data length here separately from our
+	// implementation to be fail safe! However, this might be rather a recipe
+	// for a safe fail...
+	expectedlen := 2*(uint32AlignMask+1) + (uint64AlignMask + 1)
+
+	if len(b0.Data()) != expectedlen {
 		t.Fatalf("alignment padding failed")
 	}
 

@@ -1,5 +1,16 @@
 // Package alignedbuff implements encoding and decoding aligned data elements
 // to/from buffers in native endianess.
+//
+// # Note
+//
+// The alignment/padding as implemented in this package must match that of
+// kernel's and user space C implementations for a particular architecture (bit
+// size). Please see also the "dummy structure" _xt_align
+// (https://elixir.bootlin.com/linux/v5.17.7/source/include/uapi/linux/netfilter/x_tables.h#L93)
+// as well as the associated XT_ALIGN C preprocessor macro.
+//
+// In particular, we rely on the Go compiler to follow the same architecture
+// alignments as the C compiler(s) on Linux.
 package alignedbuff
 
 import (
@@ -144,7 +155,8 @@ func (a *AlignedBuff) String() (string, error) {
 	return v, nil
 }
 
-// Unmarshals a string of a given length (for non-null terminated strings)
+// StringWithLength unmarshals a string of a given length (for non-null
+// terminated strings)
 func (a *AlignedBuff) StringWithLength(len int) (string, error) {
 	v := binaryutil.String(a.data[a.pos : a.pos+len])
 	a.pos += len
