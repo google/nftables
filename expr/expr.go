@@ -132,6 +132,8 @@ func exprsFromBytes(fam byte, ad *netlink.AttributeDecoder, b []byte) ([]Any, er
 					e = &FlowOffload{}
 				case "reject":
 					e = &Reject{}
+				case "masq":
+					e = &Masq{}
 				}
 				if e == nil {
 					// TODO: introduce an opaque expression type so that users know
@@ -337,6 +339,7 @@ func (e *Masq) unmarshal(fam byte, data []byte) error {
 	for ad.Next() {
 		switch ad.Type() {
 		case unix.NFTA_MASQ_REG_PROTO_MIN:
+			e.ToPorts = true
 			e.RegProtoMin = ad.Uint32()
 		case unix.NFTA_MASQ_REG_PROTO_MAX:
 			e.RegProtoMax = ad.Uint32()

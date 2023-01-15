@@ -580,6 +580,83 @@ func TestConfigureNATSourceAddress(t *testing.T) {
 	}
 }
 
+func TestMasqMarshalUnmarshal(t *testing.T) {
+	c, newNS := openSystemNFTConn(t)
+	defer cleanupSystemNFTConn(t, newNS)
+
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyINet,
+		Name:   "filter",
+	})
+	postrouting := c.AddChain(&nftables.Chain{
+		Name:     "postrouting",
+		Table:    filter,
+		Type:     nftables.ChainTypeNAT,
+		Hooknum:  nftables.ChainHookPostrouting,
+		Priority: nftables.ChainPriorityFilter,
+	})
+
+	min := uint32(1)
+	max := uint32(3)
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: postrouting,
+		Exprs: []expr.Any{
+			&expr.Masq{
+				ToPorts:     true,
+				RegProtoMin: min,
+				RegProtoMax: max,
+			},
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatalf("c.Flush() failed: %v", err)
+	}
+
+	rules, err := c.GetRules(
+		&nftables.Table{
+			Family: nftables.TableFamilyINet,
+			Name:   "filter",
+		},
+		&nftables.Chain{
+			Name: "postrouting",
+		},
+	)
+	if err != nil {
+		t.Fatalf("c.GetRules() failed: %v", err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected rule count: got %d, want %d", got, want)
+	}
+
+	rule := rules[0]
+	if got, want := len(rule.Exprs), 1; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	me, ok := rule.Exprs[0].(*expr.Masq)
+	if !ok {
+		t.Fatalf("unexpected expression type: got %T, want *expr.Masq", rule.Exprs[0])
+	}
+
+	if got, want := me.ToPorts, true; got != want {
+		t.Errorf("unexpected masq random flag: got %v, want %v", got, want)
+	}
+
+	if got, want := me.RegProtoMin, min; got != want {
+		t.Errorf("unexpected reg proto min: got %d, want %d", got, want)
+	}
+
+	if got, want := me.RegProtoMax, max; got != want {
+		t.Errorf("unexpected reg proto max: got %d, want %d", got, want)
+	}
+}
+
 func TestExprLogOptions(t *testing.T) {
 	c, newNS := openSystemNFTConn(t)
 	defer cleanupSystemNFTConn(t, newNS)
