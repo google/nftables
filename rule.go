@@ -97,9 +97,6 @@ func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Carry over all Table attributes (including Family), as the Table
-		// object which ruleFromMsg creates only contains the name.
-		r.Table = t
 		rules = append(rules, r)
 	}
 
