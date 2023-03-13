@@ -117,53 +117,53 @@ var (
 	TypeTimeDay     = SetDatatype{Name: "day", Bytes: 1, nftMagic: 45}
 	TypeCGroupV2    = SetDatatype{Name: "cgroupsv2", Bytes: 8, nftMagic: 46}
 
-	nftDatatypes = map[string]SetDatatype{
-		TypeVerdict.Name:     TypeVerdict,
-		TypeNFProto.Name:     TypeNFProto,
-		TypeBitmask.Name:     TypeBitmask,
-		TypeInteger.Name:     TypeInteger,
-		TypeString.Name:      TypeString,
-		TypeLLAddr.Name:      TypeLLAddr,
-		TypeIPAddr.Name:      TypeIPAddr,
-		TypeIP6Addr.Name:     TypeIP6Addr,
-		TypeEtherAddr.Name:   TypeEtherAddr,
-		TypeEtherType.Name:   TypeEtherType,
-		TypeARPOp.Name:       TypeARPOp,
-		TypeInetProto.Name:   TypeInetProto,
-		TypeInetService.Name: TypeInetService,
-		TypeICMPType.Name:    TypeICMPType,
-		TypeTCPFlag.Name:     TypeTCPFlag,
-		TypeDCCPPktType.Name: TypeDCCPPktType,
-		TypeMHType.Name:      TypeMHType,
-		TypeTime.Name:        TypeTime,
-		TypeMark.Name:        TypeMark,
-		TypeIFIndex.Name:     TypeIFIndex,
-		TypeARPHRD.Name:      TypeARPHRD,
-		TypeRealm.Name:       TypeRealm,
-		TypeClassID.Name:     TypeClassID,
-		TypeUID.Name:         TypeUID,
-		TypeGID.Name:         TypeGID,
-		TypeCTState.Name:     TypeCTState,
-		TypeCTDir.Name:       TypeCTDir,
-		TypeCTStatus.Name:    TypeCTStatus,
-		TypeICMP6Type.Name:   TypeICMP6Type,
-		TypeCTLabel.Name:     TypeCTLabel,
-		TypePktType.Name:     TypePktType,
-		TypeICMPCode.Name:    TypeICMPCode,
-		TypeICMPV6Code.Name:  TypeICMPV6Code,
-		TypeICMPXCode.Name:   TypeICMPXCode,
-		TypeDevGroup.Name:    TypeDevGroup,
-		TypeDSCP.Name:        TypeDSCP,
-		TypeECN.Name:         TypeECN,
-		TypeFIBAddr.Name:     TypeFIBAddr,
-		TypeBoolean.Name:     TypeBoolean,
-		TypeCTEventBit.Name:  TypeCTEventBit,
-		TypeIFName.Name:      TypeIFName,
-		TypeIGMPType.Name:    TypeIGMPType,
-		TypeTimeDate.Name:    TypeTimeDate,
-		TypeTimeHour.Name:    TypeTimeHour,
-		TypeTimeDay.Name:     TypeTimeDay,
-		TypeCGroupV2.Name:    TypeCGroupV2,
+	nftDatatypes = []SetDatatype{
+		TypeVerdict,
+		TypeNFProto,
+		TypeBitmask,
+		TypeInteger,
+		TypeString,
+		TypeLLAddr,
+		TypeIPAddr,
+		TypeIP6Addr,
+		TypeEtherAddr,
+		TypeEtherType,
+		TypeARPOp,
+		TypeInetProto,
+		TypeInetService,
+		TypeICMPType,
+		TypeTCPFlag,
+		TypeDCCPPktType,
+		TypeMHType,
+		TypeTime,
+		TypeMark,
+		TypeIFIndex,
+		TypeARPHRD,
+		TypeRealm,
+		TypeClassID,
+		TypeUID,
+		TypeGID,
+		TypeCTState,
+		TypeCTDir,
+		TypeCTStatus,
+		TypeICMP6Type,
+		TypeCTLabel,
+		TypePktType,
+		TypeICMPCode,
+		TypeICMPV6Code,
+		TypeICMPXCode,
+		TypeDevGroup,
+		TypeDSCP,
+		TypeECN,
+		TypeFIBAddr,
+		TypeBoolean,
+		TypeCTEventBit,
+		TypeIFName,
+		TypeIGMPType,
+		TypeTimeDate,
+		TypeTimeHour,
+		TypeTimeDay,
+		TypeCGroupV2,
 	}
 
 	// ctLabelBitSize is defined in https://git.netfilter.org/nftables/tree/src/ct.c.
@@ -176,6 +176,19 @@ var (
 	sizeOfUIDT uint32 = 4
 	sizeOfGIDT uint32 = 4
 )
+
+var nftDatatypesByName map[string]SetDatatype
+var nftDatatypesByMagic map[uint32]SetDatatype
+
+// Create maps for efficient datatype lookup.
+func init() {
+	nftDatatypesByName = make(map[string]SetDatatype, len(nftDatatypes))
+	nftDatatypesByMagic = make(map[uint32]SetDatatype, len(nftDatatypes))
+	for _, dt := range nftDatatypes {
+		nftDatatypesByName[dt.Name] = dt
+		nftDatatypesByMagic[dt.nftMagic] = dt
+	}
+}
 
 // ErrTooManyTypes is the error returned by ConcatSetType, if nftMagic would overflow.
 var ErrTooManyTypes = errors.New("too many types to concat")
@@ -221,7 +234,7 @@ func ConcatSetTypeElements(t SetDatatype) []SetDatatype {
 	names := strings.Split(t.Name, " . ")
 	types := make([]SetDatatype, len(names))
 	for i, n := range names {
-		types[i] = nftDatatypes[n]
+		types[i] = nftDatatypesByName[n]
 	}
 	return types
 }
@@ -678,17 +691,11 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			set.Concatenation = (flags & NFT_SET_CONCAT) != 0
 		case unix.NFTA_SET_KEY_TYPE:
 			nftMagic := ad.Uint32()
-			if invalidMagic, ok := validateKeyType(nftMagic); !ok {
-				return nil, fmt.Errorf("could not determine key type %+v", invalidMagic)
+			dt, err := parseSetDatatype(nftMagic)
+			if err != nil {
+				return nil, fmt.Errorf("could not determine data type: %w", err)
 			}
-			set.KeyType.nftMagic = nftMagic
-			for _, dt := range nftDatatypes {
-				// If this is a non-concatenated type, we can assign the descriptor.
-				if nftMagic == dt.nftMagic {
-					set.KeyType = dt
-					break
-				}
-			}
+			set.KeyType = dt
 		case unix.NFTA_SET_DATA_TYPE:
 			nftMagic := ad.Uint32()
 			// Special case for the data type verdict, in the message it is stored as 0xffffff00 but it is defined as 1
@@ -696,42 +703,34 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 				set.KeyType = TypeVerdict
 				break
 			}
-			for _, dt := range nftDatatypes {
-				if nftMagic == dt.nftMagic {
-					set.DataType = dt
-					break
-				}
+			dt, err := parseSetDatatype(nftMagic)
+			if err != nil {
+				return nil, fmt.Errorf("could not determine data type: %w", err)
 			}
-			if set.DataType.nftMagic == 0 {
-				return nil, fmt.Errorf("could not determine data type %x", nftMagic)
-			}
+			set.DataType = dt
 		}
 	}
 	return &set, nil
 }
 
-func validateKeyType(bits uint32) ([]uint32, bool) {
-	var unpackTypes []uint32
-	var invalidTypes []uint32
-	found := false
-	valid := true
-	for bits != 0 {
-		unpackTypes = append(unpackTypes, bits&SetConcatTypeMask)
-		bits = bits >> SetConcatTypeBits
-	}
-	for _, t := range unpackTypes {
-		for _, dt := range nftDatatypes {
-			if t == dt.nftMagic {
-				found = true
-			}
+func parseSetDatatype(magic uint32) (SetDatatype, error) {
+	types := make([]SetDatatype, 0, 32/SetConcatTypeBits)
+	for magic != 0 {
+		t := magic & SetConcatTypeMask
+		magic = magic >> SetConcatTypeBits
+		dt, ok := nftDatatypesByMagic[t]
+		if !ok {
+			return TypeInvalid, fmt.Errorf("could not determine data type %+v", dt)
 		}
-		if !found {
-			invalidTypes = append(invalidTypes, t)
-			valid = false
-		}
-		found = false
+		// Because we start with the last type, we insert the later types at the front.
+		types = append([]SetDatatype{dt}, types...)
 	}
-	return invalidTypes, valid
+
+	dt, err := ConcatSetType(types...)
+	if err != nil {
+		return TypeInvalid, fmt.Errorf("could not create data type: %w", err)
+	}
+	return dt, nil
 }
 
 var elemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSETELEM)
