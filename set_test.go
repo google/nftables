@@ -1,7 +1,6 @@
 package nftables
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -17,58 +16,63 @@ func genSetKeyType(types ...uint32) uint32 {
 	return c
 }
 
-func TestValidateNFTMagic(t *testing.T) {
+func TestParseSetDatatype(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name           string
 		nftMagicPacked uint32
 		pass           bool
-		invalid        []uint32
+		typeName       string
+		typeBytes      uint32
 	}{
 		{
 			name:           "Single valid nftMagic",
-			nftMagicPacked: genSetKeyType(7),
+			nftMagicPacked: genSetKeyType(TypeIPAddr.nftMagic),
 			pass:           true,
-			invalid:        nil,
+			typeName:       "ipv4_addr",
+			typeBytes:      4,
 		},
 		{
 			name:           "Single unknown nftMagic",
 			nftMagicPacked: genSetKeyType(unknownNFTMagic),
 			pass:           false,
-			invalid:        []uint32{unknownNFTMagic},
 		},
 		{
 			name:           "Multiple valid nftMagic",
-			nftMagicPacked: genSetKeyType(7, 13),
+			nftMagicPacked: genSetKeyType(TypeIPAddr.nftMagic, TypeInetService.nftMagic),
 			pass:           true,
-			invalid:        nil,
+			typeName:       "ipv4_addr . inet_service",
+			typeBytes:      8,
 		},
 		{
 			name:           "Multiple nftMagic with 1 unknown",
-			nftMagicPacked: genSetKeyType(7, 13, unknownNFTMagic),
+			nftMagicPacked: genSetKeyType(TypeIPAddr.nftMagic, TypeInetService.nftMagic, unknownNFTMagic),
 			pass:           false,
-			invalid:        []uint32{unknownNFTMagic},
 		},
 		{
 			name:           "Multiple nftMagic with 2 unknown",
-			nftMagicPacked: genSetKeyType(7, 13, unknownNFTMagic, unknownNFTMagic+1),
+			nftMagicPacked: genSetKeyType(TypeIPAddr.nftMagic, TypeInetService.nftMagic, unknownNFTMagic, unknownNFTMagic+1),
 			pass:           false,
-			invalid:        []uint32{unknownNFTMagic + 1, unknownNFTMagic},
-			// Invalid entries will appear in reverse order
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			invalid, pass := validateKeyType(tt.nftMagicPacked)
+			datatype, err := parseSetDatatype(tt.nftMagicPacked)
+			pass := err == nil
 			if pass && !tt.pass {
 				t.Fatalf("expected to fail but succeeded")
 			}
 			if !pass && tt.pass {
-				t.Fatalf("expected to succeed but failed with invalid nftMagic: %+v", invalid)
+				t.Fatalf("expected to succeed but failed: %s", err)
 			}
-			if !reflect.DeepEqual(tt.invalid, invalid) {
-				t.Fatalf("Expected invalid: %+v but got: %+v", tt.invalid, invalid)
+			expected := SetDatatype{
+				Name:     tt.typeName,
+				Bytes:    tt.typeBytes,
+				nftMagic: tt.nftMagicPacked,
+			}
+			if pass && datatype != expected {
+				t.Fatalf("invalid datatype: expected %+v but got %+v", expected, datatype)
 			}
 		})
 	}
