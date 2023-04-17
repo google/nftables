@@ -22,7 +22,6 @@ import (
 	"net"
 	"os"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -33,13 +32,10 @@ import (
 	"github.com/google/nftables/internal/nftest"
 	"github.com/google/nftables/xt"
 	"github.com/mdlayher/netlink"
-	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 )
 
-var (
-	enableSysTests = flag.Bool("run_system_tests", false, "Run tests that operate against the live kernel")
-)
+var enableSysTests = flag.Bool("run_system_tests", false, "Run tests that operate against the live kernel")
 
 // nfdump returns a hexdump of 4 bytes per line (like nft --debug=all), allowing
 // users to make sense of large byte literals more easily.
@@ -87,45 +83,11 @@ func ifname(n string) []byte {
 	return b
 }
 
-// openSystemNFTConn returns a netlink connection that tests against
-// the running kernel in a separate network namespace.
-// cleanupSystemNFTConn() must be called from a defer to cleanup
-// created network namespace.
-func openSystemNFTConn(t *testing.T) (*nftables.Conn, netns.NsHandle) {
-	t.Helper()
-	if !*enableSysTests {
-		t.SkipNow()
-	}
-	// We lock the goroutine into the current thread, as namespace operations
-	// such as those invoked by `netns.New()` are thread-local. This is undone
-	// in cleanupSystemNFTConn().
-	runtime.LockOSThread()
-
-	ns, err := netns.New()
-	if err != nil {
-		t.Fatalf("netns.New() failed: %v", err)
-	}
-	c, err := nftables.New(nftables.WithNetNSFd(int(ns)))
-	if err != nil {
-		t.Fatalf("nftables.New() failed: %v", err)
-	}
-	return c, ns
-}
-
-func cleanupSystemNFTConn(t *testing.T, newNS netns.NsHandle) {
-	defer runtime.UnlockOSThread()
-
-	if err := newNS.Close(); err != nil {
-		t.Fatalf("newNS.Close() failed: %v", err)
-	}
-}
-
 func TestRuleOperations(t *testing.T) {
-
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -581,8 +543,8 @@ func TestConfigureNATSourceAddress(t *testing.T) {
 }
 
 func TestMasqMarshalUnmarshal(t *testing.T) {
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -658,8 +620,8 @@ func TestMasqMarshalUnmarshal(t *testing.T) {
 }
 
 func TestExprLogOptions(t *testing.T) {
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -803,8 +765,8 @@ func TestExprLogOptions(t *testing.T) {
 }
 
 func TestExprLogPrefix(t *testing.T) {
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -879,15 +841,15 @@ func TestGetRules(t *testing.T) {
 	// strace -f -v -x -s 2048 -eraw=sendto nft list chain ip filter forward
 
 	want := [][]byte{
-		[]byte{0x2, 0x0, 0x0, 0x0, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xa, 0x0, 0x2, 0x0, 0x69, 0x6e, 0x70, 0x75, 0x74, 0x0, 0x0, 0x0},
+		{0x2, 0x0, 0x0, 0x0, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xa, 0x0, 0x2, 0x0, 0x69, 0x6e, 0x70, 0x75, 0x74, 0x0, 0x0, 0x0},
 	}
 
 	// The reply messages come from adding log.Printf("msgs: %#v", msgs) to
 	// (*github.com/mdlayher/netlink/Conn).receive
 	reply := [][]netlink.Message{
 		nil,
-		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x68, Type: 0xa06, Flags: 0x802, Sequence: 0x9acb0443, PID: 0xba38ef3c}, Data: []uint8{0x2, 0x0, 0x0, 0xc, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xc, 0x0, 0x2, 0x0, 0x66, 0x6f, 0x72, 0x77, 0x61, 0x72, 0x64, 0x0, 0xc, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2, 0x30, 0x0, 0x4, 0x0, 0x2c, 0x0, 0x1, 0x0, 0xc, 0x0, 0x1, 0x0, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x65, 0x72, 0x0, 0x1c, 0x0, 0x2, 0x0, 0xc, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x6d, 0x92, 0x20, 0x20, 0xc, 0x0, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xa, 0x48, 0xd9}}},
-		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x14, Type: 0x3, Flags: 0x2, Sequence: 0x9acb0443, PID: 0xba38ef3c}, Data: []uint8{0x0, 0x0, 0x0, 0x0}}},
+		{{Header: netlink.Header{Length: 0x68, Type: 0xa06, Flags: 0x802, Sequence: 0x9acb0443, PID: 0xba38ef3c}, Data: []uint8{0x2, 0x0, 0x0, 0xc, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xc, 0x0, 0x2, 0x0, 0x66, 0x6f, 0x72, 0x77, 0x61, 0x72, 0x64, 0x0, 0xc, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2, 0x30, 0x0, 0x4, 0x0, 0x2c, 0x0, 0x1, 0x0, 0xc, 0x0, 0x1, 0x0, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x65, 0x72, 0x0, 0x1c, 0x0, 0x2, 0x0, 0xc, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x6d, 0x92, 0x20, 0x20, 0xc, 0x0, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xa, 0x48, 0xd9}}},
+		{{Header: netlink.Header{Length: 0x14, Type: 0x3, Flags: 0x2, Sequence: 0x9acb0443, PID: 0xba38ef3c}, Data: []uint8{0x0, 0x0, 0x0, 0x0}}},
 	}
 
 	c, err := nftables.New(nftables.WithTestDial(
@@ -1660,7 +1622,6 @@ func TestListChains(t *testing.T) {
 			validate(chain.Policy, want[i].Policy, "policy pointer", i)
 		}
 	}
-
 }
 
 func TestAddChain(t *testing.T) {
@@ -1822,21 +1783,22 @@ func TestDelChain(t *testing.T) {
 		}
 	}
 }
+
 func TestGetObjReset(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft list chain ip filter forward
 
 	want := [][]byte{
-		[]byte{0x2, 0x0, 0x0, 0x0, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xa, 0x0, 0x2, 0x0, 0x66, 0x77, 0x64, 0x65, 0x64, 0x0, 0x0, 0x0, 0x8, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x1},
+		{0x2, 0x0, 0x0, 0x0, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xa, 0x0, 0x2, 0x0, 0x66, 0x77, 0x64, 0x65, 0x64, 0x0, 0x0, 0x0, 0x8, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x1},
 	}
 
 	// The reply messages come from adding log.Printf("msgs: %#v", msgs) to
 	// (*github.com/mdlayher/netlink/Conn).receive
 	reply := [][]netlink.Message{
 		nil,
-		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x64, Type: 0xa12, Flags: 0x802, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0x2, 0x0, 0x0, 0x10, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xa, 0x0, 0x2, 0x0, 0x66, 0x77, 0x64, 0x65, 0x64, 0x0, 0x0, 0x0, 0x8, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x1, 0x8, 0x0, 0x5, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1c, 0x0, 0x4, 0x0, 0xc, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x4, 0x61, 0xc, 0x0, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x9, 0xc, 0x0, 0x6, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2}}},
-		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 0x14, Type: 0x3, Flags: 0x2, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0x0, 0x0, 0x0, 0x0}}},
-		[]netlink.Message{netlink.Message{Header: netlink.Header{Length: 36, Type: netlink.Error, Flags: 0x100, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0, 0, 0, 0, 88, 0, 0, 0, 12, 10, 5, 4, 143, 109, 199, 146, 236, 9, 0, 0}}},
+		{{Header: netlink.Header{Length: 0x64, Type: 0xa12, Flags: 0x802, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0x2, 0x0, 0x0, 0x10, 0xb, 0x0, 0x1, 0x0, 0x66, 0x69, 0x6c, 0x74, 0x65, 0x72, 0x0, 0x0, 0xa, 0x0, 0x2, 0x0, 0x66, 0x77, 0x64, 0x65, 0x64, 0x0, 0x0, 0x0, 0x8, 0x0, 0x3, 0x0, 0x0, 0x0, 0x0, 0x1, 0x8, 0x0, 0x5, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1c, 0x0, 0x4, 0x0, 0xc, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x4, 0x61, 0xc, 0x0, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x9, 0xc, 0x0, 0x6, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x2}}},
+		{{Header: netlink.Header{Length: 0x14, Type: 0x3, Flags: 0x2, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0x0, 0x0, 0x0, 0x0}}},
+		{{Header: netlink.Header{Length: 36, Type: netlink.Error, Flags: 0x100, Sequence: 0x9acb0443, PID: 0xde9}, Data: []uint8{0, 0, 0, 0, 88, 0, 0, 0, 12, 10, 5, 4, 143, 109, 199, 146, 236, 9, 0, 0}}},
 	}
 
 	c, err := nftables.New(nftables.WithTestDial(
@@ -1872,7 +1834,6 @@ func TestGetObjReset(t *testing.T) {
 		Table: filter,
 		Name:  "fwded",
 	})
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1902,8 +1863,8 @@ func TestObjAPI(t *testing.T) {
 
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
@@ -1964,7 +1925,6 @@ func TestObjAPI(t *testing.T) {
 	}
 
 	objs, err := c.GetObjects(table)
-
 	if err != nil {
 		t.Errorf("c.GetObjects(table) failed: %v failed", err)
 	}
@@ -1974,7 +1934,6 @@ func TestObjAPI(t *testing.T) {
 	}
 
 	objsOther, err := c.GetObjects(tableOther)
-
 	if err != nil {
 		t.Errorf("c.GetObjects(tableOther) failed: %v failed", err)
 	}
@@ -1984,7 +1943,6 @@ func TestObjAPI(t *testing.T) {
 	}
 
 	obj1, err := c.GetObject(counter1)
-
 	if err != nil {
 		t.Errorf("c.GetObject(counter1) failed: %v failed", err)
 	}
@@ -2000,7 +1958,6 @@ func TestObjAPI(t *testing.T) {
 	}
 
 	obj2, err := c.GetObject(counter2)
-
 	if err != nil {
 		t.Errorf("c.GetObject(counter2) failed: %v failed", err)
 	}
@@ -2042,7 +1999,6 @@ func TestObjAPI(t *testing.T) {
 	}
 
 	legacy, err := c.GetObj(counter1)
-
 	if err != nil {
 		t.Errorf("c.GetObj(counter1) failed: %v failed", err)
 	}
@@ -2052,7 +2008,6 @@ func TestObjAPI(t *testing.T) {
 	}
 
 	legacyReset, err := c.GetObjReset(counter1)
-
 	if err != nil {
 		t.Errorf("c.GetObjReset(counter1) failed: %v failed", err)
 	}
@@ -2060,7 +2015,6 @@ func TestObjAPI(t *testing.T) {
 	if len(legacyReset) != 2 {
 		t.Errorf("unexpected number of objects: got %d, want %d", len(legacyReset), 2)
 	}
-
 }
 
 func TestConfigureClamping(t *testing.T) {
@@ -2537,12 +2491,12 @@ func TestCreateUseAnonymousSet(t *testing.T) {
 }
 
 func TestCappedErrMsgOnSets(t *testing.T) {
-	c, newNS := openSystemNFTConn(t)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
 	c, err := nftables.New(nftables.WithNetNSFd(int(newNS)), nftables.AsLasting())
 	if err != nil {
 		t.Fatalf("nftables.New() failed: %v", err)
 	}
-	defer cleanupSystemNFTConn(t, newNS)
+	defer nftest.CleanupSystemConn(t, newNS)
 	c.FlushRuleset()
 	defer c.FlushRuleset()
 
@@ -2617,8 +2571,8 @@ func TestCappedErrMsgOnSets(t *testing.T) {
 func TestCreateUseNamedSet(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -2671,11 +2625,10 @@ func TestCreateUseNamedSet(t *testing.T) {
 }
 
 func TestIP6SetAddElements(t *testing.T) {
-
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -2723,8 +2676,8 @@ func TestIP6SetAddElements(t *testing.T) {
 func TestCreateUseCounterSet(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -2766,8 +2719,8 @@ func TestCreateUseCounterSet(t *testing.T) {
 func TestCreateDeleteNamedSet(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -2807,8 +2760,8 @@ func TestCreateDeleteNamedSet(t *testing.T) {
 func TestDeleteElementNamedSet(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -2854,8 +2807,8 @@ func TestFlushNamedSet(t *testing.T) {
 	}
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -2895,8 +2848,8 @@ func TestFlushNamedSet(t *testing.T) {
 func TestSetElementsInterval(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -2963,8 +2916,8 @@ func TestSetElementsInterval(t *testing.T) {
 }
 
 func TestCreateListFlowtable(t *testing.T) {
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	c.FlushRuleset()
 	defer c.FlushRuleset()
 
@@ -2996,8 +2949,8 @@ func TestCreateListFlowtable(t *testing.T) {
 }
 
 func TestCreateListFlowtableWithDevices(t *testing.T) {
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	c.FlushRuleset()
 	defer c.FlushRuleset()
 
@@ -3062,8 +3015,8 @@ func TestCreateListFlowtableWithDevices(t *testing.T) {
 }
 
 func TestCreateDeleteFlowtable(t *testing.T) {
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	c.FlushRuleset()
 	defer c.FlushRuleset()
 
@@ -3115,8 +3068,8 @@ func TestCreateDeleteFlowtable(t *testing.T) {
 }
 
 func TestOffload(t *testing.T) {
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	c.FlushRuleset()
 	defer c.FlushRuleset()
 
@@ -3193,8 +3146,8 @@ func TestOffload(t *testing.T) {
 func TestFlushChain(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -3307,8 +3260,8 @@ func TestFlushTable(t *testing.T) {
 	}
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -3532,8 +3485,8 @@ func TestFlushTable(t *testing.T) {
 }
 
 func TestGetLookupExprDestSet(t *testing.T) {
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	c.FlushRuleset()
 	defer c.FlushRuleset()
 
@@ -3630,8 +3583,8 @@ func TestGetLookupExprDestSet(t *testing.T) {
 func TestGetRuleLookupVerdictImmediate(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -3757,8 +3710,8 @@ func TestGetRuleLookupVerdictImmediate(t *testing.T) {
 func TestDynset(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -3848,8 +3801,8 @@ func TestDynset(t *testing.T) {
 func TestDynsetWithOneExpression(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -3950,8 +3903,8 @@ func TestDynsetWithOneExpression(t *testing.T) {
 func TestDynsetWithMultipleExpressions(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -4659,7 +4612,6 @@ func TestSet4(t *testing.T) {
 	// Additional details can be obtained by specifying the --debug=all option
 	// when calling nft(8).
 	want := [][]byte{
-
 		// batch begin
 		[]byte("\x00\x00\x00\x0a"),
 
@@ -4733,7 +4685,7 @@ func TestSet4(t *testing.T) {
 		Anonymous: false,
 		Constant:  true,
 		Name:      "test-set",
-		ID:        uint32(1), //rand.Intn(0xffff)),
+		ID:        uint32(1), // rand.Intn(0xffff)),
 		Table:     tbl,
 		KeyType:   nftables.TypeInetService,
 	}
@@ -5593,7 +5545,6 @@ func TestJHash(t *testing.T) {
 }
 
 func TestDup(t *testing.T) {
-
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft add rule filter prerouting mark set jhash ip saddr mod 2
 	//
@@ -5661,7 +5612,6 @@ func TestDup(t *testing.T) {
 	})
 
 	lo, err := net.InterfaceByName("lo")
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5695,7 +5645,6 @@ func TestDup(t *testing.T) {
 }
 
 func TestDupWoDev(t *testing.T) {
-
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft add rule filter prerouting mark set jhash ip saddr mod 2
 	//
@@ -5833,7 +5782,6 @@ func TestNotrack(t *testing.T) {
 }
 
 func TestQuota(t *testing.T) {
-
 	want := [][]byte{
 		// batch begin
 		[]byte("\x00\x00\x00\x0a"),
@@ -5999,8 +5947,8 @@ func TestStatelessNAT(t *testing.T) {
 func TestGetRulesObjref(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -6064,8 +6012,8 @@ func TestGetRulesObjref(t *testing.T) {
 func TestGetRulesQueue(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
@@ -6121,8 +6069,8 @@ func TestGetRulesQueue(t *testing.T) {
 func TestNftablesCompat(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
-	c, newNS := openSystemNFTConn(t)
-	defer cleanupSystemNFTConn(t, newNS)
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
