@@ -277,6 +277,9 @@ type SetElement struct {
 	VerdictData *expr.Verdict
 	// To support aging of set elements
 	Timeout time.Duration
+
+	// Life left of the "timeout" elements
+	Expires time.Duration
 }
 
 func (s *SetElement) decode() func(b []byte) error {
@@ -308,7 +311,9 @@ func (s *SetElement) decode() func(b []byte) error {
 				flags := ad.Uint32()
 				s.IntervalEnd = (flags & unix.NFT_SET_ELEM_INTERVAL_END) != 0
 			case unix.NFTA_SET_ELEM_TIMEOUT:
-				s.Timeout = time.Duration(time.Millisecond * time.Duration(ad.Uint64()))
+				s.Timeout = time.Millisecond * time.Duration(ad.Uint64())
+			case unix.NFTA_SET_ELEM_EXPIRATION:
+				s.Expires = time.Millisecond * time.Duration(ad.Uint64())
 			}
 		}
 		return ad.Err()
