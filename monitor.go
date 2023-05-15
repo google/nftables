@@ -17,16 +17,17 @@ package nftables
 import (
 	"sync"
 
+	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
 
-type MonitorEvent uint8
+type MonitorAction uint8
 
 const (
-	MonitorEventNew MonitorEvent = 1 << iota
-	MonitorEventDel
-	MonitorEventMask MonitorEvent = (1 << iota) - 1
-	MonitorEventAny  MonitorEvent = MonitorEventMask
+	MonitorActionNew MonitorAction = 1 << iota
+	MonitorActionDel
+	MonitorActionMask MonitorAction = (1 << iota) - 1
+	MonitorActionAny  MonitorAction = MonitorActionMask
 )
 
 type MonitorObject uint32
@@ -45,14 +46,14 @@ const (
 )
 
 var (
-	monitorFlags         map[MonitorEvent]map[MonitorObject]uint32
+	monitorFlags         map[MonitorAction]map[MonitorObject]uint32
 	monitorFlagsInitOnce sync.Once
 )
 
 func lazyInitOnce() {
 	monitorFlagsInitOnce.Do(func() {
-		monitorFlags = map[MonitorEvent]map[MonitorObject]uint32{
-			MonitorEventAny: {
+		monitorFlags = map[MonitorAction]map[MonitorObject]uint32{
+			MonitorActionAny: {
 				MonitorObjectAny:      0xffffffff,
 				MonitorObjectTables:   1<<unix.NFT_MSG_NEWTABLE | 1<<unix.NFT_MSG_DELCHAIN,
 				MonitorObjectChains:   1<<unix.NFT_MSG_NEWCHAIN | 1<<unix.NFT_MSG_DELCHAIN,
@@ -67,7 +68,7 @@ func lazyInitOnce() {
 					1<<unix.NFT_MSG_NEWOBJ | 1<<unix.NFT_MSG_DELOBJ,
 				MonitorObjectTrace: 1 << unix.NFT_MSG_TRACE,
 			},
-			MonitorEventNew: {
+			MonitorActionNew: {
 				MonitorObjectAny: 1<<unix.NFT_MSG_NEWTABLE |
 					1<<unix.NFT_MSG_NEWCHAIN |
 					1<<unix.NFT_MSG_NEWRULE |
@@ -85,7 +86,7 @@ func lazyInitOnce() {
 					1<<unix.NFT_MSG_NEWOBJ,
 				MonitorObjectTrace: 0,
 			},
-			MonitorEventDel: {
+			MonitorActionDel: {
 				MonitorObjectAny: 1<<unix.NFT_MSG_DELTABLE |
 					1<<unix.NFT_MSG_DELCHAIN |
 					1<<unix.NFT_MSG_DELRULE |
@@ -98,25 +99,115 @@ func lazyInitOnce() {
 	})
 }
 
+// A Monitor
 type Monitor struct {
-	Event      MonitorEvent
-	Object     MonitorObject
-	BufferSize int
+	action MonitorAction
+	object MonitorObject
+
+	monitorFlags uint32
+
+	eventCh chan *Event
+	conn    *netlink.Conn
+	closer  netlinkCloser
 }
 
-func (monitor *Monitor) AddMonitorObject(obj MonitorObject) {
-	monitor.Object = monitor.Object | obj
+type MonitorOption func(*Monitor)
+
+func WithMonitorEventBuffer(size int) MonitorOption {
+	return func(monitor *Monitor) {
+		monitor.eventCh = make(chan *Event, size)
+	}
+}
+
+func WithMonitorAction(action MonitorAction) MonitorOption {
+	return func(monitor *Monitor) {
+		monitor.action = action
+	}
+}
+
+func WithMonitorObject(object MonitorObject) MonitorOption {
+	return func(monitor *Monitor) {
+		monitor.object = object
+	}
+}
+
+func NewMonitor(opts ...MonitorOption) *Monitor {
+	lazyInitOnce()
+
+	monitor := &Monitor{}
+	for _, opt := range opts {
+		opt(monitor)
+	}
+	if monitor.eventCh == nil {
+		monitor.eventCh = make(chan *Event)
+	}
+	objects, ok := monitorFlags[monitor.action]
+	if !ok {
+		objects = monitorFlags[MonitorActionAny]
+	}
+	flags, ok := objects[monitor.object]
+	if !ok {
+		flags = objects[MonitorObjectAny]
+	}
+	monitor.monitorFlags = flags
+	return monitor
+}
+
+func (monitor *Monitor) monitor() {
+	for {
+		msgs, err := monitor.conn.Receive()
+		if err != nil {
+			break
+		}
+		for _, msg := range msgs {
+			if got, want := msg.Header.Type&0xff00>>8, netlink.HeaderType(unix.NFNL_SUBSYS_NFTABLES); got != want {
+				continue
+			}
+			msgType := msg.Header.Type & 0x00ff
+			if monitor.monitorFlags&1<<msgType == 0 {
+				continue
+			}
+			switch msgType {
+			case unix.NFT_MSG_NEWTABLE, unix.NFT_MSG_DELTABLE:
+			case unix.NFT_MSG_NEWRULE, unix.NFT_MSG_DELRULE:
+			}
+		}
+	}
+}
+
+func (monitor *Monitor) Close() {
+	monitor.closer()
+	close(monitor.eventCh)
 }
 
 type Event struct{}
 
 func (cc *Conn) AddMonitor(monitor *Monitor) (chan *Event, error) {
-	_, closer, err := cc.netlinkConn()
+	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = closer() }()
+	monitor.conn = conn
+	monitor.closer = closer
 
-	ch := make(chan *Event, monitor.BufferSize)
-	return ch, nil
+	if monitor.monitorFlags&(1<<unix.NFT_MSG_TRACE) != 0 {
+		err = conn.JoinGroup(uint32(unix.NFNLGRP_NFTRACE))
+		if err != nil {
+			monitor.closer()
+			return nil, err
+		}
+	}
+	if monitor.monitorFlags&^(1<<unix.NFT_MSG_TRACE) != 0 {
+		err = conn.JoinGroup(uint32(unix.NFNLGRP_NFTABLES))
+		if err != nil {
+			monitor.closer()
+			return nil, err
+		}
+	}
+	go monitor.monitor()
+	return monitor.eventCh, nil
+}
+
+func parseRuleFromMsg(msg netlink.Message) (*Rule, error) {
+	return nil, nil
 }
