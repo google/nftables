@@ -261,6 +261,9 @@ type Set struct {
 	Timeout       time.Duration
 	KeyType       SetDatatype
 	DataType      SetDatatype
+	// Either host (binaryutil.NativeEndian) or big (binaryutil.BigEndian) endian as per
+	// https://git.netfilter.org/nftables/tree/include/datatype.h?id=d486c9e626405e829221b82d7355558005b26d8a#n109
+	KeyByteOrder binaryutil.ByteOrder
 }
 
 // SetElement represents a data point within a set.
@@ -560,11 +563,11 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		// Marshal concat size description as set description
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: concatBytes})
 	}
-	if s.Anonymous || s.Constant || s.Interval {
+	if s.Anonymous || s.Constant || s.Interval || s.KeyByteOrder == binaryutil.BigEndian {
 		tableInfo = append(tableInfo,
 			// Semantically useless - kept for binary compatability with nft
 			netlink.Attribute{Type: unix.NFTA_SET_USERDATA, Data: []byte("\x00\x04\x02\x00\x00\x00")})
-	} else if !s.IsMap {
+	} else if s.KeyByteOrder == binaryutil.NativeEndian {
 		// Per https://git.netfilter.org/nftables/tree/src/mnl.c?id=187c6d01d35722618c2711bbc49262c286472c8f#n1165
 		tableInfo = append(tableInfo,
 			netlink.Attribute{Type: unix.NFTA_SET_USERDATA, Data: []byte("\x00\x04\x01\x00\x00\x00")})
