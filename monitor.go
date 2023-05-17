@@ -23,6 +23,7 @@ import (
 
 type MonitorAction uint8
 
+// Possible MonitorAction values.
 const (
 	MonitorActionNew MonitorAction = 1 << iota
 	MonitorActionDel
@@ -40,7 +41,6 @@ const (
 	MonitorObjectRules
 	MonitorObjectElements
 	MonitorObjectRuleset
-	MonitorObjectTrace
 	MonitorObjectMask MonitorObject = (1 << iota) - 1
 	MonitorObjectAny  MonitorObject = MonitorObjectMask
 )
@@ -50,7 +50,8 @@ var (
 	monitorFlagsInitOnce sync.Once
 )
 
-func lazyInitOnce() {
+// A lazy init function to define flags.
+func lazyInit() {
 	monitorFlagsInitOnce.Do(func() {
 		monitorFlags = map[MonitorAction]map[MonitorObject]uint32{
 			MonitorActionAny: {
@@ -66,7 +67,6 @@ func lazyInitOnce() {
 					1<<unix.NFT_MSG_NEWSET | 1<<unix.NFT_MSG_DELSET |
 					1<<unix.NFT_MSG_NEWSETELEM | 1<<unix.NFT_MSG_DELSETELEM |
 					1<<unix.NFT_MSG_NEWOBJ | 1<<unix.NFT_MSG_DELOBJ,
-				MonitorObjectTrace: 1 << unix.NFT_MSG_TRACE,
 			},
 			MonitorActionNew: {
 				MonitorObjectAny: 1<<unix.NFT_MSG_NEWTABLE |
@@ -84,7 +84,6 @@ func lazyInitOnce() {
 					1<<unix.NFT_MSG_NEWSET |
 					1<<unix.NFT_MSG_NEWSETELEM |
 					1<<unix.NFT_MSG_NEWOBJ,
-				MonitorObjectTrace: 0,
 			},
 			MonitorActionDel: {
 				MonitorObjectAny: 1<<unix.NFT_MSG_DELTABLE |
@@ -93,20 +92,49 @@ func lazyInitOnce() {
 					1<<unix.NFT_MSG_DELSET |
 					1<<unix.NFT_MSG_DELSETELEM |
 					1<<unix.NFT_MSG_DELOBJ,
-				MonitorObjectTrace: 0,
 			},
 		}
 	})
 }
 
-// A Monitor
-type Monitor struct {
-	action MonitorAction
-	object MonitorObject
+type EventType int
 
+const (
+	EventTypeNewTable   EventType = unix.NFT_MSG_NEWTABLE
+	EventTypeDelTable   EventType = unix.NFT_MSG_DELTABLE
+	EventTypeNewChain   EventType = unix.NFT_MSG_NEWCHAIN
+	EventTypeDELChain   EventType = unix.NFT_MSG_DELCHAIN
+	EventTypeNewRule    EventType = unix.NFT_MSG_NEWRULE
+	EventTypeDelRule    EventType = unix.NFT_MSG_DELRULE
+	EventTypeNewSet     EventType = unix.NFT_MSG_NEWSET
+	EventTypeDelSet     EventType = unix.NFT_MSG_DELSET
+	EventTypeNewSetElem EventType = unix.NFT_MSG_NEWSETELEM
+	EventTypeDelSetElem EventType = unix.NFT_MSG_DELSETELEM
+	EventTypeNewObj     EventType = unix.NFT_MSG_NEWOBJ
+	EventTypeDelObj     EventType = unix.NFT_MSG_DELOBJ
+)
+
+type Event struct {
+	Type  EventType
+	Data  interface{}
+	Error error
+}
+
+const (
+	monitorOK = iota
+	monitorClosed
+)
+
+// A Monitor to track actions on objects.
+type Monitor struct {
+	action       MonitorAction
+	object       MonitorObject
 	monitorFlags uint32
 
+	// mtx covers eventCh and status
+	mtx     sync.Mutex
 	eventCh chan *Event
+	status  int
 	conn    *netlink.Conn
 	closer  netlinkCloser
 }
@@ -119,22 +147,27 @@ func WithMonitorEventBuffer(size int) MonitorOption {
 	}
 }
 
+// WithMonitorAction to set monitor actions like new, del or any.
 func WithMonitorAction(action MonitorAction) MonitorOption {
 	return func(monitor *Monitor) {
 		monitor.action = action
 	}
 }
 
+// WithMonitorObject to set monitor objects.
 func WithMonitorObject(object MonitorObject) MonitorOption {
 	return func(monitor *Monitor) {
 		monitor.object = object
 	}
 }
 
+// NewMonitor returns a Monitor with options to be started.
 func NewMonitor(opts ...MonitorOption) *Monitor {
-	lazyInitOnce()
+	lazyInit()
 
-	monitor := &Monitor{}
+	monitor := &Monitor{
+		status: monitorOK,
+	}
 	for _, opt := range opts {
 		opt(monitor)
 	}
@@ -169,19 +202,78 @@ func (monitor *Monitor) monitor() {
 			}
 			switch msgType {
 			case unix.NFT_MSG_NEWTABLE, unix.NFT_MSG_DELTABLE:
+				table, err := tableFromMsg(msg)
+				event := &Event{
+					Type:  EventType(msgType),
+					Data:  table,
+					Error: err,
+				}
+				monitor.eventCh <- event
+			case unix.NFT_MSG_NEWCHAIN, unix.NFT_MSG_DELCHAIN:
+				chain, err := chainFromMsg(msg)
+				event := &Event{
+					Type:  EventType(msgType),
+					Data:  chain,
+					Error: err,
+				}
+				monitor.eventCh <- event
 			case unix.NFT_MSG_NEWRULE, unix.NFT_MSG_DELRULE:
+				rule, err := parseRuleFromMsg(msg)
+				event := &Event{
+					Type:  EventType(msgType),
+					Data:  rule,
+					Error: err,
+				}
+				monitor.eventCh <- event
+			case unix.NFT_MSG_NEWSET, unix.NFT_MSG_DELSET:
+				set, err := setsFromMsg(msg)
+				event := &Event{
+					Type:  EventType(msgType),
+					Data:  set,
+					Error: err,
+				}
+				monitor.eventCh <- event
+			case unix.NFT_MSG_NEWSETELEM, unix.NFT_MSG_DELSETELEM:
+				elems, err := elementsFromMsg(msg)
+				event := &Event{
+					Type:  EventType(msgType),
+					Data:  elems,
+					Error: err,
+				}
+				monitor.eventCh <- event
+			case unix.NFT_MSG_NEWOBJ, unix.NFT_MSG_DELOBJ:
+				obj, err := objFromMsg(msg)
+				event := &Event{
+					Type:  EventType(msgType),
+					Data:  obj,
+					Error: err,
+				}
+				monitor.eventCh <- event
+			case unix.NFT_MSG_TRACE:
 			}
 		}
 	}
+	monitor.mtx.Lock()
+	if monitor.status != monitorClosed {
+		monitor.status = monitorClosed
+		monitor.closer()
+		close(monitor.eventCh)
+	}
+	monitor.mtx.Unlock()
 }
 
 func (monitor *Monitor) Close() {
-	monitor.closer()
-	close(monitor.eventCh)
+	monitor.mtx.Lock()
+	if monitor.status != monitorClosed {
+		monitor.status = monitorClosed
+		monitor.closer()
+		close(monitor.eventCh)
+	}
+	monitor.mtx.Unlock()
 }
 
-type Event struct{}
-
+// AddMonitor to perform the monitor immediately. The channel will be closed after
+// calling Close on Monitor or encountering a netlink conn error while Receive.
 func (cc *Conn) AddMonitor(monitor *Monitor) (chan *Event, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
@@ -190,24 +282,21 @@ func (cc *Conn) AddMonitor(monitor *Monitor) (chan *Event, error) {
 	monitor.conn = conn
 	monitor.closer = closer
 
-	if monitor.monitorFlags&(1<<unix.NFT_MSG_TRACE) != 0 {
-		err = conn.JoinGroup(uint32(unix.NFNLGRP_NFTRACE))
-		if err != nil {
-			monitor.closer()
-			return nil, err
-		}
-	}
-	if monitor.monitorFlags&^(1<<unix.NFT_MSG_TRACE) != 0 {
+	if monitor.monitorFlags != 0 {
 		err = conn.JoinGroup(uint32(unix.NFNLGRP_NFTABLES))
 		if err != nil {
 			monitor.closer()
 			return nil, err
 		}
+		conn.JoinGroup(uint32(unix.NFNLGRP_NFTRACE))
 	}
+
 	go monitor.monitor()
 	return monitor.eventCh, nil
 }
 
 func parseRuleFromMsg(msg netlink.Message) (*Rule, error) {
-	return nil, nil
+	genmsg := &NFGenMsg{}
+	genmsg.Decode(msg.Data[:4])
+	return ruleFromMsg(TableFamily(genmsg.NFGenFamily), msg)
 }

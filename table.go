@@ -21,7 +21,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var tableHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWTABLE)
+var (
+	newTableHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWTABLE)
+	delTableHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE)
+)
 
 // TableFamily specifies the address family for this table.
 type TableFamily byte
@@ -140,8 +143,8 @@ func (cc *Conn) ListTablesOfFamily(family TableFamily) ([]*Table, error) {
 }
 
 func tableFromMsg(msg netlink.Message) (*Table, error) {
-	if got, want := msg.Header.Type, tableHeaderType; got != want {
-		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
+	if got, want1, want2 := msg.Header.Type, newTableHeaderType, delTableHeaderType; got != want1 && got != want2 {
+		return nil, fmt.Errorf("unexpected header type: got %v, want %v or %v", got, want1, want2)
 	}
 
 	var t Table
