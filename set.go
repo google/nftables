@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/nftables/expr"
+	"github.com/google/nftables/internal/parseexprfunc"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
@@ -283,9 +284,11 @@ type SetElement struct {
 
 	// Life left of the "timeout" elements
 	Expires time.Duration
+
+	Counter *expr.Counter
 }
 
-func (s *SetElement) decode() func(b []byte) error {
+func (s *SetElement) decode(fam byte) func(b []byte) error {
 	return func(b []byte) error {
 		ad, err := netlink.NewAttributeDecoder(b)
 		if err != nil {
@@ -317,6 +320,18 @@ func (s *SetElement) decode() func(b []byte) error {
 				s.Timeout = time.Millisecond * time.Duration(ad.Uint64())
 			case unix.NFTA_SET_ELEM_EXPIRATION:
 				s.Expires = time.Millisecond * time.Duration(ad.Uint64())
+			case unix.NFTA_SET_ELEM_EXPR:
+				elems, err := parseexprfunc.ParseExprBytesFunc(fam, ad, ad.Bytes())
+				if err != nil {
+					return err
+				}
+
+				for _, elem := range elems {
+					switch item := elem.(type) {
+					case *expr.Counter:
+						s.Counter = item
+					}
+				}
 			}
 		}
 		return ad.Err()
@@ -743,7 +758,7 @@ func parseSetDatatype(magic uint32) (SetDatatype, error) {
 
 var elemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSETELEM)
 
-func elementsFromMsg(msg netlink.Message) ([]SetElement, error) {
+func elementsFromMsg(fam byte, msg netlink.Message) ([]SetElement, error) {
 	if got, want := msg.Header.Type, elemHeaderType; got != want {
 		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
 	}
@@ -767,7 +782,7 @@ func elementsFromMsg(msg netlink.Message) ([]SetElement, error) {
 				var elem SetElement
 				switch ad.Type() {
 				case unix.NFTA_LIST_ELEM:
-					ad.Do(elem.decode())
+					ad.Do(elem.decode(fam))
 				}
 				elements = append(elements, elem)
 			}
@@ -899,7 +914,7 @@ func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
 	}
 	var elems []SetElement
 	for _, msg := range reply {
-		s, err := elementsFromMsg(msg)
+		s, err := elementsFromMsg(uint8(s.Table.Family), msg)
 		if err != nil {
 			return nil, err
 		}
