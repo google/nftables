@@ -719,6 +719,8 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 				return nil, fmt.Errorf("could not determine data type: %w", err)
 			}
 			set.KeyType = dt
+		case unix.NFTA_SET_KEY_LEN:
+			set.KeyType.Bytes = binary.BigEndian.Uint32(ad.Bytes())
 		case unix.NFTA_SET_DATA_TYPE:
 			nftMagic := ad.Uint32()
 			// Special case for the data type verdict, in the message it is stored as 0xffffff00 but it is defined as 1
@@ -731,6 +733,8 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 				return nil, fmt.Errorf("could not determine data type: %w", err)
 			}
 			set.DataType = dt
+		case unix.NFTA_SET_DATA_LEN:
+			set.DataType.Bytes = binary.BigEndian.Uint32(ad.Bytes())
 		}
 	}
 	return &set, nil
