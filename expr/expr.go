@@ -134,6 +134,8 @@ func exprsFromBytes(fam byte, ad *netlink.AttributeDecoder, b []byte) ([]Any, er
 					e = &Reject{}
 				case "masq":
 					e = &Masq{}
+				case "hash":
+					e = &Hash{}
 				}
 				if e == nil {
 					// TODO: introduce an opaque expression type so that users know
