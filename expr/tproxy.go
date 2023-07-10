@@ -29,8 +29,6 @@ const (
 	NFTA_TPROXY_REG_ADDR = 0x02
 	// NFTA_TPROXY_REG_PORT defines attribute for a register carrying redirection port value
 	NFTA_TPROXY_REG_PORT = 0x03
-
-	NFTA_TPROXY_REG = NFTA_TPROXY_REG_PORT // DEPRECATED
 )
 
 // TProxy defines struct with parameters for the transparent proxy
