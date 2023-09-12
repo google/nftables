@@ -249,11 +249,16 @@ func (cc *Conn) Flush() error {
 		return fmt.Errorf("SendMessages: %w", err)
 	}
 
+	var errs error
 	// Fetch the requested acknowledgement for each message we sent.
 	for _, msg := range cc.messages {
 		if _, err := receiveAckAware(conn, msg.Header.Flags); err != nil {
-			return fmt.Errorf("conn.Receive: %w", err)
+			errs = errors.Join(errs, err)
 		}
+	}
+
+	if errs != nil {
+		return fmt.Errorf("conn.Receive: %w", errs)
 	}
 
 	return nil
