@@ -567,7 +567,9 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 			descSize, err := netlink.MarshalAttributes([]netlink.Attribute{
 				{Type: unix.NFTA_SET_DESC_SIZE, Data: valData},
 			})
-
+			if err != nil {
+				return fmt.Errorf("fail to marshal base type size description: %w", err)
+			}
 			concatDefinition = append(concatDefinition, descSize...)
 		}
 		// Marshal all base type descriptions into concatenation size description
