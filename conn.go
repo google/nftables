@@ -154,14 +154,33 @@ func receiveAckAware(nlconn *netlink.Conn, sentMsgFlags netlink.HeaderFlags) ([]
 		return reply, nil
 	}
 
-	// Dump flag is not set, we expect an ack
+	if len(reply) != 0 {
+		last := reply[len(reply)-1]
+		for re := last.Header.Type; (re&netlink.Overrun) == netlink.Overrun && (re&netlink.Done) != netlink.Done; re = last.Header.Type {
+			// we are not finished, the message is overrun
+			r, err := nlconn.Receive()
+			if err != nil {
+				return nil, err
+			}
+			reply = append(reply, r...)
+			last = reply[len(reply)-1]
+		}
+
+		if last.Header.Type == netlink.Error && binaryutil.BigEndian.Uint32(last.Data[:4]) == 0 {
+			// we have already collected an ack
+			return reply, nil
+		}
+	}
+
+	// Now we expect an ack
 	ack, err := nlconn.Receive()
 	if err != nil {
 		return nil, err
 	}
 
 	if len(ack) == 0 {
-		return nil, errors.New("received an empty ack")
+		// received an empty ack?
+		return reply, nil
 	}
 
 	msg := ack[0]
@@ -232,10 +251,7 @@ func (cc *Conn) Flush() error {
 
 	// Fetch the requested acknowledgement for each message we sent.
 	for _, msg := range cc.messages {
-		if msg.Header.Flags&netlink.Acknowledge == 0 {
-			continue // message did not request an acknowledgement
-		}
-		if _, err := conn.Receive(); err != nil {
+		if _, err := receiveAckAware(conn, msg.Header.Flags); err != nil {
 			return fmt.Errorf("conn.Receive: %w", err)
 		}
 	}
