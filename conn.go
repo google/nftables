@@ -17,6 +17,7 @@ package nftables
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/google/nftables/binaryutil"
@@ -253,6 +254,10 @@ func (cc *Conn) Flush() error {
 	// Fetch the requested acknowledgement for each message we sent.
 	for _, msg := range cc.messages {
 		if _, err := receiveAckAware(conn, msg.Header.Flags); err != nil {
+			if errors.Is(err, os.ErrPermission) {
+				// Kernel will only send one permission error to user space.
+				return err
+			}
 			errs = errors.Join(errs, err)
 		}
 	}
