@@ -164,6 +164,21 @@ func objFromMsg(msg netlink.Message) (Obj, error) {
 					return o.unmarshal(ad)
 				})
 				return &o, ad.Err()
+			case NFT_OBJECT_QUOTA:
+				o := QuotaObj{
+					Table: table,
+					Name:  name,
+				}
+
+				ad.Do(func(b []byte) error {
+					ad, err := netlink.NewAttributeDecoder(b)
+					if err != nil {
+						return err
+					}
+					ad.ByteOrder = binary.BigEndian
+					return o.unmarshal(ad)
+				})
+				return &o, ad.Err()
 			}
 		}
 	}

@@ -6077,6 +6077,198 @@ func TestGetRulesObjref(t *testing.T) {
 	}
 }
 
+func TestAddQuotaObj(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := &nftables.Table{
+		Name:   "quota_demo",
+		Family: nftables.TableFamilyIPv4,
+	}
+	tr := conn.AddTable(table)
+
+	c := &nftables.Chain{
+		Name:  "filter",
+		Table: table,
+	}
+	conn.AddChain(c)
+
+	o := &nftables.QuotaObj{
+		Table:    tr,
+		Name:     "q_test",
+		Bytes:    0x06400000,
+		Consumed: 0,
+		Over:     true,
+	}
+	conn.AddObj(o)
+
+	if err := conn.Flush(); err != nil {
+		t.Errorf("conn.Flush() failed: %v", err)
+	}
+
+	obj, err := conn.GetObj(&nftables.QuotaObj{
+		Table: table,
+		Name:  "q_test",
+	})
+	if err != nil {
+		t.Fatalf("conn.GetObj() failed: %v", err)
+	}
+
+	if got, want := len(obj), 1; got != want {
+		t.Fatalf("unexpected object list length: got %d, want %d", got, want)
+	}
+
+	o1, ok := obj[0].(*nftables.QuotaObj)
+	if !ok {
+		t.Fatalf("unexpected type: got %T, want *QuotaObj", obj[0])
+	}
+	if got, want := o1.Name, o.Name; got != want {
+		t.Fatalf("quota name mismatch: got %s, want %s", got, want)
+	}
+	if got, want := o1.Bytes, o.Bytes; got != want {
+		t.Fatalf("quota bytes mismatch: got %d, want %d", got, want)
+	}
+	if got, want := o1.Consumed, o.Consumed; got != want {
+		t.Fatalf("quota consumed mismatch: got %d, want %d", got, want)
+	}
+	if got, want := o1.Over, o.Over; got != want {
+		t.Fatalf("quota over mismatch: got %v, want %v", got, want)
+	}
+}
+
+func TestAddQuotaObjRef(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := &nftables.Table{
+		Name:   "quota_demo",
+		Family: nftables.TableFamilyIPv4,
+	}
+	tr := conn.AddTable(table)
+
+	c := &nftables.Chain{
+		Name:  "filter",
+		Table: table,
+	}
+	conn.AddChain(c)
+
+	o := &nftables.QuotaObj{
+		Table:    tr,
+		Name:     "q_test",
+		Bytes:    0x06400000,
+		Consumed: 0,
+		Over:     true,
+	}
+	conn.AddObj(o)
+
+	r := &nftables.Rule{
+		Table: table,
+		Chain: c,
+		Exprs: []expr.Any{
+			&expr.Objref{
+				Type: 2,
+				Name: "q_test",
+			},
+		},
+	}
+	conn.AddRule(r)
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("failed to flush: %v", err)
+	}
+
+	rules, err := conn.GetRules(table, c)
+	if err != nil {
+		t.Fatalf("failed to get rules: %v", err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+	if got, want := len(rules[0].Exprs), 1; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	objref, ok := rules[0].Exprs[0].(*expr.Objref)
+	if !ok {
+		t.Fatalf("Exprs[0] is type %T, want *expr.Objref", rules[0].Exprs[0])
+	}
+	if want := r.Exprs[0]; !reflect.DeepEqual(objref, want) {
+		t.Errorf("objref expr = %+v, wanted %+v", objref, want)
+	}
+}
+
+func TestDeleteQuotaObj(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := &nftables.Table{
+		Name:   "quota_demo",
+		Family: nftables.TableFamilyIPv4,
+	}
+	tr := conn.AddTable(table)
+
+	c := &nftables.Chain{
+		Name:  "filter",
+		Table: table,
+	}
+	conn.AddChain(c)
+
+	o := &nftables.QuotaObj{
+		Table:    tr,
+		Name:     "q_test",
+		Bytes:    0x06400000,
+		Consumed: 0,
+		Over:     true,
+	}
+	conn.AddObj(o)
+
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("conn.Flush() failed: %v", err)
+	}
+
+	obj, err := conn.GetObj(&nftables.QuotaObj{
+		Table: table,
+		Name:  "q_test",
+	})
+	if err != nil {
+		t.Fatalf("conn.GetObj() failed: %v", err)
+	}
+
+	if got, want := len(obj), 1; got != want {
+		t.Fatalf("unexpected number of objects: got %d, want %d", got, want)
+	}
+
+	if got, want := obj[0], o; !reflect.DeepEqual(got, want) {
+		t.Errorf("got = %+v, want = %+v", got, want)
+	}
+
+	conn.DeleteObject(&nftables.QuotaObj{
+		Table: tr,
+		Name:  "q_test",
+	})
+
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("conn.Flush() failed: %v", err)
+	}
+
+	obj, err = conn.GetObj(&nftables.QuotaObj{
+		Table: table,
+		Name:  "q_test",
+	})
+	if err != nil {
+		t.Fatalf("conn.GetObj() failed: %v", err)
+	}
+	if got, want := len(obj), 0; got != want {
+		t.Fatalf("unexpected object list length: got %d, want %d", got, want)
+	}
+}
+
 func TestGetRulesQueue(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
