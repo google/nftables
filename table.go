@@ -63,9 +63,7 @@ func (cc *Conn) DelTable(t *Table) {
 	})
 }
 
-// AddTable adds the specified Table. See also
-// https://wiki.nftables.org/wiki-nftables/index.php/Configuring_tables
-func (cc *Conn) AddTable(t *Table) *Table {
+func (cc *Conn) addTable(t *Table, flag netlink.HeaderFlags) *Table {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
@@ -75,11 +73,23 @@ func (cc *Conn) AddTable(t *Table) *Table {
 	cc.messages = append(cc.messages, netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWTABLE),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
+			Flags: netlink.Request | netlink.Acknowledge | flag,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	})
 	return t
+}
+
+// AddTable adds the specified Table, just like `nft add table ...`.
+// See also https://wiki.nftables.org/wiki-nftables/index.php/Configuring_tables
+func (cc *Conn) AddTable(t *Table) *Table {
+	return cc.addTable(t, netlink.Create)
+}
+
+// CreateTable create the specified Table if it do not existed.
+// just like `nft create table ...`.
+func (cc *Conn) CreateTable(t *Table) *Table {
+	return cc.addTable(t, netlink.Excl)
 }
 
 // FlushTable removes all rules in all chains within the specified Table. See also
