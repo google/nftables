@@ -287,6 +287,8 @@ const (
 	NF_NAT_RANGE_PROTO_RANDOM_FULLY = 0x10
 	// NF_NAT_RANGE_PERSISTENT defines flag for a persistent masquerade
 	NF_NAT_RANGE_PERSISTENT = 0x8
+	// NF_NAT_RANGE_PREFIX defines flag for a prefix masquerade
+	NF_NAT_RANGE_PREFIX = 0x40
 )
 
 func (e *Masq) marshal(fam byte) ([]byte, error) {
