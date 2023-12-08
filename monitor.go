@@ -46,56 +46,49 @@ const (
 )
 
 var (
-	monitorFlags         map[MonitorAction]map[MonitorObject]uint32
+	monitorFlags = map[MonitorAction]map[MonitorObject]uint32{
+		MonitorActionAny: {
+			MonitorObjectAny:      0xffffffff,
+			MonitorObjectTables:   1<<unix.NFT_MSG_NEWTABLE | 1<<unix.NFT_MSG_DELCHAIN,
+			MonitorObjectChains:   1<<unix.NFT_MSG_NEWCHAIN | 1<<unix.NFT_MSG_DELCHAIN,
+			MonitorObjectRules:    1<<unix.NFT_MSG_NEWRULE | 1<<unix.NFT_MSG_DELRULE,
+			MonitorObjectSets:     1<<unix.NFT_MSG_NEWSET | 1<<unix.NFT_MSG_DELSET,
+			MonitorObjectElements: 1<<unix.NFT_MSG_NEWSETELEM | 1<<unix.NFT_MSG_DELSETELEM,
+			MonitorObjectRuleset: 1<<unix.NFT_MSG_NEWTABLE | 1<<unix.NFT_MSG_DELCHAIN |
+				1<<unix.NFT_MSG_NEWCHAIN | 1<<unix.NFT_MSG_DELCHAIN |
+				1<<unix.NFT_MSG_NEWRULE | 1<<unix.NFT_MSG_DELRULE |
+				1<<unix.NFT_MSG_NEWSET | 1<<unix.NFT_MSG_DELSET |
+				1<<unix.NFT_MSG_NEWSETELEM | 1<<unix.NFT_MSG_DELSETELEM |
+				1<<unix.NFT_MSG_NEWOBJ | 1<<unix.NFT_MSG_DELOBJ,
+		},
+		MonitorActionNew: {
+			MonitorObjectAny: 1<<unix.NFT_MSG_NEWTABLE |
+				1<<unix.NFT_MSG_NEWCHAIN |
+				1<<unix.NFT_MSG_NEWRULE |
+				1<<unix.NFT_MSG_NEWSET |
+				1<<unix.NFT_MSG_NEWSETELEM,
+			MonitorObjectTables: 1 << unix.NFT_MSG_NEWTABLE,
+			MonitorObjectChains: 1 << unix.NFT_MSG_NEWCHAIN,
+			MonitorObjectRules:  1 << unix.NFT_MSG_NEWRULE,
+			MonitorObjectSets:   1 << unix.NFT_MSG_NEWSET,
+			MonitorObjectRuleset: 1<<unix.NFT_MSG_NEWTABLE |
+				1<<unix.NFT_MSG_NEWCHAIN |
+				1<<unix.NFT_MSG_NEWRULE |
+				1<<unix.NFT_MSG_NEWSET |
+				1<<unix.NFT_MSG_NEWSETELEM |
+				1<<unix.NFT_MSG_NEWOBJ,
+		},
+		MonitorActionDel: {
+			MonitorObjectAny: 1<<unix.NFT_MSG_DELTABLE |
+				1<<unix.NFT_MSG_DELCHAIN |
+				1<<unix.NFT_MSG_DELRULE |
+				1<<unix.NFT_MSG_DELSET |
+				1<<unix.NFT_MSG_DELSETELEM |
+				1<<unix.NFT_MSG_DELOBJ,
+		},
+	}
 	monitorFlagsInitOnce sync.Once
 )
-
-// A lazy init function to define flags.
-func lazyInit() {
-	monitorFlagsInitOnce.Do(func() {
-		monitorFlags = map[MonitorAction]map[MonitorObject]uint32{
-			MonitorActionAny: {
-				MonitorObjectAny:      0xffffffff,
-				MonitorObjectTables:   1<<unix.NFT_MSG_NEWTABLE | 1<<unix.NFT_MSG_DELCHAIN,
-				MonitorObjectChains:   1<<unix.NFT_MSG_NEWCHAIN | 1<<unix.NFT_MSG_DELCHAIN,
-				MonitorObjectRules:    1<<unix.NFT_MSG_NEWRULE | 1<<unix.NFT_MSG_DELRULE,
-				MonitorObjectSets:     1<<unix.NFT_MSG_NEWSET | 1<<unix.NFT_MSG_DELSET,
-				MonitorObjectElements: 1<<unix.NFT_MSG_NEWSETELEM | 1<<unix.NFT_MSG_DELSETELEM,
-				MonitorObjectRuleset: 1<<unix.NFT_MSG_NEWTABLE | 1<<unix.NFT_MSG_DELCHAIN |
-					1<<unix.NFT_MSG_NEWCHAIN | 1<<unix.NFT_MSG_DELCHAIN |
-					1<<unix.NFT_MSG_NEWRULE | 1<<unix.NFT_MSG_DELRULE |
-					1<<unix.NFT_MSG_NEWSET | 1<<unix.NFT_MSG_DELSET |
-					1<<unix.NFT_MSG_NEWSETELEM | 1<<unix.NFT_MSG_DELSETELEM |
-					1<<unix.NFT_MSG_NEWOBJ | 1<<unix.NFT_MSG_DELOBJ,
-			},
-			MonitorActionNew: {
-				MonitorObjectAny: 1<<unix.NFT_MSG_NEWTABLE |
-					1<<unix.NFT_MSG_NEWCHAIN |
-					1<<unix.NFT_MSG_NEWRULE |
-					1<<unix.NFT_MSG_NEWSET |
-					1<<unix.NFT_MSG_NEWSETELEM,
-				MonitorObjectTables: 1 << unix.NFT_MSG_NEWTABLE,
-				MonitorObjectChains: 1 << unix.NFT_MSG_NEWCHAIN,
-				MonitorObjectRules:  1 << unix.NFT_MSG_NEWRULE,
-				MonitorObjectSets:   1 << unix.NFT_MSG_NEWSET,
-				MonitorObjectRuleset: 1<<unix.NFT_MSG_NEWTABLE |
-					1<<unix.NFT_MSG_NEWCHAIN |
-					1<<unix.NFT_MSG_NEWRULE |
-					1<<unix.NFT_MSG_NEWSET |
-					1<<unix.NFT_MSG_NEWSETELEM |
-					1<<unix.NFT_MSG_NEWOBJ,
-			},
-			MonitorActionDel: {
-				MonitorObjectAny: 1<<unix.NFT_MSG_DELTABLE |
-					1<<unix.NFT_MSG_DELCHAIN |
-					1<<unix.NFT_MSG_DELRULE |
-					1<<unix.NFT_MSG_DELSET |
-					1<<unix.NFT_MSG_DELSETELEM |
-					1<<unix.NFT_MSG_DELOBJ,
-			},
-		}
-	})
-}
 
 type EventType int
 
@@ -131,12 +124,13 @@ type Monitor struct {
 	object       MonitorObject
 	monitorFlags uint32
 
-	// mtx covers eventCh and status
-	mtx     sync.Mutex
+	conn   *netlink.Conn
+	closer netlinkCloser
+
+	// mu covers eventCh and status
+	mu      sync.Mutex
 	eventCh chan *Event
 	status  int
-	conn    *netlink.Conn
-	closer  netlinkCloser
 }
 
 type MonitorOption func(*Monitor)
@@ -163,8 +157,6 @@ func WithMonitorObject(object MonitorObject) MonitorOption {
 
 // NewMonitor returns a Monitor with options to be started.
 func NewMonitor(opts ...MonitorOption) *Monitor {
-	lazyInit()
-
 	monitor := &Monitor{
 		status: monitorOK,
 	}
@@ -193,7 +185,7 @@ func (monitor *Monitor) monitor() {
 			break
 		}
 		for _, msg := range msgs {
-			if got, want := msg.Header.Type&0xff00>>8, netlink.HeaderType(unix.NFNL_SUBSYS_NFTABLES); got != want {
+			if msg.Header.Type&0xff00>>8 != netlink.HeaderType(unix.NFNL_SUBSYS_NFTABLES) {
 				continue
 			}
 			msgType := msg.Header.Type & 0x00ff
@@ -249,27 +241,27 @@ func (monitor *Monitor) monitor() {
 					Error: err,
 				}
 				monitor.eventCh <- event
-			case unix.NFT_MSG_TRACE:
 			}
 		}
 	}
-	monitor.mtx.Lock()
+	monitor.mu.Lock()
+	defer monitor.mu.Unlock()
+
 	if monitor.status != monitorClosed {
 		monitor.status = monitorClosed
 		monitor.closer()
 		close(monitor.eventCh)
 	}
-	monitor.mtx.Unlock()
 }
 
 func (monitor *Monitor) Close() {
-	monitor.mtx.Lock()
+	monitor.mu.Lock()
 	if monitor.status != monitorClosed {
 		monitor.status = monitorClosed
 		monitor.closer()
 		close(monitor.eventCh)
 	}
-	monitor.mtx.Unlock()
+	monitor.mu.Unlock()
 }
 
 // AddMonitor to perform the monitor immediately. The channel will be closed after
@@ -283,12 +275,10 @@ func (cc *Conn) AddMonitor(monitor *Monitor) (chan *Event, error) {
 	monitor.closer = closer
 
 	if monitor.monitorFlags != 0 {
-		err = conn.JoinGroup(uint32(unix.NFNLGRP_NFTABLES))
-		if err != nil {
+		if err = conn.JoinGroup(uint32(unix.NFNLGRP_NFTABLES)); err != nil {
 			monitor.closer()
 			return nil, err
 		}
-		conn.JoinGroup(uint32(unix.NFNLGRP_NFTRACE))
 	}
 
 	go monitor.monitor()

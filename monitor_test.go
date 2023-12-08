@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
@@ -13,7 +13,6 @@ import (
 )
 
 func TestMonitor(t *testing.T) {
-
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
 	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
@@ -28,6 +27,7 @@ func TestMonitor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer monitor.Close()
 
 	var gotTable *nftables.Table
 	var gotChain *nftables.Chain
@@ -36,6 +36,7 @@ func TestMonitor(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		count := int32(0)
 		for {
 			select {
 			case event, ok := <-events:
@@ -49,10 +50,16 @@ func TestMonitor(t *testing.T) {
 				switch event.Type {
 				case nftables.EventTypeNewTable:
 					gotTable = event.Data.(*nftables.Table)
+					atomic.AddInt32(&count, 1)
 				case nftables.EventTypeNewChain:
 					gotChain = event.Data.(*nftables.Chain)
+					atomic.AddInt32(&count, 1)
 				case nftables.EventTypeNewRule:
 					gotRule = event.Data.(*nftables.Rule)
+					atomic.AddInt32(&count, 1)
+				}
+				if atomic.LoadInt32(&count) == 3 {
+					return
 				}
 			}
 		}
@@ -97,13 +104,7 @@ func TestMonitor(t *testing.T) {
 	if err := c.Flush(); err != nil {
 		t.Fatal(err)
 	}
-	// It takes time for the kernel to take effect
-	time.Sleep(time.Second)
-	monitor.Close()
 	wg.Wait()
-	if err != nil {
-		t.Fatal(err)
-	}
 	if gotTable.Family != nat.Family || gotTable.Name != nat.Name {
 		t.Fatal("no want table", gotTable.Family, gotTable.Name)
 	}
