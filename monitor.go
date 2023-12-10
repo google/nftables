@@ -15,6 +15,8 @@
 package nftables
 
 import (
+	"math"
+	"strings"
 	"sync"
 
 	"github.com/mdlayher/netlink"
@@ -49,12 +51,12 @@ var (
 	monitorFlags = map[MonitorAction]map[MonitorObject]uint32{
 		MonitorActionAny: {
 			MonitorObjectAny:      0xffffffff,
-			MonitorObjectTables:   1<<unix.NFT_MSG_NEWTABLE | 1<<unix.NFT_MSG_DELCHAIN,
+			MonitorObjectTables:   1<<unix.NFT_MSG_NEWTABLE | 1<<unix.NFT_MSG_DELTABLE,
 			MonitorObjectChains:   1<<unix.NFT_MSG_NEWCHAIN | 1<<unix.NFT_MSG_DELCHAIN,
 			MonitorObjectRules:    1<<unix.NFT_MSG_NEWRULE | 1<<unix.NFT_MSG_DELRULE,
 			MonitorObjectSets:     1<<unix.NFT_MSG_NEWSET | 1<<unix.NFT_MSG_DELSET,
 			MonitorObjectElements: 1<<unix.NFT_MSG_NEWSETELEM | 1<<unix.NFT_MSG_DELSETELEM,
-			MonitorObjectRuleset: 1<<unix.NFT_MSG_NEWTABLE | 1<<unix.NFT_MSG_DELCHAIN |
+			MonitorObjectRuleset: 1<<unix.NFT_MSG_NEWTABLE | 1<<unix.NFT_MSG_DELTABLE |
 				1<<unix.NFT_MSG_NEWCHAIN | 1<<unix.NFT_MSG_DELCHAIN |
 				1<<unix.NFT_MSG_NEWRULE | 1<<unix.NFT_MSG_DELRULE |
 				1<<unix.NFT_MSG_NEWSET | 1<<unix.NFT_MSG_DELSET |
@@ -105,11 +107,12 @@ const (
 	EventTypeDelSetElem EventType = unix.NFT_MSG_DELSETELEM
 	EventTypeNewObj     EventType = unix.NFT_MSG_NEWOBJ
 	EventTypeDelObj     EventType = unix.NFT_MSG_DELOBJ
+	EventTypeOOB        EventType = math.MaxInt
 )
 
 type Event struct {
 	Type  EventType
-	Data  interface{}
+	Data  any
 	Error error
 }
 
@@ -182,7 +185,19 @@ func (monitor *Monitor) monitor() {
 	for {
 		msgs, err := monitor.conn.Receive()
 		if err != nil {
-			break
+			if strings.Contains(err.Error(), "use of closed file") {
+				// ignore the error that be closed
+				break
+			} else {
+				// any other errors will be send to user, and then to close eventCh
+				event := &Event{
+					Type:  EventTypeOOB,
+					Data:  nil,
+					Error: err,
+				}
+				monitor.eventCh <- event
+				break
+			}
 		}
 		for _, msg := range msgs {
 			if msg.Header.Type&0xff00>>8 != netlink.HeaderType(unix.NFNL_SUBSYS_NFTABLES) {
@@ -256,12 +271,13 @@ func (monitor *Monitor) monitor() {
 
 func (monitor *Monitor) Close() {
 	monitor.mu.Lock()
+	defer monitor.mu.Unlock()
+
 	if monitor.status != monitorClosed {
 		monitor.status = monitorClosed
 		monitor.closer()
 		close(monitor.eventCh)
 	}
-	monitor.mu.Unlock()
 }
 
 // AddMonitor to perform the monitor immediately. The channel will be closed after
