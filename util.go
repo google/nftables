@@ -15,6 +15,8 @@
 package nftables
 
 import (
+	"encoding/binary"
+
 	"github.com/google/nftables/binaryutil"
 	"golang.org/x/sys/unix"
 )
@@ -24,4 +26,21 @@ func extraHeader(family uint8, resID uint16) []byte {
 		family,
 		unix.NFNETLINK_V0,
 	}, binaryutil.BigEndian.PutUint16(resID)...)
+}
+
+// General form of address family dependent message, see
+// https://git.netfilter.org/libnftnl/tree/include/linux/netfilter/nfnetlink.h#29
+type NFGenMsg struct {
+	NFGenFamily uint8
+	Version     uint8
+	ResourceID  uint16
+}
+
+func (genmsg *NFGenMsg) Decode(b []byte) {
+	if len(b) < 16 {
+		return
+	}
+	genmsg.NFGenFamily = b[0]
+	genmsg.Version = b[1]
+	genmsg.ResourceID = binary.BigEndian.Uint16(b[2:])
 }

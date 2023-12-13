@@ -684,11 +684,14 @@ func (cc *Conn) FlushSet(s *Set) {
 	})
 }
 
-var setHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSET)
+var (
+	newSetHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSET)
+	delSetHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSET)
+)
 
 func setsFromMsg(msg netlink.Message) (*Set, error) {
-	if got, want := msg.Header.Type, setHeaderType; got != want {
-		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
+	if got, want1, want2 := msg.Header.Type, newSetHeaderType, delSetHeaderType; got != want1 && got != want2 {
+		return nil, fmt.Errorf("unexpected header type: got %v, want %v or %v", got, want1, want2)
 	}
 	ad, err := netlink.NewAttributeDecoder(msg.Data[4:])
 	if err != nil {
@@ -762,11 +765,14 @@ func parseSetDatatype(magic uint32) (SetDatatype, error) {
 	return dt, nil
 }
 
-var elemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSETELEM)
+var (
+	newElemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSETELEM)
+	delElemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSETELEM)
+)
 
 func elementsFromMsg(fam byte, msg netlink.Message) ([]SetElement, error) {
-	if got, want := msg.Header.Type, elemHeaderType; got != want {
-		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
+	if got, want1, want2 := msg.Header.Type, newElemHeaderType, delElemHeaderType; got != want1 && got != want2 {
+		return nil, fmt.Errorf("unexpected header type: got %v, want %v or %v", got, want1, want2)
 	}
 	ad, err := netlink.NewAttributeDecoder(msg.Data[4:])
 	if err != nil {

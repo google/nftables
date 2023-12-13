@@ -1,6 +1,6 @@
 module github.com/google/nftables
 
-go 1.17
+go 1.18
 
 require (
 	github.com/mdlayher/netlink v1.7.1

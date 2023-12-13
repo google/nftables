@@ -22,7 +22,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var objHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ)
+var (
+	newObjHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ)
+	delObjHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELOBJ)
+)
 
 // Obj represents a netfilter stateful object. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Stateful_objects
@@ -125,8 +128,8 @@ func (cc *Conn) ResetObjects(t *Table) ([]Obj, error) {
 }
 
 func objFromMsg(msg netlink.Message) (Obj, error) {
-	if got, want := msg.Header.Type, objHeaderType; got != want {
-		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
+	if got, want1, want2 := msg.Header.Type, newObjHeaderType, delObjHeaderType; got != want1 && got != want2 {
+		return nil, fmt.Errorf("unexpected header type: got %v, want %v or %v", got, want1, want2)
 	}
 	ad, err := netlink.NewAttributeDecoder(msg.Data[4:])
 	if err != nil {
