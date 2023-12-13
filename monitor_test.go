@@ -2,6 +2,7 @@ package nftables_test
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -11,6 +12,29 @@ import (
 	"github.com/google/nftables/expr"
 	"github.com/google/nftables/internal/nftest"
 )
+
+func ExampleNewMonitor() {
+	conn, err := nftables.New()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mon := nftables.NewMonitor()
+	defer mon.Close()
+	events, err := conn.AddMonitor(mon)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for ev := range events {
+		log.Printf("ev: %+v, data = %T", ev, ev.Data)
+		switch ev.Type {
+		case nftables.MonitorEventTypeNewTable:
+			log.Printf("data = %+v", ev.Data.(*nftables.Table))
+
+			// …more cases if needed…
+		}
+	}
+}
 
 func TestMonitor(t *testing.T) {
 	// Create a new network namespace to test these operations,

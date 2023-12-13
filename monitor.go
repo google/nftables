@@ -89,7 +89,6 @@ var (
 				1<<unix.NFT_MSG_DELOBJ,
 		},
 	}
-	monitorFlagsInitOnce sync.Once
 )
 
 type MonitorEventType int
@@ -110,6 +109,12 @@ const (
 	MonitorEventTypeOOB        MonitorEventType = math.MaxInt // out of band event
 )
 
+// A MonitorEvent represents a single change received via a [Monitor].
+//
+// Depending on the Type, the Data field can be type-asserted to the specific
+// data type for this event, e.g. when Type is
+// nftables.MonitorEventTypeNewTable, you can access the corresponding table
+// details via Data.(*nftables.Table).
 type MonitorEvent struct {
 	Type  MonitorEventType
 	Data  any
@@ -121,7 +126,9 @@ const (
 	monitorClosed
 )
 
-// A Monitor to track actions on objects.
+// A Monitor is an event-based nftables monitor that will receive one event per
+// new (or deleted) table, chain, rule, set, etc., depending on the monitor
+// configuration.
 type Monitor struct {
 	action       MonitorAction
 	object       MonitorObject
@@ -159,6 +166,9 @@ func WithMonitorObject(object MonitorObject) MonitorOption {
 }
 
 // NewMonitor returns a Monitor with options to be started.
+//
+// Note that NewMonitor only prepares a Monitor. To install the monitor, call
+// [Conn.AddMonitor].
 func NewMonitor(opts ...MonitorOption) *Monitor {
 	monitor := &Monitor{
 		status: monitorOK,
