@@ -92,26 +92,26 @@ var (
 	monitorFlagsInitOnce sync.Once
 )
 
-type EventType int
+type MonitorEventType int
 
 const (
-	EventTypeNewTable   EventType = unix.NFT_MSG_NEWTABLE
-	EventTypeDelTable   EventType = unix.NFT_MSG_DELTABLE
-	EventTypeNewChain   EventType = unix.NFT_MSG_NEWCHAIN
-	EventTypeDELChain   EventType = unix.NFT_MSG_DELCHAIN
-	EventTypeNewRule    EventType = unix.NFT_MSG_NEWRULE
-	EventTypeDelRule    EventType = unix.NFT_MSG_DELRULE
-	EventTypeNewSet     EventType = unix.NFT_MSG_NEWSET
-	EventTypeDelSet     EventType = unix.NFT_MSG_DELSET
-	EventTypeNewSetElem EventType = unix.NFT_MSG_NEWSETELEM
-	EventTypeDelSetElem EventType = unix.NFT_MSG_DELSETELEM
-	EventTypeNewObj     EventType = unix.NFT_MSG_NEWOBJ
-	EventTypeDelObj     EventType = unix.NFT_MSG_DELOBJ
-	EventTypeOOB        EventType = math.MaxInt
+	MonitorEventTypeNewTable   MonitorEventType = unix.NFT_MSG_NEWTABLE
+	MonitorEventTypeDelTable   MonitorEventType = unix.NFT_MSG_DELTABLE
+	MonitorEventTypeNewChain   MonitorEventType = unix.NFT_MSG_NEWCHAIN
+	MonitorEventTypeDelChain   MonitorEventType = unix.NFT_MSG_DELCHAIN
+	MonitorEventTypeNewRule    MonitorEventType = unix.NFT_MSG_NEWRULE
+	MonitorEventTypeDelRule    MonitorEventType = unix.NFT_MSG_DELRULE
+	MonitorEventTypeNewSet     MonitorEventType = unix.NFT_MSG_NEWSET
+	MonitorEventTypeDelSet     MonitorEventType = unix.NFT_MSG_DELSET
+	MonitorEventTypeNewSetElem MonitorEventType = unix.NFT_MSG_NEWSETELEM
+	MonitorEventTypeDelSetElem MonitorEventType = unix.NFT_MSG_DELSETELEM
+	MonitorEventTypeNewObj     MonitorEventType = unix.NFT_MSG_NEWOBJ
+	MonitorEventTypeDelObj     MonitorEventType = unix.NFT_MSG_DELOBJ
+	MonitorEventTypeOOB        MonitorEventType = math.MaxInt // out of band event
 )
 
-type Event struct {
-	Type  EventType
+type MonitorEvent struct {
+	Type  MonitorEventType
 	Data  any
 	Error error
 }
@@ -132,7 +132,7 @@ type Monitor struct {
 
 	// mu covers eventCh and status
 	mu      sync.Mutex
-	eventCh chan *Event
+	eventCh chan *MonitorEvent
 	status  int
 }
 
@@ -140,7 +140,7 @@ type MonitorOption func(*Monitor)
 
 func WithMonitorEventBuffer(size int) MonitorOption {
 	return func(monitor *Monitor) {
-		monitor.eventCh = make(chan *Event, size)
+		monitor.eventCh = make(chan *MonitorEvent, size)
 	}
 }
 
@@ -167,7 +167,7 @@ func NewMonitor(opts ...MonitorOption) *Monitor {
 		opt(monitor)
 	}
 	if monitor.eventCh == nil {
-		monitor.eventCh = make(chan *Event)
+		monitor.eventCh = make(chan *MonitorEvent)
 	}
 	objects, ok := monitorFlags[monitor.action]
 	if !ok {
@@ -190,8 +190,8 @@ func (monitor *Monitor) monitor() {
 				break
 			} else {
 				// any other errors will be send to user, and then to close eventCh
-				event := &Event{
-					Type:  EventTypeOOB,
+				event := &MonitorEvent{
+					Type:  MonitorEventTypeOOB,
 					Data:  nil,
 					Error: err,
 				}
@@ -210,48 +210,48 @@ func (monitor *Monitor) monitor() {
 			switch msgType {
 			case unix.NFT_MSG_NEWTABLE, unix.NFT_MSG_DELTABLE:
 				table, err := tableFromMsg(msg)
-				event := &Event{
-					Type:  EventType(msgType),
+				event := &MonitorEvent{
+					Type:  MonitorEventType(msgType),
 					Data:  table,
 					Error: err,
 				}
 				monitor.eventCh <- event
 			case unix.NFT_MSG_NEWCHAIN, unix.NFT_MSG_DELCHAIN:
 				chain, err := chainFromMsg(msg)
-				event := &Event{
-					Type:  EventType(msgType),
+				event := &MonitorEvent{
+					Type:  MonitorEventType(msgType),
 					Data:  chain,
 					Error: err,
 				}
 				monitor.eventCh <- event
 			case unix.NFT_MSG_NEWRULE, unix.NFT_MSG_DELRULE:
 				rule, err := parseRuleFromMsg(msg)
-				event := &Event{
-					Type:  EventType(msgType),
+				event := &MonitorEvent{
+					Type:  MonitorEventType(msgType),
 					Data:  rule,
 					Error: err,
 				}
 				monitor.eventCh <- event
 			case unix.NFT_MSG_NEWSET, unix.NFT_MSG_DELSET:
 				set, err := setsFromMsg(msg)
-				event := &Event{
-					Type:  EventType(msgType),
+				event := &MonitorEvent{
+					Type:  MonitorEventType(msgType),
 					Data:  set,
 					Error: err,
 				}
 				monitor.eventCh <- event
 			case unix.NFT_MSG_NEWSETELEM, unix.NFT_MSG_DELSETELEM:
 				elems, err := elementsFromMsg(uint8(TableFamilyUnspecified), msg)
-				event := &Event{
-					Type:  EventType(msgType),
+				event := &MonitorEvent{
+					Type:  MonitorEventType(msgType),
 					Data:  elems,
 					Error: err,
 				}
 				monitor.eventCh <- event
 			case unix.NFT_MSG_NEWOBJ, unix.NFT_MSG_DELOBJ:
 				obj, err := objFromMsg(msg)
-				event := &Event{
-					Type:  EventType(msgType),
+				event := &MonitorEvent{
+					Type:  MonitorEventType(msgType),
 					Data:  obj,
 					Error: err,
 				}
@@ -264,25 +264,26 @@ func (monitor *Monitor) monitor() {
 
 	if monitor.status != monitorClosed {
 		monitor.status = monitorClosed
-		monitor.closer()
-		close(monitor.eventCh)
 	}
+	close(monitor.eventCh)
 }
 
-func (monitor *Monitor) Close() {
+func (monitor *Monitor) Close() error {
 	monitor.mu.Lock()
 	defer monitor.mu.Unlock()
 
 	if monitor.status != monitorClosed {
 		monitor.status = monitorClosed
-		monitor.closer()
-		close(monitor.eventCh)
+		return monitor.closer()
 	}
+	return nil
 }
 
 // AddMonitor to perform the monitor immediately. The channel will be closed after
 // calling Close on Monitor or encountering a netlink conn error while Receive.
-func (cc *Conn) AddMonitor(monitor *Monitor) (chan *Event, error) {
+// Caller may receive a MonitorEventTypeOOB event which contains an error we didn't
+// handle, for now.
+func (cc *Conn) AddMonitor(monitor *Monitor) (chan *MonitorEvent, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err

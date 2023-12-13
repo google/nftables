@@ -48,13 +48,13 @@ func TestMonitor(t *testing.T) {
 					return
 				}
 				switch event.Type {
-				case nftables.EventTypeNewTable:
+				case nftables.MonitorEventTypeNewTable:
 					gotTable = event.Data.(*nftables.Table)
 					atomic.AddInt32(&count, 1)
-				case nftables.EventTypeNewChain:
+				case nftables.MonitorEventTypeNewChain:
 					gotChain = event.Data.(*nftables.Chain)
 					atomic.AddInt32(&count, 1)
-				case nftables.EventTypeNewRule:
+				case nftables.MonitorEventTypeNewRule:
 					gotRule = event.Data.(*nftables.Rule)
 					atomic.AddInt32(&count, 1)
 				}
