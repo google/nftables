@@ -16,6 +16,7 @@ package nftables
 
 import (
 	"encoding/binary"
+	"net"
 
 	"github.com/google/nftables/binaryutil"
 	"golang.org/x/sys/unix"
@@ -43,4 +44,36 @@ func (genmsg *NFGenMsg) Decode(b []byte) {
 	genmsg.NFGenFamily = b[0]
 	genmsg.Version = b[1]
 	genmsg.ResourceID = binary.BigEndian.Uint16(b[2:])
+}
+
+// GetFirstIPFromCIDR returns the first IP address from a CIDR.
+func GetFirstIPFromCIDR(cidr string) (*net.IP, error) {
+	_, subnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, err
+	}
+
+	mask := binary.BigEndian.Uint32(subnet.Mask)
+	ip := binary.BigEndian.Uint32(subnet.IP)
+
+	// find the final address
+	firstIP := make(net.IP, 4)
+	binary.BigEndian.PutUint32(firstIP, ip&mask)
+
+	return &firstIP, nil
+}
+
+// GetLastIPFromCIDR returns the last IP address from a CIDR.
+func GetLastIPFromCIDR(cidr string) (*net.IP, error) {
+	_, subnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, err
+	}
+	mask := binary.BigEndian.Uint32(subnet.Mask)
+	ip := binary.BigEndian.Uint32(subnet.IP)
+	// find the final address
+	lastIP := make(net.IP, 4)
+	binary.BigEndian.PutUint32(lastIP, (ip&mask)|(mask^0xffffffff))
+
+	return &lastIP, nil
 }
