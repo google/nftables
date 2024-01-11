@@ -46,34 +46,38 @@ func (genmsg *NFGenMsg) Decode(b []byte) {
 	genmsg.ResourceID = binary.BigEndian.Uint16(b[2:])
 }
 
-// GetFirstIPFromCIDR returns the first IP address from a CIDR.
-func GetFirstIPFromCIDR(cidr string) (*net.IP, error) {
+// GetFirstAndLastIPFromCIDR returns the first and last IP address from a CIDR.
+func GetFirstAndLastIPFromCIDR(cidr string) (firstIP, lastIP net.IP, err error) {
 	_, subnet, err := net.ParseCIDR(cidr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	mask := binary.BigEndian.Uint32(subnet.Mask)
-	ip := binary.BigEndian.Uint32(subnet.IP)
+	firstIP = make(net.IP, len(subnet.IP))
+	lastIP = make(net.IP, len(subnet.IP))
 
-	// find the final address
-	firstIP := make(net.IP, 4)
-	binary.BigEndian.PutUint32(firstIP, ip&mask)
-
-	return &firstIP, nil
-}
-
-// GetLastIPFromCIDR returns the last IP address from a CIDR.
-func GetLastIPFromCIDR(cidr string) (*net.IP, error) {
-	_, subnet, err := net.ParseCIDR(cidr)
-	if err != nil {
-		return nil, err
+	switch len(subnet.IP) {
+	case net.IPv4len:
+		mask := binary.BigEndian.Uint32(subnet.Mask)
+		ip := binary.BigEndian.Uint32(subnet.IP)
+		// To achieve the first IP address, we need to AND the IP with the mask.
+		// The AND operation will set all bits in the host part to 0.
+		binary.BigEndian.PutUint32(firstIP, ip&mask)
+		// To achieve the last IP address, we need to OR the IP network with the inverted mask.
+		// The AND between the IP and the mask will set all bits in the host part to 0, keeping the network part.
+		// The XOR between the mask and 0xffffffff will set all bits in the host part to 1, and the network part to 0.
+		// The OR operation will keep the host part unchanged, and sets the host part to all 1.
+		binary.BigEndian.PutUint32(lastIP, (ip&mask)|(mask^0xffffffff))
+	case net.IPv6len:
+		mask1 := binary.BigEndian.Uint64(subnet.Mask[:8])
+		mask2 := binary.BigEndian.Uint64(subnet.Mask[8:])
+		ip1 := binary.BigEndian.Uint64(subnet.IP[:8])
+		ip2 := binary.BigEndian.Uint64(subnet.IP[8:])
+		binary.BigEndian.PutUint64(firstIP[:8], ip1&mask1)
+		binary.BigEndian.PutUint64(firstIP[8:], ip2&mask2)
+		binary.BigEndian.PutUint64(lastIP[:8], (ip1&mask1)|(mask1^0xffffffffffffffff))
+		binary.BigEndian.PutUint64(lastIP[8:], (ip2&mask2)|(mask2^0xffffffffffffffff))
 	}
-	mask := binary.BigEndian.Uint32(subnet.Mask)
-	ip := binary.BigEndian.Uint32(subnet.IP)
-	// find the final address
-	lastIP := make(net.IP, 4)
-	binary.BigEndian.PutUint32(lastIP, (ip&mask)|(mask^0xffffffff))
 
-	return &lastIP, nil
+	return firstIP, lastIP, nil
 }

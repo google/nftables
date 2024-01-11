@@ -454,12 +454,7 @@ func TestConfigureNAT(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dnatfirstip, err := nftables.GetFirstIPFromCIDR("20.0.0.0/24")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	dnatlastip, err := nftables.GetLastIPFromCIDR("20.0.0.0/24")
+	dnatfirstip, dnatlastip, err := nftables.GetFirstAndLastIPFromCIDR("20.0.0.0/24")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,8 +473,10 @@ func TestConfigureNAT(t *testing.T) {
 				SourceRegister: 1,
 				DestRegister:   1,
 				Len:            4,
-				Xor:            []byte{0x0, 0x0, 0x0, 0x0},
-				Mask:           dstcidrmatch.Mask,
+				// By specifying Xor to 0x0,0x0,0x0,0x0 and Mask to the CIDR mask,
+				// the rule will match the CIDR of the IP (e.g in this case 10.0.0.0/24).
+				Xor:  []byte{0x0, 0x0, 0x0, 0x0},
+				Mask: dstcidrmatch.Mask,
 			},
 			&expr.Cmp{
 				Op:       expr.CmpOpEq,
@@ -488,11 +485,11 @@ func TestConfigureNAT(t *testing.T) {
 			},
 			&expr.Immediate{
 				Register: 1,
-				Data:     *dnatfirstip,
+				Data:     dnatfirstip,
 			},
 			&expr.Immediate{
 				Register: 2,
-				Data:     *dnatlastip,
+				Data:     dnatlastip,
 			},
 			&expr.NAT{
 				Type:       expr.NATTypeDestNAT,
