@@ -37,6 +37,7 @@ var (
 	ChainHookOutput      *ChainHook = ChainHookRef(unix.NF_INET_LOCAL_OUT)
 	ChainHookPostrouting *ChainHook = ChainHookRef(unix.NF_INET_POST_ROUTING)
 	ChainHookIngress     *ChainHook = ChainHookRef(unix.NF_NETDEV_INGRESS)
+	ChainHookEgress      *ChainHook = ChainHookRef(unix.NF_NETDEV_EGRESS)
 )
 
 // ChainHookRef returns a pointer to a ChainHookRef value.
