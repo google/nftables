@@ -279,16 +279,15 @@ type Masq struct {
 	RegProtoMax uint32
 }
 
-// TODO, Once the constants below are available in golang.org/x/sys/unix, switch to use those.
 const (
 	// NF_NAT_RANGE_PROTO_RANDOM defines flag for a random masquerade
-	NF_NAT_RANGE_PROTO_RANDOM = 0x4
+	NF_NAT_RANGE_PROTO_RANDOM = unix.NF_NAT_RANGE_PROTO_RANDOM
 	// NF_NAT_RANGE_PROTO_RANDOM_FULLY defines flag for a fully random masquerade
-	NF_NAT_RANGE_PROTO_RANDOM_FULLY = 0x10
+	NF_NAT_RANGE_PROTO_RANDOM_FULLY = unix.NF_NAT_RANGE_PROTO_RANDOM_FULLY
 	// NF_NAT_RANGE_PERSISTENT defines flag for a persistent masquerade
-	NF_NAT_RANGE_PERSISTENT = 0x8
+	NF_NAT_RANGE_PERSISTENT = unix.NF_NAT_RANGE_PERSISTENT
 	// NF_NAT_RANGE_PREFIX defines flag for a prefix masquerade
-	NF_NAT_RANGE_PREFIX = 0x40
+	NF_NAT_RANGE_PREFIX = unix.NF_NAT_RANGE_NETMAP
 )
 
 func (e *Masq) marshal(fam byte) ([]byte, error) {
