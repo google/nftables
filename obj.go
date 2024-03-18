@@ -141,7 +141,6 @@ func objFromMsg(msg netlink.Message) (Obj, error) {
 		name       string
 		objectType uint32
 	)
-	const NFT_OBJECT_COUNTER = 1 // TODO: get into x/sys/unix
 	for ad.Next() {
 		switch ad.Type() {
 		case unix.NFTA_OBJ_TABLE:
@@ -152,7 +151,7 @@ func objFromMsg(msg netlink.Message) (Obj, error) {
 			objectType = ad.Uint32()
 		case unix.NFTA_OBJ_DATA:
 			switch objectType {
-			case NFT_OBJECT_COUNTER:
+			case unix.NFT_OBJECT_COUNTER:
 				o := CounterObj{
 					Table: table,
 					Name:  name,
