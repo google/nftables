@@ -37,6 +37,7 @@ var (
 	ChainHookOutput      *ChainHook = ChainHookRef(unix.NF_INET_LOCAL_OUT)
 	ChainHookPostrouting *ChainHook = ChainHookRef(unix.NF_INET_POST_ROUTING)
 	ChainHookIngress     *ChainHook = ChainHookRef(unix.NF_NETDEV_INGRESS)
+	ChainHookEgress      *ChainHook = ChainHookRef(unix.NF_NETDEV_EGRESS)
 )
 
 // ChainHookRef returns a pointer to a ChainHookRef value.
@@ -101,6 +102,7 @@ type Chain struct {
 	Priority *ChainPriority
 	Type     ChainType
 	Policy   *ChainPolicy
+	Device   string
 }
 
 // AddChain adds the specified Chain. See also
@@ -118,6 +120,11 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 			{Type: unix.NFTA_HOOK_HOOKNUM, Data: binaryutil.BigEndian.PutUint32(uint32(*c.Hooknum))},
 			{Type: unix.NFTA_HOOK_PRIORITY, Data: binaryutil.BigEndian.PutUint32(uint32(*c.Priority))},
 		}
+
+		if c.Device != "" {
+			hookAttr = append(hookAttr, netlink.Attribute{Type: unix.NFTA_HOOK_DEV, Data: []byte(c.Device + "\x00")})
+		}
+
 		data = append(data, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NLA_F_NESTED | unix.NFTA_CHAIN_HOOK, Data: cc.marshalAttr(hookAttr)},
 		})...)
