@@ -193,6 +193,43 @@ func (cc *Conn) ListChains() ([]*Chain, error) {
 	return cc.ListChainsOfTableFamily(TableFamilyUnspecified)
 }
 
+// ListChain returns a single chain configured in the specified table
+func (cc *Conn) ListChain(table *Table, chain string) (*Chain, error) {
+	conn, closer, err := cc.netlinkConn()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = closer() }()
+
+	attrs := []netlink.Attribute{
+		{Type: unix.NFTA_TABLE_NAME, Data: []byte(table.Name + "\x00")},
+		{Type: unix.NFTA_CHAIN_NAME, Data: []byte(chain + "\x00")},
+	}
+	msg := netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETCHAIN),
+			Flags: netlink.Request,
+		},
+		Data: append(extraHeader(uint8(table.Family), 0), cc.marshalAttr(attrs)...),
+	}
+
+	response, err := conn.Execute(msg)
+	if err != nil {
+		return nil, fmt.Errorf("conn.Execute failed: %v", err)
+	}
+
+	if got, want := len(response), 1; got != want {
+		return nil, fmt.Errorf("expected %d response message for chain, got %d", want, got)
+	}
+
+	ch, err := chainFromMsg(response[0])
+	if err != nil {
+		return nil, err
+	}
+
+	return ch, nil
+}
+
 // ListChainsOfTableFamily returns currently configured chains for the specified
 // family in the kernel. It lists all chains ins all tables if family is
 // TableFamilyUnspecified.

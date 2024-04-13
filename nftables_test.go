@@ -1746,6 +1746,160 @@ func TestListChains(t *testing.T) {
 	}
 }
 
+func TestListChainByName(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := &nftables.Table{
+		Name:   "chain_test",
+		Family: nftables.TableFamilyIPv4,
+	}
+	tr := conn.AddTable(table)
+
+	c := &nftables.Chain{
+		Name:  "filter",
+		Table: table,
+	}
+	conn.AddChain(c)
+
+	if err := conn.Flush(); err != nil {
+		t.Errorf("conn.Flush() failed: %v", err)
+	}
+
+	cr, err := conn.ListChain(tr, c.Name)
+	if err != nil {
+		t.Fatalf("conn.ListChain() failed: %v", err)
+	}
+
+	if got, want := cr.Name, c.Name; got != want {
+		t.Fatalf("got chain %s, want chain %s", got, want)
+	}
+
+	if got, want := cr.Table.Name, table.Name; got != want {
+		t.Fatalf("got chain table %s, want chain table %s", got, want)
+	}
+}
+
+func TestListChainByNameUsingLasting(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	conn, err := nftables.New(nftables.WithNetNSFd(int(newNS)), nftables.AsLasting())
+	if err != nil {
+		t.Fatalf("nftables.New() failed: %v", err)
+	}
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := &nftables.Table{
+		Name:   "chain_test_lasting",
+		Family: nftables.TableFamilyIPv4,
+	}
+	tr := conn.AddTable(table)
+
+	c := &nftables.Chain{
+		Name:  "filter_lasting",
+		Table: table,
+	}
+	conn.AddChain(c)
+
+	if err := conn.Flush(); err != nil {
+		t.Errorf("conn.Flush() failed: %v", err)
+	}
+
+	cr, err := conn.ListChain(tr, c.Name)
+	if err != nil {
+		t.Fatalf("conn.ListChain() failed: %v", err)
+	}
+
+	if got, want := cr.Name, c.Name; got != want {
+		t.Fatalf("got chain %s, want chain %s", got, want)
+	}
+
+	if got, want := cr.Table.Name, table.Name; got != want {
+		t.Fatalf("got chain table %s, want chain table %s", got, want)
+	}
+}
+
+func TestListTableByName(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table1 := &nftables.Table{
+		Name:   "table_test",
+		Family: nftables.TableFamilyIPv4,
+	}
+	conn.AddTable(table1)
+	table2 := &nftables.Table{
+		Name:   "table_test_inet",
+		Family: nftables.TableFamilyINet,
+	}
+	conn.AddTable(table2)
+	table3 := &nftables.Table{
+		Name:   table1.Name,
+		Family: nftables.TableFamilyINet,
+	}
+	conn.AddTable(table3)
+
+	if err := conn.Flush(); err != nil {
+		t.Errorf("conn.Flush() failed: %v", err)
+	}
+
+	tr, err := conn.ListTable(table1.Name)
+	if err != nil {
+		t.Fatalf("conn.ListTable() failed: %v", err)
+	}
+
+	if got, want := tr.Name, table1.Name; got != want {
+		t.Fatalf("got table %s, want table %s", got, want)
+	}
+
+	// not specifying table family should return family ipv4
+	tr, err = conn.ListTable(table3.Name)
+	if err != nil {
+		t.Fatalf("conn.ListTable() failed: %v", err)
+	}
+	if got, want := tr.Name, table1.Name; got != want {
+		t.Fatalf("got table %s, want table %s", got, want)
+	}
+	if got, want := tr.Family, table1.Family; got != want {
+		t.Fatalf("got table family %v, want table family %v", got, want)
+	}
+
+	// specifying correct INet family
+	tr, err = conn.ListTableOfFamily(table3.Name, nftables.TableFamilyINet)
+	if err != nil {
+		t.Fatalf("conn.ListTable() failed: %v", err)
+	}
+	if got, want := tr.Name, table3.Name; got != want {
+		t.Fatalf("got table %s, want table %s", got, want)
+	}
+	if got, want := tr.Family, table3.Family; got != want {
+		t.Fatalf("got table family %v, want table family %v", got, want)
+	}
+
+	// not specifying correct family should return err since no table in ipv4
+	tr, err = conn.ListTable(table2.Name)
+	if err == nil {
+		t.Fatalf("conn.ListTable() should have failed")
+	}
+
+	// specifying correct INet family
+	tr, err = conn.ListTableOfFamily(table2.Name, nftables.TableFamilyINet)
+	if err != nil {
+		t.Fatalf("conn.ListTable() failed: %v", err)
+	}
+	if got, want := tr.Name, table2.Name; got != want {
+		t.Fatalf("got table %s, want table %s", got, want)
+	}
+	if got, want := tr.Family, table2.Family; got != want {
+		t.Fatalf("got table family %v, want table family %v", got, want)
+	}
+}
+
 func TestAddChain(t *testing.T) {
 	tests := []struct {
 		name  string
