@@ -16,13 +16,9 @@ package nftables
 
 import (
 	"github.com/google/nftables/binaryutil"
+	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
-)
-
-const (
-	NFTA_OBJ_USERDATA = 8
-	NFT_OBJECT_QUOTA  = 2
 )
 
 type QuotaObj struct {
@@ -63,7 +59,7 @@ func (q *QuotaObj) marshal(data bool) ([]byte, error) {
 	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_OBJ_TABLE, Data: []byte(q.Table.Name + "\x00")},
 		{Type: unix.NFTA_OBJ_NAME, Data: []byte(q.Name + "\x00")},
-		{Type: unix.NFTA_OBJ_TYPE, Data: binaryutil.BigEndian.PutUint32(NFT_OBJECT_QUOTA)},
+		{Type: unix.NFTA_OBJ_TYPE, Data: binaryutil.BigEndian.PutUint32(unix.NFT_OBJECT_QUOTA)},
 	}
 	if data {
 		attrs = append(attrs, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_OBJ_DATA, Data: obj})
@@ -77,4 +73,20 @@ func (q *QuotaObj) table() *Table {
 
 func (q *QuotaObj) family() TableFamily {
 	return q.Table.Family
+}
+
+func (q *QuotaObj) data() expr.Any {
+	return &expr.Quota{
+		Bytes:    q.Bytes,
+		Consumed: q.Consumed,
+		Over:     q.Over,
+	}
+}
+
+func (q *QuotaObj) name() string {
+	return q.Name
+}
+
+func (q *QuotaObj) objType() ObjType {
+	return ObjTypeQuota
 }

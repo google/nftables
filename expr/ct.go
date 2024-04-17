@@ -64,7 +64,19 @@ type Ct struct {
 }
 
 func (e *Ct) marshal(fam byte) ([]byte, error) {
-	regData := []byte{}
+	exprData, err := e.marshalData(fam)
+	if err != nil {
+		return nil, err
+	}
+
+	return netlink.MarshalAttributes([]netlink.Attribute{
+		{Type: unix.NFTA_EXPR_NAME, Data: []byte("ct\x00")},
+		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: exprData},
+	})
+}
+
+func (e *Ct) marshalData(fam byte) ([]byte, error) {
+	var regData []byte
 	exprData, err := netlink.MarshalAttributes(
 		[]netlink.Attribute{
 			{Type: unix.NFTA_CT_KEY, Data: binaryutil.BigEndian.PutUint32(uint32(e.Key))},
@@ -90,11 +102,7 @@ func (e *Ct) marshal(fam byte) ([]byte, error) {
 		return nil, err
 	}
 	exprData = append(exprData, regData...)
-
-	return netlink.MarshalAttributes([]netlink.Attribute{
-		{Type: unix.NFTA_EXPR_NAME, Data: []byte("ct\x00")},
-		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: exprData},
-	})
+	return exprData, nil
 }
 
 func (e *Ct) unmarshal(fam byte, data []byte) error {

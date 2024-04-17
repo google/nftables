@@ -259,7 +259,7 @@ func (monitor *Monitor) monitor() {
 				}
 				monitor.eventCh <- event
 			case unix.NFT_MSG_NEWOBJ, unix.NFT_MSG_DELOBJ:
-				obj, err := objFromMsg(msg)
+				obj, err := objFromMsg(msg, true)
 				event := &MonitorEvent{
 					Type:  MonitorEventType(msgType),
 					Data:  obj,

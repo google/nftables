@@ -5,6 +5,6 @@ import (
 )
 
 var (
-	ParseExprBytesFunc func(fam byte, ad *netlink.AttributeDecoder, b []byte) ([]interface{}, error)
-	ParseExprMsgFunc   func(fam byte, b []byte) ([]interface{}, error)
+	ParseExprBytesFunc func(fam byte, ad *netlink.AttributeDecoder, args ...string) ([]interface{}, error)
+	ParseExprMsgFunc   func(fam byte, b []byte, args ...string) ([]interface{}, error)
 )
