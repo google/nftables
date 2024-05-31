@@ -109,6 +109,9 @@ func (e *Ct) unmarshal(fam byte, data []byte) error {
 			e.Key = CtKey(ad.Uint32())
 		case unix.NFTA_CT_DREG:
 			e.Register = ad.Uint32()
+		case unix.NFTA_CT_SREG:
+			e.Register = ad.Uint32()
+			e.SourceRegister = true
 		}
 	}
 	return ad.Err()
