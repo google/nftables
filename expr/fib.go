@@ -37,6 +37,17 @@ type Fib struct {
 }
 
 func (e *Fib) marshal(fam byte) ([]byte, error) {
+	data, err := e.marshalData(fam)
+	if err != nil {
+		return nil, err
+	}
+	return netlink.MarshalAttributes([]netlink.Attribute{
+		{Type: unix.NFTA_EXPR_NAME, Data: []byte("fib\x00")},
+		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: data},
+	})
+}
+
+func (e *Fib) marshalData(fam byte) ([]byte, error) {
 	data := []byte{}
 	reg, err := netlink.MarshalAttributes([]netlink.Attribute{
 		{Type: unix.NFTA_FIB_DREG, Data: binaryutil.BigEndian.PutUint32(e.Register)},
@@ -92,11 +103,7 @@ func (e *Fib) marshal(fam byte) ([]byte, error) {
 		}
 		data = append(data, rslt...)
 	}
-
-	return netlink.MarshalAttributes([]netlink.Attribute{
-		{Type: unix.NFTA_EXPR_NAME, Data: []byte("fib\x00")},
-		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: data},
-	})
+	return data, nil
 }
 
 func (e *Fib) unmarshal(fam byte, data []byte) error {

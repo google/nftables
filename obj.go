@@ -18,6 +18,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/google/nftables/binaryutil"
+	"github.com/google/nftables/expr"
+	"github.com/google/nftables/internal/parseexprfunc"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -27,13 +30,70 @@ var (
 	delObjHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELOBJ)
 )
 
+type ObjType uint32
+
+// https://git.netfilter.org/libnftnl/tree/include/linux/netfilter/nf_tables.h?id=be0bae0ad31b0adb506f96de083f52a2bd0d4fbf#n1612
+const (
+	ObjTypeCounter   ObjType = unix.NFT_OBJECT_COUNTER
+	ObjTypeQuota     ObjType = unix.NFT_OBJECT_QUOTA
+	ObjTypeCtHelper  ObjType = unix.NFT_OBJECT_CT_HELPER
+	ObjTypeLimit     ObjType = unix.NFT_OBJECT_LIMIT
+	ObjTypeConnLimit ObjType = unix.NFT_OBJECT_CONNLIMIT
+	ObjTypeTunnel    ObjType = unix.NFT_OBJECT_TUNNEL
+	ObjTypeCtTimeout ObjType = unix.NFT_OBJECT_CT_TIMEOUT
+	ObjTypeSecMark   ObjType = unix.NFT_OBJECT_SECMARK
+	ObjTypeCtExpect  ObjType = unix.NFT_OBJECT_CT_EXPECT
+	ObjTypeSynProxy  ObjType = unix.NFT_OBJECT_SYNPROXY
+)
+
+var objByObjTypeMagic = map[ObjType]string{
+	ObjTypeCounter:   "counter",
+	ObjTypeQuota:     "quota",
+	ObjTypeLimit:     "limit",
+	ObjTypeConnLimit: "connlimit",
+	ObjTypeCtHelper:  "cthelper",  // not implemented in expr
+	ObjTypeTunnel:    "tunnel",    // not implemented in expr
+	ObjTypeCtTimeout: "cttimeout", // not implemented in expr
+	ObjTypeSecMark:   "secmark",   // not implemented in expr
+	ObjTypeCtExpect:  "ctexpect",  // not implemented in expr
+	ObjTypeSynProxy:  "synproxy",  // not implemented in expr
+}
+
 // Obj represents a netfilter stateful object. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Stateful_objects
 type Obj interface {
 	table() *Table
 	family() TableFamily
-	unmarshal(*netlink.AttributeDecoder) error
-	marshal(data bool) ([]byte, error)
+	data() expr.Any
+	name() string
+	objType() ObjType
+}
+
+type ObjAttr struct {
+	Table *Table
+	Name  string
+	Type  ObjType
+	Obj   expr.Any
+}
+
+func (o *ObjAttr) table() *Table {
+	return o.Table
+}
+
+func (o *ObjAttr) family() TableFamily {
+	return o.Table.Family
+}
+
+func (o *ObjAttr) data() expr.Any {
+	return o.Obj
+}
+
+func (o *ObjAttr) name() string {
+	return o.Name
+}
+
+func (o *ObjAttr) objType() ObjType {
+	return o.Type
 }
 
 // AddObject adds the specified Obj. Alias of AddObj.
@@ -46,10 +106,19 @@ func (cc *Conn) AddObject(o Obj) Obj {
 func (cc *Conn) AddObj(o Obj) Obj {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
-	data, err := o.marshal(true)
+	data, err := expr.MarshalExprData(byte(o.family()), o.data())
 	if err != nil {
 		cc.setErr(err)
 		return nil
+	}
+
+	attrs := []netlink.Attribute{
+		{Type: unix.NFTA_OBJ_TABLE, Data: []byte(o.table().Name + "\x00")},
+		{Type: unix.NFTA_OBJ_NAME, Data: []byte(o.name() + "\x00")},
+		{Type: unix.NFTA_OBJ_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(o.objType()))},
+	}
+	if len(data) > 0 {
+		attrs = append(attrs, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_OBJ_DATA, Data: data})
 	}
 
 	cc.messages = append(cc.messages, netlink.Message{
@@ -57,7 +126,7 @@ func (cc *Conn) AddObj(o Obj) Obj {
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
-		Data: append(extraHeader(uint8(o.family()), 0), data...),
+		Data: append(extraHeader(uint8(o.family()), 0), cc.marshalAttr(attrs)...),
 	})
 	return o
 }
@@ -66,12 +135,12 @@ func (cc *Conn) AddObj(o Obj) Obj {
 func (cc *Conn) DeleteObject(o Obj) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
-	data, err := o.marshal(false)
-	if err != nil {
-		cc.setErr(err)
-		return
+	attrs := []netlink.Attribute{
+		{Type: unix.NFTA_OBJ_TABLE, Data: []byte(o.table().Name + "\x00")},
+		{Type: unix.NFTA_OBJ_NAME, Data: []byte(o.name() + "\x00")},
+		{Type: unix.NFTA_OBJ_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(o.objType()))},
 	}
-
+	data := cc.marshalAttr(attrs)
 	data = append(data, cc.marshalAttr([]netlink.Attribute{{Type: unix.NLA_F_NESTED | unix.NFTA_OBJ_DATA}})...)
 
 	cc.messages = append(cc.messages, netlink.Message{
@@ -86,13 +155,13 @@ func (cc *Conn) DeleteObject(o Obj) {
 // GetObj is a legacy method that return all Obj that belongs
 // to the same table as the given one
 func (cc *Conn) GetObj(o Obj) ([]Obj, error) {
-	return cc.getObj(nil, o.table(), unix.NFT_MSG_GETOBJ)
+	return cc.getObjWithLegacyType(nil, o.table(), unix.NFT_MSG_GETOBJ, cc.useLegacyObjType(o))
 }
 
 // GetObjReset is a legacy method that reset all Obj that belongs
 // the same table as the given one
 func (cc *Conn) GetObjReset(o Obj) ([]Obj, error) {
-	return cc.getObj(nil, o.table(), unix.NFT_MSG_GETOBJ_RESET)
+	return cc.getObjWithLegacyType(nil, o.table(), unix.NFT_MSG_GETOBJ_RESET, cc.useLegacyObjType(o))
 }
 
 // GetObject gets the specified Object
@@ -127,7 +196,7 @@ func (cc *Conn) ResetObjects(t *Table) ([]Obj, error) {
 	return cc.getObj(nil, t, unix.NFT_MSG_GETOBJ_RESET)
 }
 
-func objFromMsg(msg netlink.Message) (Obj, error) {
+func objFromMsg(msg netlink.Message, returnLegacyType bool) (Obj, error) {
 	if got, want1, want2 := msg.Header.Type, newObjHeaderType, delObjHeaderType; got != want1 && got != want2 {
 		return nil, fmt.Errorf("unexpected header type: got %v, want %v or %v", got, want1, want2)
 	}
@@ -150,6 +219,29 @@ func objFromMsg(msg netlink.Message) (Obj, error) {
 		case unix.NFTA_OBJ_TYPE:
 			objectType = ad.Uint32()
 		case unix.NFTA_OBJ_DATA:
+			if !returnLegacyType {
+				o := ObjAttr{
+					Table: table,
+					Name:  name,
+					Type:  ObjType(objectType),
+				}
+
+				objs, err := parseexprfunc.ParseExprBytesFunc(byte(o.family()), ad, objByObjTypeMagic[o.Type])
+				if err != nil {
+					return nil, err
+				}
+				exprs := make([]expr.Any, len(objs))
+				for i := range exprs {
+					exprs[i] = objs[i].(expr.Any)
+				}
+				if len(exprs) == 0 {
+					return nil, fmt.Errorf("objFromMsg: exprs is empty for obj %v", o)
+				}
+
+				o.Obj = exprs[0]
+				return &o, ad.Err()
+			}
+
 			switch objectType {
 			case unix.NFT_OBJECT_COUNTER:
 				o := CounterObj{
@@ -166,7 +258,7 @@ func objFromMsg(msg netlink.Message) (Obj, error) {
 					return o.unmarshal(ad)
 				})
 				return &o, ad.Err()
-			case NFT_OBJECT_QUOTA:
+			case unix.NFT_OBJECT_QUOTA:
 				o := QuotaObj{
 					Table: table,
 					Name:  name,
@@ -191,6 +283,10 @@ func objFromMsg(msg netlink.Message) (Obj, error) {
 }
 
 func (cc *Conn) getObj(o Obj, t *Table, msgType uint16) ([]Obj, error) {
+	return cc.getObjWithLegacyType(o, t, msgType, cc.useLegacyObjType(o))
+}
+
+func (cc *Conn) getObjWithLegacyType(o Obj, t *Table, msgType uint16, returnLegacyObjType bool) ([]Obj, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
@@ -201,7 +297,12 @@ func (cc *Conn) getObj(o Obj, t *Table, msgType uint16) ([]Obj, error) {
 	var flags netlink.HeaderFlags
 
 	if o != nil {
-		data, err = o.marshal(false)
+		attrs := []netlink.Attribute{
+			{Type: unix.NFTA_OBJ_TABLE, Data: []byte(o.table().Name + "\x00")},
+			{Type: unix.NFTA_OBJ_NAME, Data: []byte(o.name() + "\x00")},
+			{Type: unix.NFTA_OBJ_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(o.objType()))},
+		}
+		data = cc.marshalAttr(attrs)
 	} else {
 		flags = netlink.Dump
 		data, err = netlink.MarshalAttributes([]netlink.Attribute{
@@ -230,7 +331,7 @@ func (cc *Conn) getObj(o Obj, t *Table, msgType uint16) ([]Obj, error) {
 	}
 	var objs []Obj
 	for _, msg := range reply {
-		o, err := objFromMsg(msg)
+		o, err := objFromMsg(msg, returnLegacyObjType)
 		if err != nil {
 			return nil, err
 		}
@@ -238,4 +339,15 @@ func (cc *Conn) getObj(o Obj, t *Table, msgType uint16) ([]Obj, error) {
 	}
 
 	return objs, nil
+}
+
+func (cc *Conn) useLegacyObjType(o Obj) bool {
+	useLegacyType := true
+	if o != nil {
+		switch o.(type) {
+		case *ObjAttr:
+			useLegacyType = false
+		}
+	}
+	return useLegacyType
 }

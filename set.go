@@ -321,7 +321,7 @@ func (s *SetElement) decode(fam byte) func(b []byte) error {
 			case unix.NFTA_SET_ELEM_EXPIRATION:
 				s.Expires = time.Millisecond * time.Duration(ad.Uint64())
 			case unix.NFTA_SET_ELEM_EXPR:
-				elems, err := parseexprfunc.ParseExprBytesFunc(fam, ad, ad.Bytes())
+				elems, err := parseexprfunc.ParseExprBytesFunc(fam, ad)
 				if err != nil {
 					return err
 				}

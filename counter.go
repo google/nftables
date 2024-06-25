@@ -16,11 +16,11 @@ package nftables
 
 import (
 	"github.com/google/nftables/binaryutil"
+	"github.com/google/nftables/expr"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
 
-// CounterObj implements Obj.
 type CounterObj struct {
 	Table *Table
 	Name  string // e.g. “fwded”
@@ -39,6 +39,20 @@ func (c *CounterObj) unmarshal(ad *netlink.AttributeDecoder) error {
 		}
 	}
 	return ad.Err()
+}
+
+func (c *CounterObj) data() expr.Any {
+	return &expr.Counter{
+		Bytes:   c.Bytes,
+		Packets: c.Packets,
+	}
+}
+
+func (c *CounterObj) name() string {
+	return c.Name
+}
+func (c *CounterObj) objType() ObjType {
+	return ObjTypeCounter
 }
 
 func (c *CounterObj) table() *Table {
