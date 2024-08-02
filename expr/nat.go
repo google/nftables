@@ -41,6 +41,7 @@ type NAT struct {
 	FullyRandom bool
 	Persistent  bool
 	Prefix      bool
+	Specified   bool
 }
 
 // |00048|N-|00001|	|len |flags| type|
@@ -97,6 +98,9 @@ func (e *NAT) marshalData(fam byte) ([]byte, error) {
 	if e.Prefix {
 		flags |= NF_NAT_RANGE_PREFIX
 	}
+	if e.Specified {
+		flags |= NF_NAT_RANGE_PROTO_SPECIFIED
+	}
 	if flags != 0 {
 		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_NAT_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)})
 	}
@@ -130,6 +134,7 @@ func (e *NAT) unmarshal(fam byte, data []byte) error {
 			e.Random = (flags & NF_NAT_RANGE_PROTO_RANDOM) != 0
 			e.FullyRandom = (flags & NF_NAT_RANGE_PROTO_RANDOM_FULLY) != 0
 			e.Prefix = (flags & NF_NAT_RANGE_PREFIX) != 0
+			e.Specified = (flags & NF_NAT_RANGE_PROTO_SPECIFIED) != 0
 		}
 	}
 	return ad.Err()
