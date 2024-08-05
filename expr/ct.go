@@ -61,6 +61,7 @@ type Ct struct {
 	Register       uint32
 	SourceRegister bool
 	Key            CtKey
+	Direction      uint32
 }
 
 func (e *Ct) marshal(fam byte) ([]byte, error) {
@@ -102,6 +103,20 @@ func (e *Ct) marshalData(fam byte) ([]byte, error) {
 		return nil, err
 	}
 	exprData = append(exprData, regData...)
+
+	switch e.Key {
+	case CtKeySRC, CtKeyDST, CtKeyPROTOSRC, CtKeyPROTODST:
+		regData, err = netlink.MarshalAttributes(
+			[]netlink.Attribute{
+				{Type: unix.NFTA_CT_DIRECTION, Data: binaryutil.BigEndian.PutUint32(e.Direction)},
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+		exprData = append(exprData, regData...)
+	}
+
 	return exprData, nil
 }
 
@@ -117,6 +132,8 @@ func (e *Ct) unmarshal(fam byte, data []byte) error {
 			e.Key = CtKey(ad.Uint32())
 		case unix.NFTA_CT_DREG:
 			e.Register = ad.Uint32()
+		case unix.NFTA_CT_DIRECTION:
+			e.Direction = ad.Uint32()
 		}
 	}
 	return ad.Err()
