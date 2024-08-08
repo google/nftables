@@ -62,29 +62,27 @@ func TestMonitor(t *testing.T) {
 		defer wg.Done()
 		count := int32(0)
 		for {
-			select {
-			case event, ok := <-events:
-				if !ok {
-					return
-				}
-				if event.Error != nil {
-					err = fmt.Errorf("monitor err: %s", event.Error)
-					return
-				}
-				switch event.Type {
-				case nftables.MonitorEventTypeNewTable:
-					gotTable = event.Data.(*nftables.Table)
-					atomic.AddInt32(&count, 1)
-				case nftables.MonitorEventTypeNewChain:
-					gotChain = event.Data.(*nftables.Chain)
-					atomic.AddInt32(&count, 1)
-				case nftables.MonitorEventTypeNewRule:
-					gotRule = event.Data.(*nftables.Rule)
-					atomic.AddInt32(&count, 1)
-				}
-				if atomic.LoadInt32(&count) == 3 {
-					return
-				}
+			event, ok := <-events
+			if !ok {
+				return
+			}
+			if event.Error != nil {
+				err = fmt.Errorf("monitor err: %s", event.Error)
+				return
+			}
+			switch event.Type {
+			case nftables.MonitorEventTypeNewTable:
+				gotTable = event.Data.(*nftables.Table)
+				atomic.AddInt32(&count, 1)
+			case nftables.MonitorEventTypeNewChain:
+				gotChain = event.Data.(*nftables.Chain)
+				atomic.AddInt32(&count, 1)
+			case nftables.MonitorEventTypeNewRule:
+				gotRule = event.Data.(*nftables.Rule)
+				atomic.AddInt32(&count, 1)
+			}
+			if atomic.LoadInt32(&count) == 3 {
+				return
 			}
 		}
 	}()
