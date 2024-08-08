@@ -138,3 +138,59 @@ func (e *Ct) unmarshal(fam byte, data []byte) error {
 	}
 	return ad.Err()
 }
+
+type CtHelper struct {
+	Name    string
+	L3Proto uint16
+	L4Proto uint8
+}
+
+func (c *CtHelper) marshal(fam byte) ([]byte, error) {
+	exprData, err := c.marshalData(fam)
+	if err != nil {
+		return nil, err
+	}
+
+	return netlink.MarshalAttributes([]netlink.Attribute{
+		{Type: unix.NFTA_EXPR_NAME, Data: []byte("cthelper\x00")},
+		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: exprData},
+	})
+}
+
+func (c *CtHelper) marshalData(fam byte) ([]byte, error) {
+	exprData := []netlink.Attribute{
+		{Type: unix.NFTA_CT_HELPER_NAME, Data: []byte(c.Name)},
+	}
+
+	if c.L3Proto != 0 {
+		exprData = append(exprData, netlink.Attribute{
+			Type: unix.NFTA_CT_HELPER_L3PROTO, Data: binaryutil.BigEndian.PutUint16(c.L3Proto),
+		})
+	}
+	if c.L4Proto != 0 {
+		exprData = append(exprData, netlink.Attribute{
+			Type: unix.NFTA_CT_HELPER_L4PROTO, Data: []byte{c.L4Proto},
+		})
+	}
+
+	return netlink.MarshalAttributes(exprData)
+}
+
+func (c *CtHelper) unmarshal(fam byte, data []byte) error {
+	ad, err := netlink.NewAttributeDecoder(data)
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_CT_HELPER_NAME:
+			c.Name = ad.String()
+		case unix.NFTA_CT_HELPER_L3PROTO:
+			c.L3Proto = ad.Uint16()
+		case unix.NFTA_CT_HELPER_L4PROTO:
+			c.L4Proto = ad.Uint8()
+		}
+	}
+	return ad.Err()
+}

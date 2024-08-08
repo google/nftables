@@ -51,7 +51,7 @@ var objByObjTypeMagic = map[ObjType]string{
 	ObjTypeQuota:     "quota",
 	ObjTypeLimit:     "limit",
 	ObjTypeConnLimit: "connlimit",
-	ObjTypeCtHelper:  "cthelper",  // not implemented in expr
+	ObjTypeCtHelper:  "cthelper",
 	ObjTypeTunnel:    "tunnel",    // not implemented in expr
 	ObjTypeCtTimeout: "cttimeout", // not implemented in expr
 	ObjTypeSecMark:   "secmark",   // not implemented in expr

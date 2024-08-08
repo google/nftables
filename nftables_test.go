@@ -1383,6 +1383,65 @@ func TestCt(t *testing.T) {
 	}
 }
 
+func TestCtHelper(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	cthelp1 := conn.AddObj(&nftables.NamedObj{
+		Table: table,
+		Name:  "ftp-standard",
+		Type:  nftables.ObjTypeCtHelper,
+		Obj: &expr.CtHelper{
+			Name:    "ftp",
+			L4Proto: unix.IPPROTO_TCP,
+			L3Proto: unix.NFPROTO_IPV4,
+		},
+	})
+
+	if err := conn.Flush(); err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	obj1, err := conn.GetObject(cthelp1)
+	if err != nil {
+		t.Errorf("c.GetObject(cthelp1) failed: %v failed", err)
+	}
+
+	helper, ok := obj1.(*nftables.NamedObj)
+	if !ok {
+		t.Fatalf("unexpected type: got %T, want *nftables.ObjAttr", obj1)
+	}
+
+	if got, want := helper.Name, "ftp-standard"; got != want {
+		t.Fatalf("unexpected counter name: got %s, want %s", got, want)
+	}
+
+	if _, err = conn.ResetObject(cthelp1); err != nil {
+		t.Errorf("c.ResetObjects(cthelp1) failed: %v failed", err)
+	}
+
+	obj1, err = conn.GetObject(cthelp1)
+	if err != nil {
+		t.Errorf("c.GetObject(cthelp1) failed: %v failed", err)
+	}
+
+	help := obj1.(*nftables.NamedObj).Obj.(*expr.CtHelper)
+	if got, want := help.L4Proto, uint8(unix.IPPROTO_TCP); got != want {
+		t.Errorf("unexpected l4proto number: got %d, want %d", got, want)
+	}
+
+	if got, want := help.L3Proto, uint16(unix.NFPROTO_IPV4); got != want {
+		t.Errorf("unexpected l3proto number: got %d, want %d", got, want)
+	}
+}
+
 func TestCtSet(t *testing.T) {
 	want := [][]byte{
 		// batch begin

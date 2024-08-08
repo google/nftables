@@ -197,6 +197,8 @@ func exprFromName(name string) Any {
 		e = &Masq{}
 	case "hash":
 		e = &Hash{}
+	case "cthelper":
+		e = &CtHelper{}
 	}
 	return e
 }
