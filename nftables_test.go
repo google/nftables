@@ -2136,6 +2136,83 @@ func TestGetObjReset(t *testing.T) {
 	}
 }
 
+func TestGetResetNamedObj(t *testing.T) {
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	table := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	c.AddObj(&nftables.NamedObj{
+		Table: table,
+		Name:  "fwded1",
+		Type:  nftables.ObjTypeCounter,
+		Obj: &expr.Counter{
+			Bytes:   1,
+			Packets: 1,
+		},
+	})
+
+	c.AddObj(&nftables.NamedObj{
+		Table: table,
+		Name:  "fwded2",
+		Type:  nftables.ObjTypeQuota,
+		Obj: &expr.Quota{
+			Consumed: 1,
+			Over:     true,
+			Bytes:    0x6400,
+		},
+	})
+
+	c.AddObj(&nftables.NamedObj{
+		Table: table,
+		Name:  "fwded3",
+		Type:  nftables.ObjTypeConnLimit,
+		Obj: &expr.Connlimit{
+			Count: 20,
+			Flags: 1,
+		},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	objsNamed, err := c.GetNamedObjects(table)
+	if err != nil {
+		t.Errorf("c.GetNamedObjects(table) failed: %v failed", err)
+	}
+
+	if got := len(objsNamed); got != 3 {
+		t.Fatalf("unexpected number of objects: got %d, want %d", got, 3)
+	}
+
+	for _, o := range objsNamed {
+		switch v := o.(type) {
+		case *nftables.NamedObj:
+		default:
+			t.Fatalf("unexpected type in objsNamed: got %v, want *nftables.NamedObj", v)
+		}
+	}
+
+	objsReset, err := c.ResetNamedObjects(table)
+	if err != nil {
+		t.Errorf("c.ResetObjects(table) failed: %v failed", err)
+	}
+
+	for _, o := range objsReset {
+		switch v := o.(type) {
+		case *nftables.NamedObj:
+		default:
+			t.Fatalf("unexpected type in objsReset: got %v, want *nftables.NamedObj", v)
+		}
+	}
+}
+
 func TestObjAPI(t *testing.T) {
 	if os.Getenv("TRAVIS") == "true" {
 		t.SkipNow()
