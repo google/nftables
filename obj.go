@@ -194,6 +194,12 @@ func (cc *Conn) GetObjects(t *Table) ([]Obj, error) {
 	return cc.getObj(nil, t, unix.NFT_MSG_GETOBJ)
 }
 
+// GetNamedObjects get all the Obj that belongs to the given table
+// This function always return NamedObj types
+func (cc *Conn) GetNamedObjects(t *Table) ([]Obj, error) {
+	return cc.getObjWithLegacyType(nil, t, unix.NFT_MSG_GETOBJ, false)
+}
+
 // ResetObject reset the given Obj
 // This function returns the same concrete type as passed,
 // e.g. QuotaObj, CounterObj or NamedObj. Prefer using the more
@@ -213,6 +219,12 @@ func (cc *Conn) ResetObject(o Obj) (Obj, error) {
 // types for backwards compatibility
 func (cc *Conn) ResetObjects(t *Table) ([]Obj, error) {
 	return cc.getObj(nil, t, unix.NFT_MSG_GETOBJ_RESET)
+}
+
+// ResetNamedObjects reset all the Obj that belongs to the given table
+// This function always return NamedObj types
+func (cc *Conn) ResetNamedObjects(t *Table) ([]Obj, error) {
+	return cc.getObjWithLegacyType(nil, t, unix.NFT_MSG_GETOBJ_RESET, false)
 }
 
 func objFromMsg(msg netlink.Message, returnLegacyType bool) (Obj, error) {
