@@ -1383,6 +1383,104 @@ func TestCt(t *testing.T) {
 	}
 }
 
+func TestSynProxyObject(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyINet,
+		Name:   "filter",
+	})
+
+	syn1 := &nftables.NamedObj{
+		Table: table,
+		Name:  "https-synproxy",
+		Type:  nftables.ObjTypeSynProxy,
+		Obj: &expr.SynProxy{
+			Mss:       1,
+			Wscale:    2,
+			Timestamp: true,
+			SackPerm:  true,
+			// set for equals test below
+			MssValueSet:    true,
+			WscaleValueSet: true,
+		},
+	}
+	syn2 := &nftables.NamedObj{
+		Table: table,
+		Name:  "https-synproxy-empty",
+		Type:  nftables.ObjTypeSynProxy,
+		Obj:   &expr.SynProxy{},
+	}
+	syn3 := &nftables.NamedObj{
+		Table: table,
+		Name:  "https-synproxy-zero",
+		Type:  nftables.ObjTypeSynProxy,
+		Obj: &expr.SynProxy{
+			Mss:            0,
+			Wscale:         0,
+			MssValueSet:    true,
+			WscaleValueSet: true,
+		},
+	}
+	conn.AddObj(syn1)
+	conn.AddObj(syn2)
+	conn.AddObj(syn3)
+
+	if err := conn.Flush(); err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	objs, err := conn.GetNamedObjects(table)
+	if err != nil {
+		t.Errorf("c.GetObjects(table) failed: %v", err)
+	}
+
+	if got, want := len(objs), 3; got != want {
+		t.Fatalf("received %d objects, expected %d", got, want)
+	}
+
+	synObjs := []*nftables.NamedObj{syn1, syn2, syn3}
+	for i := 0; i < len(objs); i++ {
+		obj := objs[i].(*nftables.NamedObj)
+		syn := synObjs[i]
+		if got, want := obj.Name, syn.Name; got != want {
+			t.Errorf("object %d names are not equal: got %s, want %s", i, got, want)
+		}
+		if got, want := obj.Type, syn.Type; got != want {
+			t.Errorf("object %d types are not equal: got %v, want %v", i, got, want)
+		}
+		if got, want := obj.Table.Name, syn.Table.Name; got != want {
+			t.Errorf("object %d tables are not equal: got %s, want %s", i, got, want)
+		}
+		sp1 := obj.Obj.(*expr.SynProxy)
+		sp2 := syn.Obj.(*expr.SynProxy)
+		if got, want := sp1.Mss, sp2.Mss; got != want {
+			t.Errorf("object %d mss' are not equal: got %d, want %d", i, got, want)
+		}
+		if got, want := sp1.Wscale, sp2.Wscale; got != want {
+			t.Errorf("object %d wscales are not equal: got %d, want %d", i, got, want)
+		}
+		if got, want := sp1.Timestamp, sp2.Timestamp; got != want {
+			t.Errorf("object %d timestamp flags are not equal: got %v, want %v", i, got, want)
+		}
+		if got, want := sp1.SackPerm, sp2.SackPerm; got != want {
+			t.Errorf("object %d sack-perm flags are not equal: got %v, want %v", i, got, want)
+		}
+		if got, want := sp1.MssValueSet, sp2.MssValueSet; got != want {
+			t.Errorf("object %d MssValueSet flags are not equal: got %v, want %v", i, got, want)
+		}
+		if got, want := sp1.WscaleValueSet, sp2.WscaleValueSet; got != want {
+			t.Errorf("object %d WscaleValueSet flags are not equal: got %v, want %v", i, got, want)
+		}
+		if got, want := sp1.Ecn, sp2.Ecn; got != want {
+			t.Errorf("object %d Ecn flags are not equal: got %v, want %v", i, got, want)
+		}
+	}
+}
+
 func TestCtHelper(t *testing.T) {
 	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
 	defer nftest.CleanupSystemConn(t, newNS)
