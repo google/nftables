@@ -201,6 +201,8 @@ func exprFromName(name string) Any {
 		e = &CtHelper{}
 	case "synproxy":
 		e = &SynProxy{}
+	case "ctexpect":
+		e = &CtExpect{}
 	}
 	return e
 }

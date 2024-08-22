@@ -194,3 +194,74 @@ func (c *CtHelper) unmarshal(fam byte, data []byte) error {
 	}
 	return ad.Err()
 }
+
+// From https://git.netfilter.org/libnftnl/tree/include/linux/netfilter/nf_tables.h?id=be0bae0ad31b0adb506f96de083f52a2bd0d4fbf#n1601
+// Currently not available in sys/unix
+const (
+	NFTA_CT_EXPECT_L3PROTO = 0x01
+	NFTA_CT_EXPECT_L4PROTO = 0x02
+	NFTA_CT_EXPECT_DPORT   = 0x03
+	NFTA_CT_EXPECT_TIMEOUT = 0x04
+	NFTA_CT_EXPECT_SIZE    = 0x05
+)
+
+type CtExpect struct {
+	L3Proto uint16
+	L4Proto uint8
+	DPort   uint16
+	Timeout uint32
+	Size    uint8
+}
+
+func (c *CtExpect) marshal(fam byte) ([]byte, error) {
+	exprData, err := c.marshalData(fam)
+	if err != nil {
+		return nil, err
+	}
+
+	return netlink.MarshalAttributes([]netlink.Attribute{
+		{Type: unix.NFTA_EXPR_NAME, Data: []byte("ctexpect\x00")},
+		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: exprData},
+	})
+}
+
+func (c *CtExpect) marshalData(fam byte) ([]byte, error) {
+	// all elements except l3proto must be defined
+	// per https://git.netfilter.org/nftables/tree/doc/stateful-objects.txt?id=db70959a5ccf2952b218f51c3d529e186a5a43bb#n119
+	// from man page: l3proto is derived from the table family by default
+	exprData := []netlink.Attribute{
+		{Type: NFTA_CT_EXPECT_L4PROTO, Data: []byte{c.L4Proto}},
+		{Type: NFTA_CT_EXPECT_DPORT, Data: binaryutil.BigEndian.PutUint16(c.DPort)},
+		{Type: NFTA_CT_EXPECT_TIMEOUT, Data: binaryutil.BigEndian.PutUint32(c.Timeout)},
+		{Type: NFTA_CT_EXPECT_SIZE, Data: []byte{c.Size}},
+	}
+
+	if c.L3Proto != 0 {
+		attr := netlink.Attribute{Type: NFTA_CT_EXPECT_L3PROTO, Data: binaryutil.BigEndian.PutUint16(c.L3Proto)}
+		exprData = append(exprData, attr)
+	}
+	return netlink.MarshalAttributes(exprData)
+}
+
+func (c *CtExpect) unmarshal(fam byte, data []byte) error {
+	ad, err := netlink.NewAttributeDecoder(data)
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
+		case NFTA_CT_EXPECT_L3PROTO:
+			c.L3Proto = ad.Uint16()
+		case NFTA_CT_EXPECT_L4PROTO:
+			c.L4Proto = ad.Uint8()
+		case NFTA_CT_EXPECT_DPORT:
+			c.DPort = ad.Uint16()
+		case NFTA_CT_EXPECT_TIMEOUT:
+			c.Timeout = ad.Uint32()
+		case NFTA_CT_EXPECT_SIZE:
+			c.Size = ad.Uint8()
+		}
+	}
+	return ad.Err()
+}
