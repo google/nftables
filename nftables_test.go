@@ -1383,6 +1383,68 @@ func TestCt(t *testing.T) {
 	}
 }
 
+func TestSecMarkMarshaling(t *testing.T) {
+	// Testing marshaling since secmark requires live selinux tag otherwise
+	// errors with conn.Receive: netlink receive: no such file or directory.
+	// More information available here:
+	// https://git.netfilter.org/nftables/tree/files/examples/secmark.nft?id=26d9cbefb10e6bc3765df7e9e7a4fc3b951a80f3#n6
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// sudo nft add table inet filter
+		[]byte("\x01\x00\x00\x00\x0b\x00\x01\x00filter\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+		// sudo nft add secmark inet filter sshtag '{ ctx "system_u:object_r:ssh_server_packet_t:s0" }'
+		[]byte("\x01\x00\x00\x00\x0b\x00\x01\x00filter\x00\x00\x0b\x00\x02\x00sshtag\x00\x00\x08\x00\x03\x00\x00\x00\x00\x080\x00\x04\x80,\x00\x01\x00system_u:object_r:ssh_server_packet_t:s0"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	conn, err := nftables.New(nftables.WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
+			for idx, msg := range req {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(b) < 16 {
+					continue
+				}
+				b = b[16:]
+				if len(want) == 0 {
+					t.Errorf("no want entry for message %d: %x", idx, b)
+					continue
+				}
+				if got, want := b, want[0]; !bytes.Equal(got, want) {
+					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
+				}
+				want = want[1:]
+			}
+			return req, nil
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	table := conn.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyINet,
+		Name:   "filter",
+	})
+
+	sec := &nftables.NamedObj{
+		Table: table,
+		Name:  "sshtag",
+		Type:  nftables.ObjTypeSecMark,
+		Obj: &expr.SecMark{
+			Ctx: "system_u:object_r:ssh_server_packet_t:s0",
+		},
+	}
+	conn.AddObj(sec)
+
+	if err := conn.Flush(); err != nil {
+		t.Fatalf(err.Error())
+	}
+}
+
 func TestSynProxyObject(t *testing.T) {
 	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
 	defer nftest.CleanupSystemConn(t, newNS)

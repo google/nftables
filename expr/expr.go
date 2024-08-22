@@ -203,6 +203,8 @@ func exprFromName(name string) Any {
 		e = &SynProxy{}
 	case "ctexpect":
 		e = &CtExpect{}
+	case "secmark":
+		e = &SecMark{}
 	}
 	return e
 }
