@@ -199,6 +199,8 @@ func exprFromName(name string) Any {
 		e = &Hash{}
 	case "cthelper":
 		e = &CtHelper{}
+	case "synproxy":
+		e = &SynProxy{}
 	}
 	return e
 }
