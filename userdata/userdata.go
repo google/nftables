@@ -31,6 +31,21 @@ const (
 	TypesCount
 )
 
+// TLV type values are defined in:
+// https://git.netfilter.org/libnftnl/tree/include/libnftnl/udata.h#n39
+const (
+	NFTNL_UDATA_SET_KEYBYTEORDER Type = iota
+	NFTNL_UDATA_SET_DATABYTEORDER
+	NFTNL_UDATA_SET_MERGE_ELEMENTS
+	NFTNL_UDATA_SET_KEY_TYPEOF
+	NFTNL_UDATA_SET_DATA_TYPEOF
+	NFTNL_UDATA_SET_EXPR
+	NFTNL_UDATA_SET_DATA_INTERVAL
+	NFTNL_UDATA_SET_COMMENT
+
+	NFTNL_UDATA_SET_MAX
+)
+
 func Append(udata []byte, typ Type, data []byte) []byte {
 	udata = append(udata, byte(typ), byte(len(data)))
 	udata = append(udata, data...)

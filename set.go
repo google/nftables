@@ -21,10 +21,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
 	"github.com/google/nftables/internal/parseexprfunc"
-
-	"github.com/google/nftables/binaryutil"
+	"github.com/google/nftables/userdata"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -249,6 +249,7 @@ type Set struct {
 	Anonymous  bool
 	Constant   bool
 	Interval   bool
+	AutoMerge  bool
 	IsMap      bool
 	HasTimeout bool
 	Counter    bool
@@ -580,15 +581,27 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		// Marshal concat size description as set description
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: concatBytes})
 	}
+
+	// https://git.netfilter.org/libnftnl/tree/include/udata.h#n17
+	var userData []byte
+
 	if s.Anonymous || s.Constant || s.Interval || s.KeyByteOrder == binaryutil.BigEndian {
-		tableInfo = append(tableInfo,
-			// Semantically useless - kept for binary compatability with nft
-			netlink.Attribute{Type: unix.NFTA_SET_USERDATA, Data: []byte("\x00\x04\x02\x00\x00\x00")})
+		// Semantically useless - kept for binary compatability with nft
+		userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_KEYBYTEORDER, 2)
 	} else if s.KeyByteOrder == binaryutil.NativeEndian {
 		// Per https://git.netfilter.org/nftables/tree/src/mnl.c?id=187c6d01d35722618c2711bbc49262c286472c8f#n1165
-		tableInfo = append(tableInfo,
-			netlink.Attribute{Type: unix.NFTA_SET_USERDATA, Data: []byte("\x00\x04\x01\x00\x00\x00")})
+		userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_KEYBYTEORDER, 1)
 	}
+
+	if s.Interval && s.AutoMerge {
+		// https://git.netfilter.org/nftables/tree/src/mnl.c?id=187c6d01d35722618c2711bbc49262c286472c8f#n1174
+		userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_MERGE_ELEMENTS, 1)
+	}
+
+	if len(userData) > 0 {
+		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_USERDATA, Data: userData})
+	}
+
 	if s.Counter {
 		data, err := netlink.MarshalAttributes([]netlink.Attribute{
 			{Type: unix.NFTA_LIST_ELEM, Data: []byte("counter\x00")},
@@ -740,6 +753,10 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			set.DataType = dt
 		case unix.NFTA_SET_DATA_LEN:
 			set.DataType.Bytes = binary.BigEndian.Uint32(ad.Bytes())
+		case unix.NFTA_SET_USERDATA:
+			data := ad.Bytes()
+			value, ok := userdata.GetUint32(data, userdata.NFTNL_UDATA_SET_MERGE_ELEMENTS)
+			set.AutoMerge = ok && value == 1
 		}
 	}
 	return &set, nil
