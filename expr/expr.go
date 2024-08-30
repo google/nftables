@@ -336,6 +336,8 @@ const (
 	NF_NAT_RANGE_PERSISTENT = unix.NF_NAT_RANGE_PERSISTENT
 	// NF_NAT_RANGE_PREFIX defines flag for a prefix masquerade
 	NF_NAT_RANGE_PREFIX = unix.NF_NAT_RANGE_NETMAP
+	// NF_NAT_RANGE_PROTO_SPECIFIED defines flag for a specified range
+	NF_NAT_RANGE_PROTO_SPECIFIED = unix.NF_NAT_RANGE_PROTO_SPECIFIED
 )
 
 func (e *Masq) marshal(fam byte) ([]byte, error) {
