@@ -56,6 +56,58 @@ const (
 	CtStateBitUNTRACKED   uint32 = 64
 )
 
+// Missing ct timeout consts
+// https://git.netfilter.org/libnftnl/tree/include/linux/netfilter/nf_tables.h?id=be0bae0ad31b0adb506f96de083f52a2bd0d4fbf#n1592
+const (
+	NFTA_CT_TIMEOUT_L3PROTO = 0x01
+	NFTA_CT_TIMEOUT_L4PROTO = 0x02
+	NFTA_CT_TIMEOUT_DATA    = 0x03
+)
+
+type CtStatePolicyTimeout map[uint16]uint32
+
+const (
+	// https://git.netfilter.org/libnftnl/tree/src/obj/ct_timeout.c?id=116e95aa7b6358c917de8c69f6f173874030b46b#n24
+	CtStateTCPSYNSENT = iota
+	CtStateTCPSYNRECV
+	CtStateTCPESTABLISHED
+	CtStateTCPFINWAIT
+	CtStateTCPCLOSEWAIT
+	CtStateTCPLASTACK
+	CtStateTCPTIMEWAIT
+	CtStateTCPCLOSE
+	CtStateTCPSYNSENT2
+	CtStateTCPRETRANS
+	CtStateTCPUNACK
+)
+
+// https://git.netfilter.org/libnftnl/tree/src/obj/ct_timeout.c?id=116e95aa7b6358c917de8c69f6f173874030b46b#n38
+var CtStateTCPTimeoutDefaults CtStatePolicyTimeout = map[uint16]uint32{
+	CtStateTCPSYNSENT:     120,
+	CtStateTCPSYNRECV:     60,
+	CtStateTCPESTABLISHED: 43200,
+	CtStateTCPFINWAIT:     120,
+	CtStateTCPCLOSEWAIT:   60,
+	CtStateTCPLASTACK:     30,
+	CtStateTCPTIMEWAIT:    120,
+	CtStateTCPCLOSE:       10,
+	CtStateTCPSYNSENT2:    120,
+	CtStateTCPRETRANS:     300,
+	CtStateTCPUNACK:       300,
+}
+
+const (
+	// https://git.netfilter.org/libnftnl/tree/src/obj/ct_timeout.c?id=116e95aa7b6358c917de8c69f6f173874030b46b#n57
+	CtStateUDPUNREPLIED = iota
+	CtStateUDPREPLIED
+)
+
+// https://git.netfilter.org/libnftnl/tree/src/obj/ct_timeout.c?id=116e95aa7b6358c917de8c69f6f173874030b46b#n57
+var CtStateUDPTimeoutDefaults CtStatePolicyTimeout = map[uint16]uint32{
+	CtStateUDPUNREPLIED: 30,
+	CtStateUDPREPLIED:   180,
+}
+
 // Ct defines type for NFT connection tracking
 type Ct struct {
 	Register       uint32
@@ -261,6 +313,87 @@ func (c *CtExpect) unmarshal(fam byte, data []byte) error {
 			c.Timeout = ad.Uint32()
 		case NFTA_CT_EXPECT_SIZE:
 			c.Size = ad.Uint8()
+		}
+	}
+	return ad.Err()
+}
+
+type CtTimeout struct {
+	L3Proto uint16
+	L4Proto uint8
+	Policy  CtStatePolicyTimeout
+}
+
+func (c *CtTimeout) marshal(fam byte) ([]byte, error) {
+	exprData, err := c.marshalData(fam)
+	if err != nil {
+		return nil, err
+	}
+
+	return netlink.MarshalAttributes([]netlink.Attribute{
+		{Type: unix.NFTA_EXPR_NAME, Data: []byte("cttimeout\x00")},
+		{Type: unix.NLA_F_NESTED | unix.NFTA_EXPR_DATA, Data: exprData},
+	})
+}
+
+func (c *CtTimeout) marshalData(fam byte) ([]byte, error) {
+	var policy CtStatePolicyTimeout
+	switch c.L4Proto {
+	case unix.IPPROTO_UDP:
+		policy = CtStateUDPTimeoutDefaults
+	default:
+		policy = CtStateTCPTimeoutDefaults
+	}
+
+	for k, v := range c.Policy {
+		policy[k] = v
+	}
+
+	var policyAttrs []netlink.Attribute
+	for k, v := range policy {
+		policyAttrs = append(policyAttrs, netlink.Attribute{Type: k + 1, Data: binaryutil.BigEndian.PutUint32(v)})
+	}
+	policyData, err := netlink.MarshalAttributes(policyAttrs)
+	if err != nil {
+		return nil, err
+	}
+
+	exprData := []netlink.Attribute{
+		{Type: NFTA_CT_TIMEOUT_L3PROTO, Data: binaryutil.BigEndian.PutUint16(c.L3Proto)},
+		{Type: NFTA_CT_TIMEOUT_L4PROTO, Data: []byte{c.L4Proto}},
+		{Type: unix.NLA_F_NESTED | NFTA_CT_TIMEOUT_DATA, Data: policyData},
+	}
+
+	return netlink.MarshalAttributes(exprData)
+}
+
+func (c *CtTimeout) unmarshal(fam byte, data []byte) error {
+	ad, err := netlink.NewAttributeDecoder(data)
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	for ad.Next() {
+		switch ad.Type() {
+		case NFTA_CT_TIMEOUT_L3PROTO:
+			c.L3Proto = ad.Uint16()
+		case NFTA_CT_TIMEOUT_L4PROTO:
+			c.L4Proto = ad.Uint8()
+		case NFTA_CT_TIMEOUT_DATA:
+			decoder, err := netlink.NewAttributeDecoder(ad.Bytes())
+			decoder.ByteOrder = binary.BigEndian
+			if err != nil {
+				return err
+			}
+			for decoder.Next() {
+				switch c.L4Proto {
+				case unix.IPPROTO_UDP:
+					c.Policy = CtStateUDPTimeoutDefaults
+				default:
+					c.Policy = CtStateTCPTimeoutDefaults
+				}
+				c.Policy[decoder.Type()-1] = decoder.Uint32()
+			}
 		}
 	}
 	return ad.Err()

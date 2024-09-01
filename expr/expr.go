@@ -205,6 +205,8 @@ func exprFromName(name string) Any {
 		e = &CtExpect{}
 	case "secmark":
 		e = &SecMark{}
+	case "cttimeout":
+		e = &CtTimeout{}
 	}
 	return e
 }
