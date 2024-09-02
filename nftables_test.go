@@ -3498,6 +3498,66 @@ func TestCreateUseNamedSet(t *testing.T) {
 	}
 }
 
+func TestCreateAutoMergeSet(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	portSet := &nftables.Set{
+		Table:     filter,
+		Name:      "test",
+		KeyType:   nftables.TypeInetService,
+		Interval:  true,
+		AutoMerge: true,
+	}
+	if err := c.AddSet(portSet, nil); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+	if err := c.SetAddElements(portSet, []nftables.SetElement{{Key: binaryutil.BigEndian.PutUint16(22)}}); err != nil {
+		t.Errorf("c.SetVal(portSet) failed: %v", err)
+	}
+
+	ipSet := &nftables.Set{
+		Table:     filter,
+		Name:      "IPs_4_dayz",
+		KeyType:   nftables.TypeIPAddr,
+		Interval:  true,
+		AutoMerge: true,
+	}
+	if err := c.AddSet(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.64").To4())}}); err != nil {
+		t.Errorf("c.AddSet(ipSet) failed: %v", err)
+	}
+	if err := c.SetAddElements(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.42").To4())}}); err != nil {
+		t.Errorf("c.SetVal(ipSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	sets, err := c.GetSets(filter)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(sets) != 2 {
+		t.Fatalf("len(sets) = %d, want 2", len(sets))
+	}
+	if !sets[0].AutoMerge {
+		t.Errorf("set[0].AutoMerge = %v, want true", sets[0].AutoMerge)
+	}
+	if !sets[1].AutoMerge {
+		t.Errorf("set[1].AutoMerge = %v, want true", sets[1].AutoMerge)
+	}
+}
+
 func TestIP6SetAddElements(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
