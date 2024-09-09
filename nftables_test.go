@@ -1428,7 +1428,6 @@ func TestSynProxyObject(t *testing.T) {
 	conn.AddObj(syn1)
 	conn.AddObj(syn2)
 	conn.AddObj(syn3)
-
 	if err := conn.Flush(); err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -1437,7 +1436,6 @@ func TestSynProxyObject(t *testing.T) {
 	if err != nil {
 		t.Errorf("c.GetObjects(table) failed: %v", err)
 	}
-
 	if got, want := len(objs), 3; got != want {
 		t.Fatalf("received %d objects, expected %d", got, want)
 	}
@@ -1478,6 +1476,74 @@ func TestSynProxyObject(t *testing.T) {
 		if got, want := sp1.Ecn, sp2.Ecn; got != want {
 			t.Errorf("object %d Ecn flags are not equal: got %v, want %v", i, got, want)
 		}
+	}
+}
+
+func TestCtExpect(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	cte := &nftables.NamedObj{
+		Table: table,
+		Name:  "expect",
+		Type:  nftables.ObjTypeCtExpect,
+		Obj: &expr.CtExpect{
+			L3Proto: unix.NFPROTO_IPV4,
+			L4Proto: unix.IPPROTO_TCP,
+			DPort:   53,
+			Timeout: 20,
+			Size:    100,
+		},
+	}
+
+	conn.AddObj(cte)
+	if err := conn.Flush(); err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	objs, err := conn.GetNamedObjects(table)
+	if err != nil {
+		t.Errorf("c.GetObjects(table) failed: %v", err)
+	}
+
+	if got, want := len(objs), 1; got != want {
+		t.Fatalf("received %d objects, expected %d", got, want)
+	}
+
+	obj := objs[0].(*nftables.NamedObj)
+	if got, want := obj.Name, cte.Name; got != want {
+		t.Errorf("object names are not equal: got %s, want %s", got, want)
+	}
+	if got, want := obj.Type, cte.Type; got != want {
+		t.Errorf("object types are not equal: got %v, want %v", got, want)
+	}
+	if got, want := obj.Table.Name, cte.Table.Name; got != want {
+		t.Errorf("object tables are not equal: got %s, want %s", got, want)
+	}
+
+	ce1 := obj.Obj.(*expr.CtExpect)
+	ce2 := cte.Obj.(*expr.CtExpect)
+	if got, want := ce1.L3Proto, ce2.L3Proto; got != want {
+		t.Errorf("object l3proto not equal: got %d, want %d", got, want)
+	}
+	if got, want := ce1.L4Proto, ce2.L4Proto; got != want {
+		t.Errorf("object l4proto not equal: got %d, want %d", got, want)
+	}
+	if got, want := ce1.DPort, ce2.DPort; got != want {
+		t.Errorf("object dport not equal: got %d, want %d", got, want)
+	}
+	if got, want := ce1.Size, ce2.Size; got != want {
+		t.Errorf("object Size not equal: got %d, want %d", got, want)
+	}
+	if got, want := ce1.Timeout, ce2.Timeout; got != want {
+		t.Errorf("object timeout not equal: got %d, want %d", got, want)
 	}
 }
 

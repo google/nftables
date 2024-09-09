@@ -55,8 +55,8 @@ var objByObjTypeMagic = map[ObjType]string{
 	ObjTypeTunnel:    "tunnel",    // not implemented in expr
 	ObjTypeCtTimeout: "cttimeout", // not implemented in expr
 	ObjTypeSecMark:   "secmark",   // not implemented in expr
-	ObjTypeCtExpect:  "ctexpect",  // not implemented in expr
-	ObjTypeSynProxy:  "synproxy",  // not implemented in expr
+	ObjTypeCtExpect:  "ctexpect",
+	ObjTypeSynProxy:  "synproxy",
 }
 
 // Obj represents a netfilter stateful object. See also
