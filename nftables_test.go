@@ -1541,6 +1541,131 @@ func TestSynProxyObject(t *testing.T) {
 	}
 }
 
+func TestCtTimeout(t *testing.T) {
+	t.Parallel()
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	tests := [...]struct {
+		Name   string
+		Input  expr.CtTimeout
+		Expect expr.CtTimeout
+	}{
+		{
+			Name:  "timeout-blank-tcp-policy",
+			Input: expr.CtTimeout{L4Proto: unix.IPPROTO_TCP},
+			Expect: expr.CtTimeout{
+				L4Proto: unix.IPPROTO_TCP,
+				L3Proto: unix.NFPROTO_UNSPEC,
+				Policy:  expr.CtStateTCPTimeoutDefaults,
+			},
+		},
+		{
+			Name:  "timeout-blank-udp-policy",
+			Input: expr.CtTimeout{L4Proto: unix.IPPROTO_UDP},
+			Expect: expr.CtTimeout{
+				L4Proto: unix.IPPROTO_UDP,
+				L3Proto: unix.NFPROTO_UNSPEC,
+				Policy:  expr.CtStateUDPTimeoutDefaults,
+			},
+		},
+		{
+			Name: "timeout-partial-tcp-policy",
+			Input: expr.CtTimeout{
+				L4Proto: unix.IPPROTO_TCP,
+				L3Proto: unix.NFPROTO_IPV4,
+				Policy: expr.CtStatePolicyTimeout{
+					expr.CtStateTCPSYNSENT:     100,
+					expr.CtStateTCPESTABLISHED: 5,
+					expr.CtStateTCPCLOSEWAIT:   9,
+				},
+			},
+			Expect: expr.CtTimeout{
+				L4Proto: unix.IPPROTO_TCP,
+				L3Proto: unix.NFPROTO_IPV4,
+				Policy: expr.CtStatePolicyTimeout{
+					expr.CtStateTCPSYNSENT:     100,
+					expr.CtStateTCPSYNRECV:     60,
+					expr.CtStateTCPESTABLISHED: 5,
+					expr.CtStateTCPFINWAIT:     120,
+					expr.CtStateTCPCLOSEWAIT:   9,
+					expr.CtStateTCPLASTACK:     30,
+					expr.CtStateTCPTIMEWAIT:    120,
+					expr.CtStateTCPCLOSE:       10,
+					expr.CtStateTCPSYNSENT2:    120,
+					expr.CtStateTCPRETRANS:     300,
+					expr.CtStateTCPUNACK:       300,
+				},
+			},
+		},
+		{
+			Name: "timeout-complete-udp-policy",
+			Input: expr.CtTimeout{
+				L4Proto: unix.IPPROTO_UDP,
+				L3Proto: unix.NFPROTO_IPV6,
+				Policy: expr.CtStatePolicyTimeout{
+					expr.CtStateUDPUNREPLIED: 500,
+					expr.CtStateUDPREPLIED:   10000,
+				},
+			},
+			Expect: expr.CtTimeout{
+				L4Proto: unix.IPPROTO_UDP,
+				L3Proto: unix.NFPROTO_IPV6,
+				Policy: expr.CtStatePolicyTimeout{
+					expr.CtStateUDPUNREPLIED: 500,
+					expr.CtStateUDPREPLIED:   10000,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			ctt1 := conn.AddObj(&nftables.NamedObj{
+				Table: table,
+				Name:  tt.Name,
+				Type:  nftables.ObjTypeCtTimeout,
+				Obj:   &tt.Input,
+			})
+
+			if err := conn.Flush(); err != nil {
+				t.Fatalf(err.Error())
+			}
+
+			obj, err := conn.GetObject(ctt1)
+			if err != nil {
+				t.Errorf("c.GetObject(ctt1) failed: %v failed", err)
+			}
+
+			ctt2, ok := obj.(*nftables.NamedObj)
+			if !ok {
+				t.Fatalf("unexpected type: got %T, want *nftables.NamedObj", ctt2)
+			}
+
+			o1 := ctt2.Obj.(*expr.CtTimeout)
+			o2 := &tt.Expect
+			if got, want := o1.L3Proto, o2.L3Proto; got != want {
+				t.Fatalf("unexpected l3proto: got %d, want %d", got, want)
+			}
+
+			if got, want := o1.L4Proto, o2.L4Proto; got != want {
+				t.Fatalf("unexpected l4proto: got %d, want %d", got, want)
+			}
+
+			if got, want := o1.Policy, o2.Policy; !reflect.DeepEqual(got, want) {
+				t.Fatalf("unexpected policy: got %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 func TestCtExpect(t *testing.T) {
 	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
 	defer nftest.CleanupSystemConn(t, newNS)
@@ -1642,7 +1767,7 @@ func TestCtHelper(t *testing.T) {
 
 	helper, ok := obj1.(*nftables.NamedObj)
 	if !ok {
-		t.Fatalf("unexpected type: got %T, want *nftables.ObjAttr", obj1)
+		t.Fatalf("unexpected type: got %T, want *nftables.NamedObj", obj1)
 	}
 
 	if got, want := helper.Name, "ftp-standard"; got != want {
