@@ -77,7 +77,6 @@ func (e *Dynset) marshalData(fam byte) ([]byte, error) {
 
 	// Per https://git.netfilter.org/libnftnl/tree/src/expr/dynset.c?id=84d12cfacf8ddd857a09435f3d982ab6250d250c#n170
 	if len(e.Exprs) > 0 {
-		flags |= NFT_DYNSET_F_EXPR
 		switch len(e.Exprs) {
 		case 1:
 			exprData, err := Marshal(fam, e.Exprs[0])
@@ -86,6 +85,7 @@ func (e *Dynset) marshalData(fam byte) ([]byte, error) {
 			}
 			opAttrs = append(opAttrs, netlink.Attribute{Type: unix.NFTA_DYNSET_EXPR, Data: exprData})
 		default:
+			flags |= NFT_DYNSET_F_EXPR
 			var elemAttrs []netlink.Attribute
 			for _, ex := range e.Exprs {
 				exprData, err := Marshal(fam, ex)
