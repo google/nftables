@@ -298,7 +298,7 @@ func (cc *Conn) FlushRuleset() {
 func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
 	var (
 		conn *netlink.Conn
-		err  error = nil
+		err  error
 	)
 
 	if cc.TestDial != nil {
@@ -312,9 +312,7 @@ func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
 	}
 
 	for _, opt := range cc.sockOptions {
-		err := opt(conn)
-
-		if err != nil {
+		if err := opt(conn); err != nil {
 			return nil, err
 		}
 	}
