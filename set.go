@@ -268,6 +268,12 @@ type Set struct {
 	KeyByteOrder binaryutil.ByteOrder
 }
 
+type SetElementsInfo struct {
+	TableName string
+	SetName   string
+	Elements  []SetElement
+}
+
 // SetElement represents a data point within a set.
 type SetElement struct {
 	Key []byte
@@ -797,10 +803,16 @@ func elementsFromMsg(fam byte, msg netlink.Message) ([]SetElement, error) {
 	}
 	ad.ByteOrder = binary.BigEndian
 
+	var info = &SetElementsInfo{}
 	var elements []SetElement
 	for ad.Next() {
 		b := ad.Bytes()
-		if ad.Type() == unix.NFTA_SET_ELEM_LIST_ELEMENTS {
+		switch ad.Type() {
+		case unix.NFTA_SET_ELEM_LIST_TABLE:
+			info.TableName = ad.String()
+		case unix.NFTA_SET_ELEM_LIST_SET:
+			info.SetName = ad.String()
+		case unix.NFTA_SET_ELEM_LIST_ELEMENTS:
 			ad, err := netlink.NewAttributeDecoder(b)
 			if err != nil {
 				return nil, err

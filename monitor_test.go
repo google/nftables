@@ -26,12 +26,14 @@ func ExampleNewMonitor() {
 		log.Fatal(err)
 	}
 	for ev := range events {
-		log.Printf("ev: %+v, data = %T", ev, ev.Data)
-		switch ev.Type {
-		case nftables.MonitorEventTypeNewTable:
-			log.Printf("data = %+v", ev.Data.(*nftables.Table))
+		log.Printf("ev: %+v, data = %T", ev, ev.Changes)
 
-			// …more cases if needed…
+		for _, change := range ev.Changes {
+			switch change.Type {
+			case nftables.MonitorEventTypeNewTable:
+				log.Printf("data = %+v", change.Data.(*nftables.Table))
+				// …more cases if needed…
+			}
 		}
 	}
 }
@@ -66,23 +68,27 @@ func TestMonitor(t *testing.T) {
 			if !ok {
 				return
 			}
-			if event.Error != nil {
-				err = fmt.Errorf("monitor err: %s", event.Error)
-				return
-			}
-			switch event.Type {
-			case nftables.MonitorEventTypeNewTable:
-				gotTable = event.Data.(*nftables.Table)
-				atomic.AddInt32(&count, 1)
-			case nftables.MonitorEventTypeNewChain:
-				gotChain = event.Data.(*nftables.Chain)
-				atomic.AddInt32(&count, 1)
-			case nftables.MonitorEventTypeNewRule:
-				gotRule = event.Data.(*nftables.Rule)
-				atomic.AddInt32(&count, 1)
-			}
-			if atomic.LoadInt32(&count) == 3 {
-				return
+
+			for _, change := range event.Changes {
+				if change.Error != nil {
+					err = fmt.Errorf("monitor err: %s", change.Error)
+					return
+				}
+
+				switch change.Type {
+				case nftables.MonitorEventTypeNewTable:
+					gotTable = change.Data.(*nftables.Table)
+					atomic.AddInt32(&count, 1)
+				case nftables.MonitorEventTypeNewChain:
+					gotChain = change.Data.(*nftables.Chain)
+					atomic.AddInt32(&count, 1)
+				case nftables.MonitorEventTypeNewRule:
+					gotRule = change.Data.(*nftables.Rule)
+					atomic.AddInt32(&count, 1)
+				}
+				if atomic.LoadInt32(&count) == 3 {
+					return
+				}
 			}
 		}
 	}()

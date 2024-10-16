@@ -116,9 +116,15 @@ const (
 // nftables.MonitorEventTypeNewTable, you can access the corresponding table
 // details via Data.(*nftables.Table).
 type MonitorEvent struct {
-	Type  MonitorEventType
-	Data  any
-	Error error
+	Header netlink.Header
+	Type   MonitorEventType
+	Data   any
+	Error  error
+}
+
+type MonitorEvents struct {
+	GenerateBy *MonitorEvent
+	Changes    []*MonitorEvent
 }
 
 const (
@@ -139,7 +145,7 @@ type Monitor struct {
 
 	// mu covers eventCh and status
 	mu      sync.Mutex
-	eventCh chan *MonitorEvent
+	eventCh chan *MonitorEvents
 	status  int
 }
 
@@ -147,7 +153,7 @@ type MonitorOption func(*Monitor)
 
 func WithMonitorEventBuffer(size int) MonitorOption {
 	return func(monitor *Monitor) {
-		monitor.eventCh = make(chan *MonitorEvent, size)
+		monitor.eventCh = make(chan *MonitorEvents, size)
 	}
 }
 
@@ -177,7 +183,7 @@ func NewMonitor(opts ...MonitorOption) *Monitor {
 		opt(monitor)
 	}
 	if monitor.eventCh == nil {
-		monitor.eventCh = make(chan *MonitorEvent)
+		monitor.eventCh = make(chan *MonitorEvents)
 	}
 	objects, ok := monitorFlags[monitor.action]
 	if !ok {
@@ -192,6 +198,8 @@ func NewMonitor(opts ...MonitorOption) *Monitor {
 }
 
 func (monitor *Monitor) monitor() {
+	changesEvents := make([]*MonitorEvent, 0, 2)
+
 	for {
 		msgs, err := monitor.conn.Receive()
 		if err != nil {
@@ -199,13 +207,21 @@ func (monitor *Monitor) monitor() {
 				// ignore the error that be closed
 				break
 			} else {
-				// any other errors will be send to user, and then to close eventCh
+				// any other errors will be sent to user, and then to close eventCh
 				event := &MonitorEvent{
 					Type:  MonitorEventTypeOOB,
 					Data:  nil,
 					Error: err,
 				}
-				monitor.eventCh <- event
+
+				changesEvents = append(changesEvents, event)
+
+				monitor.eventCh <- &MonitorEvents{
+					GenerateBy: event,
+					Changes:    changesEvents,
+				}
+				changesEvents = make([]*MonitorEvent, 0, 2)
+
 				break
 			}
 		}
@@ -221,54 +237,76 @@ func (monitor *Monitor) monitor() {
 			case unix.NFT_MSG_NEWTABLE, unix.NFT_MSG_DELTABLE:
 				table, err := tableFromMsg(msg)
 				event := &MonitorEvent{
-					Type:  MonitorEventType(msgType),
-					Data:  table,
-					Error: err,
+					Type:   MonitorEventType(msgType),
+					Data:   table,
+					Error:  err,
+					Header: msg.Header,
 				}
-				monitor.eventCh <- event
+				changesEvents = append(changesEvents, event)
 			case unix.NFT_MSG_NEWCHAIN, unix.NFT_MSG_DELCHAIN:
 				chain, err := chainFromMsg(msg)
 				event := &MonitorEvent{
-					Type:  MonitorEventType(msgType),
-					Data:  chain,
-					Error: err,
+					Type:   MonitorEventType(msgType),
+					Data:   chain,
+					Error:  err,
+					Header: msg.Header,
 				}
-				monitor.eventCh <- event
+				changesEvents = append(changesEvents, event)
 			case unix.NFT_MSG_NEWRULE, unix.NFT_MSG_DELRULE:
 				rule, err := parseRuleFromMsg(msg)
 				event := &MonitorEvent{
-					Type:  MonitorEventType(msgType),
-					Data:  rule,
-					Error: err,
+					Type:   MonitorEventType(msgType),
+					Data:   rule,
+					Error:  err,
+					Header: msg.Header,
 				}
-				monitor.eventCh <- event
+				changesEvents = append(changesEvents, event)
 			case unix.NFT_MSG_NEWSET, unix.NFT_MSG_DELSET:
 				set, err := setsFromMsg(msg)
 				event := &MonitorEvent{
-					Type:  MonitorEventType(msgType),
-					Data:  set,
-					Error: err,
+					Type:   MonitorEventType(msgType),
+					Data:   set,
+					Error:  err,
+					Header: msg.Header,
 				}
-				monitor.eventCh <- event
+				changesEvents = append(changesEvents, event)
 			case unix.NFT_MSG_NEWSETELEM, unix.NFT_MSG_DELSETELEM:
 				elems, err := elementsFromMsg(uint8(TableFamilyUnspecified), msg)
 				event := &MonitorEvent{
-					Type:  MonitorEventType(msgType),
-					Data:  elems,
-					Error: err,
+					Type:   MonitorEventType(msgType),
+					Data:   elems,
+					Error:  err,
+					Header: msg.Header,
 				}
-				monitor.eventCh <- event
+				changesEvents = append(changesEvents, event)
 			case unix.NFT_MSG_NEWOBJ, unix.NFT_MSG_DELOBJ:
 				obj, err := objFromMsg(msg, true)
 				event := &MonitorEvent{
-					Type:  MonitorEventType(msgType),
-					Data:  obj,
-					Error: err,
+					Type:   MonitorEventType(msgType),
+					Data:   obj,
+					Error:  err,
+					Header: msg.Header,
 				}
-				monitor.eventCh <- event
+				changesEvents = append(changesEvents, event)
+			case unix.NFT_MSG_NEWGEN:
+				gen, err := genFromMsg(msg)
+				event := &MonitorEvent{
+					Type:   MonitorEventType(msgType),
+					Data:   gen,
+					Error:  err,
+					Header: msg.Header,
+				}
+
+				monitor.eventCh <- &MonitorEvents{
+					GenerateBy: event,
+					Changes:    changesEvents,
+				}
+
+				changesEvents = make([]*MonitorEvent, 0, 2)
 			}
 		}
 	}
+
 	monitor.mu.Lock()
 	defer monitor.mu.Unlock()
 
@@ -293,7 +331,7 @@ func (monitor *Monitor) Close() error {
 // calling Close on Monitor or encountering a netlink conn error while Receive.
 // Caller may receive a MonitorEventTypeOOB event which contains an error we didn't
 // handle, for now.
-func (cc *Conn) AddMonitor(monitor *Monitor) (chan *MonitorEvent, error) {
+func (cc *Conn) AddMonitor(monitor *Monitor) (chan *MonitorEvents, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
