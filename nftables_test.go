@@ -4103,6 +4103,46 @@ func TestSetElementsInterval(t *testing.T) {
 	}
 }
 
+func TestSetSizeConcat(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv6,
+		Name:   "filter",
+	})
+
+	set := &nftables.Set{
+		Name:          "test-set",
+		Table:         filter,
+		KeyType:       nftables.MustConcatSetType(nftables.TypeIP6Addr, nftables.TypeInetService, nftables.TypeIP6Addr),
+		Dynamic:       true,
+		Concatenation: true,
+		Size:          200,
+	}
+
+	if err := c.AddSet(set, nil); err != nil {
+		t.Errorf("c.AddSet(set) failed: %v", err)
+	}
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	sets, err := c.GetSets(filter)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(sets) != 1 {
+		t.Fatalf("len(sets) = %d, want 1", len(sets))
+	}
+}
+
 func TestCreateListFlowtable(t *testing.T) {
 	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
 	defer nftest.CleanupSystemConn(t, newNS)
