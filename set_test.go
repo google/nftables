@@ -1,7 +1,11 @@
 package nftables
 
 import (
+	"reflect"
 	"testing"
+	"time"
+
+	"github.com/mdlayher/netlink"
 )
 
 // unknownNFTMagic is an nftMagic value that's unhandled by this
@@ -181,6 +185,85 @@ func TestConcatSetTypeElements(t *testing.T) {
 				if got, want := elements[i].GetNFTMagic(), v.GetNFTMagic(); got != want {
 					t.Errorf("invalid element on position %d: expected %d, got %d", i, got, want)
 				}
+			}
+		})
+	}
+}
+
+func TestMarshalSet(t *testing.T) {
+	t.Parallel()
+
+	tbl := &Table{
+		Name:   "ipv4table",
+		Family: TableFamilyIPv4,
+	}
+
+	c, err := New(WithTestDial(
+		func(req []netlink.Message) ([]netlink.Message, error) {
+			return req, nil
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.AddTable(tbl)
+
+	// Ensure the table is added.
+	const connMsgStart = 1
+	if len(c.messages) != connMsgStart {
+		t.Fatalf("AddSet() wrong start message count: %d, expected: %d", len(c.messages), connMsgStart)
+	}
+
+	tests := []struct {
+		name string
+		set  Set
+	}{
+		{
+			name: "Set without flags",
+			set: Set{
+				Name:    "test-set",
+				ID:      uint32(1),
+				Table:   tbl,
+				KeyType: TypeIPAddr,
+			},
+		},
+		{
+			name: "Set with size, timeout, dynamic flag specified",
+			set: Set{
+				Name:       "test-set",
+				ID:         uint32(2),
+				HasTimeout: true,
+				Dynamic:    true,
+				Size:       10,
+				Table:      tbl,
+				KeyType:    TypeIPAddr,
+				Timeout:    30 * time.Second,
+			},
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := c.AddSet(&tt.set, nil); err != nil {
+				t.Fatal(err)
+			}
+
+			connMsgSetIdx := connMsgStart + i
+			if len(c.messages) != connMsgSetIdx+1 {
+				t.Fatalf("AddSet() wrong message count: %d, expected: %d", len(c.messages), connMsgSetIdx+1)
+			}
+			msg := c.messages[connMsgSetIdx]
+
+			nset, err := setsFromMsg(msg)
+			if err != nil {
+				t.Fatalf("setsFromMsg() error: %+v", err)
+			}
+
+			// Table pointer is set after flush, which is not implemented in the test.
+			tt.set.Table = nil
+
+			if !reflect.DeepEqual(&tt.set, nset) {
+				t.Fatalf("original %+v and recovered %+v Set structs are different", tt.set, nset)
 			}
 		})
 	}

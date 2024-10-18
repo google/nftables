@@ -267,6 +267,8 @@ type Set struct {
 	// https://git.netfilter.org/nftables/tree/include/datatype.h?id=d486c9e626405e829221b82d7355558005b26d8a#n109
 	KeyByteOrder binaryutil.ByteOrder
 	Comment      string
+	// Indicates that the set has "size" specifier
+	Size uint32
 }
 
 // SetElement represents a data point within a set.
@@ -566,6 +568,21 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		}
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: numberOfElements})
 	}
+
+	var descBytes []byte
+
+	if s.Size > 0 {
+		// Marshal set size description
+		descSizeBytes, err := netlink.MarshalAttributes([]netlink.Attribute{
+			{Type: unix.NFTA_SET_DESC_SIZE, Data: binaryutil.BigEndian.PutUint32(s.Size)},
+		})
+		if err != nil {
+			return fmt.Errorf("fail to marshal set size description: %w", err)
+		}
+
+		descBytes = append(descBytes, descSizeBytes...)
+	}
+
 	if s.Concatenation {
 		// Length of concatenated types is a must, otherwise segfaults when executing nft list ruleset
 		var concatDefinition []byte
@@ -592,8 +609,13 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		if err != nil {
 			return fmt.Errorf("fail to marshal concat definition %v", err)
 		}
-		// Marshal concat size description as set description
-		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: concatBytes})
+
+		descBytes = append(descBytes, concatBytes...)
+	}
+
+	if len(descBytes) > 0 {
+		// Marshal set description
+		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: descBytes})
 	}
 
 	// https://git.netfilter.org/libnftnl/tree/include/udata.h#n17
@@ -776,6 +798,20 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			data := ad.Bytes()
 			value, ok := userdata.GetUint32(data, userdata.NFTNL_UDATA_SET_MERGE_ELEMENTS)
 			set.AutoMerge = ok && value == 1
+		case unix.NFTA_SET_DESC:
+			nestedAD, err := netlink.NewAttributeDecoder(ad.Bytes())
+			if err != nil {
+				return nil, fmt.Errorf("nested NewAttributeDecoder() failed: %w", err)
+			}
+			for nestedAD.Next() {
+				switch nestedAD.Type() {
+				case unix.NFTA_SET_DESC_SIZE:
+					set.Size = binary.BigEndian.Uint32(nestedAD.Bytes())
+				}
+			}
+			if nestedAD.Err() != nil {
+				return nil, fmt.Errorf("decoding set description: %w", nestedAD.Err())
+			}
 		}
 	}
 	return &set, nil
