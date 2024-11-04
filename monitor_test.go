@@ -21,7 +21,7 @@ func ExampleNewMonitor() {
 
 	mon := nftables.NewMonitor()
 	defer mon.Close()
-	events, err := conn.AddMonitor(mon)
+	events, err := conn.AddGenerationalMonitor(mon)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestMonitor(t *testing.T) {
 
 	// default to monitor all
 	monitor := nftables.NewMonitor()
-	events, err := c.AddMonitor(monitor)
+	events, err := c.AddGenerationalMonitor(monitor)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -123,8 +123,8 @@ type MonitorEvent struct {
 }
 
 type MonitorEvents struct {
-	GenerateBy *MonitorEvent
-	Changes    []*MonitorEvent
+	GeneratedBy *MonitorEvent
+	Changes     []*MonitorEvent
 }
 
 const (
@@ -198,7 +198,7 @@ func NewMonitor(opts ...MonitorOption) *Monitor {
 }
 
 func (monitor *Monitor) monitor() {
-	changesEvents := make([]*MonitorEvent, 0, 2)
+	changesEvents := make([]*MonitorEvent, 0)
 
 	for {
 		msgs, err := monitor.conn.Receive()
@@ -217,10 +217,10 @@ func (monitor *Monitor) monitor() {
 				changesEvents = append(changesEvents, event)
 
 				monitor.eventCh <- &MonitorEvents{
-					GenerateBy: event,
-					Changes:    changesEvents,
+					GeneratedBy: event,
+					Changes:     changesEvents,
 				}
-				changesEvents = make([]*MonitorEvent, 0, 2)
+				changesEvents = make([]*MonitorEvent, 0)
 
 				break
 			}
@@ -298,11 +298,11 @@ func (monitor *Monitor) monitor() {
 				}
 
 				monitor.eventCh <- &MonitorEvents{
-					GenerateBy: event,
-					Changes:    changesEvents,
+					GeneratedBy: event,
+					Changes:     changesEvents,
 				}
 
-				changesEvents = make([]*MonitorEvent, 0, 2)
+				changesEvents = make([]*MonitorEvent, 0)
 			}
 		}
 	}
@@ -331,7 +331,28 @@ func (monitor *Monitor) Close() error {
 // calling Close on Monitor or encountering a netlink conn error while Receive.
 // Caller may receive a MonitorEventTypeOOB event which contains an error we didn't
 // handle, for now.
-func (cc *Conn) AddMonitor(monitor *Monitor) (chan *MonitorEvents, error) {
+func (cc *Conn) AddMonitor(monitor *Monitor) (chan *MonitorEvent, error) {
+	generationalEventCh, err := cc.AddGenerationalMonitor(monitor)
+
+	if err != nil {
+		return nil, err
+	}
+
+	eventCh := make(chan *MonitorEvent)
+
+	go func() {
+		defer close(eventCh)
+		for monitorEvents := range generationalEventCh {
+			for _, event := range monitorEvents.Changes {
+				eventCh <- event
+			}
+		}
+	}()
+
+	return eventCh, nil
+}
+
+func (cc *Conn) AddGenerationalMonitor(monitor *Monitor) (chan *MonitorEvents, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
