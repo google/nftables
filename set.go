@@ -800,8 +800,7 @@ func elementsFromMsg(fam byte, msg netlink.Message) ([]SetElement, error) {
 	var elements []SetElement
 	for ad.Next() {
 		b := ad.Bytes()
-		switch ad.Type() {
-		case unix.NFTA_SET_ELEM_LIST_ELEMENTS:
+		if ad.Type() == unix.NFTA_SET_ELEM_LIST_ELEMENTS {
 			ad, err := netlink.NewAttributeDecoder(b)
 			if err != nil {
 				return nil, err
@@ -818,7 +817,6 @@ func elementsFromMsg(fam byte, msg netlink.Message) ([]SetElement, error) {
 			}
 		}
 	}
-
 	return elements, nil
 }
 
