@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -46,7 +48,6 @@ func TestMonitor(t *testing.T) {
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
-
 	// default to monitor all
 	monitor := nftables.NewMonitor()
 	events, err := c.AddGenerationalMonitor(monitor)
@@ -66,6 +67,14 @@ func TestMonitor(t *testing.T) {
 		for {
 			event, ok := <-events
 			if !ok {
+				return
+			}
+
+			genMsg := event.GeneratedBy.Data.(*nftables.GenMsg)
+			fileName := filepath.Base(os.Args[0])
+
+			if genMsg.ProcComm != fileName {
+				err = fmt.Errorf("procComm: %s, want: %s", genMsg.ProcComm, fileName)
 				return
 			}
 

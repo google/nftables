@@ -198,7 +198,7 @@ func NewMonitor(opts ...MonitorOption) *Monitor {
 }
 
 func (monitor *Monitor) monitor() {
-	changesEvents := make([]*MonitorEvent, 0)
+	var changesEvents []*MonitorEvent
 
 	for {
 		msgs, err := monitor.conn.Receive()
@@ -220,7 +220,7 @@ func (monitor *Monitor) monitor() {
 					GeneratedBy: event,
 					Changes:     changesEvents,
 				}
-				changesEvents = make([]*MonitorEvent, 0)
+				changesEvents = nil
 
 				break
 			}
@@ -333,7 +333,6 @@ func (monitor *Monitor) Close() error {
 // handle, for now.
 func (cc *Conn) AddMonitor(monitor *Monitor) (chan *MonitorEvent, error) {
 	generationalEventCh, err := cc.AddGenerationalMonitor(monitor)
-
 	if err != nil {
 		return nil, err
 	}
