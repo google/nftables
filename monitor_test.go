@@ -61,6 +61,7 @@ func TestMonitor(t *testing.T) {
 	var gotRule *nftables.Rule
 	wg := sync.WaitGroup{}
 	wg.Add(1)
+	var errMonitor error
 	go func() {
 		defer wg.Done()
 		count := int32(0)
@@ -74,13 +75,13 @@ func TestMonitor(t *testing.T) {
 			fileName := filepath.Base(os.Args[0])
 
 			if genMsg.ProcComm != fileName {
-				err = fmt.Errorf("procComm: %s, want: %s", genMsg.ProcComm, fileName)
+				errMonitor = fmt.Errorf("procComm: %s, want: %s", genMsg.ProcComm, fileName)
 				return
 			}
 
 			for _, change := range event.Changes {
 				if change.Error != nil {
-					err = fmt.Errorf("monitor err: %s", change.Error)
+					errMonitor = fmt.Errorf("monitor err: %s", change.Error)
 					return
 				}
 
@@ -141,7 +142,13 @@ func TestMonitor(t *testing.T) {
 	if err := c.Flush(); err != nil {
 		t.Fatal(err)
 	}
+
 	wg.Wait()
+
+	if errMonitor != nil {
+		t.Fatal("monitor err", errMonitor)
+	}
+
 	if gotTable.Family != nat.Family || gotTable.Name != nat.Name {
 		t.Fatal("no want table", gotTable.Family, gotTable.Name)
 	}
