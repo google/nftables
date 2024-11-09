@@ -302,7 +302,7 @@ func (monitor *Monitor) monitor() {
 					Changes:     changesEvents,
 				}
 
-				changesEvents = make([]*MonitorEvent, 0)
+				changesEvents = nil
 			}
 		}
 	}
