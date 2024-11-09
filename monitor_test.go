@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -21,17 +23,19 @@ func ExampleNewMonitor() {
 
 	mon := nftables.NewMonitor()
 	defer mon.Close()
-	events, err := conn.AddMonitor(mon)
+	events, err := conn.AddGenerationalMonitor(mon)
 	if err != nil {
 		log.Fatal(err)
 	}
 	for ev := range events {
-		log.Printf("ev: %+v, data = %T", ev, ev.Data)
-		switch ev.Type {
-		case nftables.MonitorEventTypeNewTable:
-			log.Printf("data = %+v", ev.Data.(*nftables.Table))
+		log.Printf("ev: %+v, data = %T", ev, ev.Changes)
 
-			// …more cases if needed…
+		for _, change := range ev.Changes {
+			switch change.Type {
+			case nftables.MonitorEventTypeNewTable:
+				log.Printf("data = %+v", change.Data.(*nftables.Table))
+				// …more cases if needed…
+			}
 		}
 	}
 }
@@ -44,10 +48,9 @@ func TestMonitor(t *testing.T) {
 	// Clear all rules at the beginning + end of the test.
 	c.FlushRuleset()
 	defer c.FlushRuleset()
-
 	// default to monitor all
 	monitor := nftables.NewMonitor()
-	events, err := c.AddMonitor(monitor)
+	events, err := c.AddGenerationalMonitor(monitor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +61,7 @@ func TestMonitor(t *testing.T) {
 	var gotRule *nftables.Rule
 	wg := sync.WaitGroup{}
 	wg.Add(1)
+	var errMonitor error
 	go func() {
 		defer wg.Done()
 		count := int32(0)
@@ -66,23 +70,35 @@ func TestMonitor(t *testing.T) {
 			if !ok {
 				return
 			}
-			if event.Error != nil {
-				err = fmt.Errorf("monitor err: %s", event.Error)
+
+			genMsg := event.GeneratedBy.Data.(*nftables.GenMsg)
+			fileName := filepath.Base(os.Args[0])
+
+			if genMsg.ProcComm != fileName {
+				errMonitor = fmt.Errorf("procComm: %s, want: %s", genMsg.ProcComm, fileName)
 				return
 			}
-			switch event.Type {
-			case nftables.MonitorEventTypeNewTable:
-				gotTable = event.Data.(*nftables.Table)
-				atomic.AddInt32(&count, 1)
-			case nftables.MonitorEventTypeNewChain:
-				gotChain = event.Data.(*nftables.Chain)
-				atomic.AddInt32(&count, 1)
-			case nftables.MonitorEventTypeNewRule:
-				gotRule = event.Data.(*nftables.Rule)
-				atomic.AddInt32(&count, 1)
-			}
-			if atomic.LoadInt32(&count) == 3 {
-				return
+
+			for _, change := range event.Changes {
+				if change.Error != nil {
+					errMonitor = fmt.Errorf("monitor err: %s", change.Error)
+					return
+				}
+
+				switch change.Type {
+				case nftables.MonitorEventTypeNewTable:
+					gotTable = change.Data.(*nftables.Table)
+					atomic.AddInt32(&count, 1)
+				case nftables.MonitorEventTypeNewChain:
+					gotChain = change.Data.(*nftables.Chain)
+					atomic.AddInt32(&count, 1)
+				case nftables.MonitorEventTypeNewRule:
+					gotRule = change.Data.(*nftables.Rule)
+					atomic.AddInt32(&count, 1)
+				}
+				if atomic.LoadInt32(&count) == 3 {
+					return
+				}
 			}
 		}
 	}()
@@ -126,7 +142,13 @@ func TestMonitor(t *testing.T) {
 	if err := c.Flush(); err != nil {
 		t.Fatal(err)
 	}
+
 	wg.Wait()
+
+	if errMonitor != nil {
+		t.Fatal("monitor err", errMonitor)
+	}
+
 	if gotTable.Family != nat.Family || gotTable.Name != nat.Name {
 		t.Fatal("no want table", gotTable.Family, gotTable.Name)
 	}
