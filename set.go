@@ -743,7 +743,7 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			nftMagic := ad.Uint32()
 			// Special case for the data type verdict, in the message it is stored as 0xffffff00 but it is defined as 1
 			if nftMagic == 0xffffff00 {
-				set.KeyType = TypeVerdict
+				set.DataType = TypeVerdict
 				break
 			}
 			dt, err := parseSetDatatype(nftMagic)
