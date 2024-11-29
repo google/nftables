@@ -23,6 +23,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -7664,5 +7665,92 @@ func TestNftablesCompat(t *testing.T) {
 	})
 	if err := c.Flush(); err == nil {
 		t.Fatalf("compat policy should conflict and err should not be err")
+	}
+}
+
+func TestNftablesDeadlock(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		readBufSize  int
+		writeBufSize int
+		sendRules    int
+		wantRules    int
+		wantErr      error
+	}{
+		{
+			name:         "recv",
+			readBufSize:  1024,
+			writeBufSize: 1 * 1024 * 1024,
+			sendRules:    2048,
+			wantRules:    2048,
+			wantErr:      syscall.ENOBUFS,
+		},
+		{
+			name:         "send",
+			readBufSize:  1 * 1024 * 1024,
+			writeBufSize: 1024,
+			sendRules:    2048,
+			wantRules:    0,
+			wantErr:      syscall.EMSGSIZE,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+			conn, err := nftables.New(nftables.WithNetNSFd(int(newNS)), nftables.WithSockOptions(func(conn *netlink.Conn) error {
+				if err := conn.SetWriteBuffer(tt.writeBufSize); err != nil {
+					return err
+				}
+				if err := conn.SetReadBuffer(tt.readBufSize); err != nil {
+					return err
+				}
+				return nil
+			}))
+			if err != nil {
+				t.Fatalf("nftables.New() failed: %v", err)
+			}
+			defer nftest.CleanupSystemConn(t, newNS)
+			conn.FlushRuleset()
+			defer conn.FlushRuleset()
+
+			table := conn.AddTable(&nftables.Table{
+				Name:   "test_deadlock",
+				Family: nftables.TableFamilyIPv4,
+			})
+
+			chain := conn.AddChain(&nftables.Chain{
+				Name:  "filter",
+				Table: table,
+			})
+
+			for i := 0; i < tt.sendRules; i++ {
+				conn.AddRule(&nftables.Rule{
+					Table: table,
+					Chain: chain,
+					Exprs: []expr.Any{
+						&expr.Verdict{
+							Kind: expr.VerdictAccept,
+						},
+					},
+				})
+			}
+
+			flushErr := conn.Flush()
+			rules, err := conn.GetRules(table, chain)
+			if err != nil {
+				t.Fatalf("conn.GetRules() failed: %v", err)
+			}
+
+			if !errors.Is(flushErr, tt.wantErr) {
+				t.Errorf("conn.Flush() failed: %v", flushErr)
+			}
+
+			if got, want := len(rules), tt.wantRules; got != want {
+				t.Fatalf("got rules %d, want rules %d", got, want)
+			}
+		})
 	}
 }

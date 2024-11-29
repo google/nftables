@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
@@ -266,8 +267,8 @@ func (cc *Conn) Flush() error {
 	// Fetch the requested acknowledgement for each message we sent.
 	for _, msg := range cc.messages {
 		if _, err := receiveAckAware(conn, msg.Header.Flags); err != nil {
-			if errors.Is(err, os.ErrPermission) {
-				// Kernel will only send one permission error to user space.
+			if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.ENOBUFS) {
+				// Kernel will only send one error to user space.
 				return err
 			}
 			errs = errors.Join(errs, err)
