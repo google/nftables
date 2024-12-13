@@ -156,6 +156,9 @@ func TestMonitor(t *testing.T) {
 		*gotChain.Hooknum != *postrouting.Hooknum {
 		t.Fatal("no want chain", gotChain.Type, gotChain.Name, gotChain.Hooknum)
 	}
+	if gotRule.Table.Family != nat.Family {
+		t.Fatal("rule wrong family", gotRule.Table.Family, gotRule.Table.Name)
+	}
 	if len(gotRule.Exprs) != len(rule.Exprs) {
 		t.Fatal("no want rule")
 	}
