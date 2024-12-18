@@ -266,6 +266,7 @@ type Set struct {
 	// Either host (binaryutil.NativeEndian) or big (binaryutil.BigEndian) endian as per
 	// https://git.netfilter.org/nftables/tree/include/datatype.h?id=d486c9e626405e829221b82d7355558005b26d8a#n109
 	KeyByteOrder binaryutil.ByteOrder
+	Comment      string
 }
 
 // SetElement represents a data point within a set.
@@ -596,6 +597,10 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	if s.Interval && s.AutoMerge {
 		// https://git.netfilter.org/nftables/tree/src/mnl.c?id=187c6d01d35722618c2711bbc49262c286472c8f#n1174
 		userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_MERGE_ELEMENTS, 1)
+	}
+
+	if len(s.Comment) != 0 {
+		userData = userdata.AppendString(userData, userdata.NFTNL_UDATA_SET_COMMENT, s.Comment)
 	}
 
 	if len(userData) > 0 {
