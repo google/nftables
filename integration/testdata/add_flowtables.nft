@@ -1,0 +1,18 @@
+table inet test-table {
+        set test-set {
+                type ifname
+                elements = { "dummy0" }
+        }
+
+        flowtable test-flowtable {
+                hook ingress priority filter + 5
+                devices = { dummy0 }
+        }
+
+        chain test-chain {
+                type filter hook forward priority mangle; policy accept;
+                iifname != @test-set return
+                oifname != @test-set return
+                ct state established ct packets > 20 flow add @test-flowtable counter packets 0 bytes 0
+        }
+}
