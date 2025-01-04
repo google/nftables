@@ -1442,7 +1442,7 @@ func TestSecMarkMarshaling(t *testing.T) {
 	conn.AddObj(sec)
 
 	if err := conn.Flush(); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err.Error())
 	}
 }
 
@@ -1492,7 +1492,7 @@ func TestSynProxyObject(t *testing.T) {
 	conn.AddObj(syn2)
 	conn.AddObj(syn3)
 	if err := conn.Flush(); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 
 	objs, err := conn.GetNamedObjects(table)
@@ -1637,7 +1637,7 @@ func TestCtTimeout(t *testing.T) {
 			})
 
 			if err := conn.Flush(); err != nil {
-				t.Fatalf(err.Error())
+				t.Fatal(err)
 			}
 
 			obj, err := conn.GetObject(ctt1)
@@ -1693,7 +1693,7 @@ func TestCtExpect(t *testing.T) {
 
 	conn.AddObj(cte)
 	if err := conn.Flush(); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 
 	objs, err := conn.GetNamedObjects(table)
@@ -1758,7 +1758,7 @@ func TestCtHelper(t *testing.T) {
 	})
 
 	if err := conn.Flush(); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 
 	obj1, err := conn.GetObject(cthelp1)
@@ -2590,7 +2590,7 @@ func TestGetResetNamedObj(t *testing.T) {
 	})
 
 	if err := c.Flush(); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 
 	objsNamed, err := c.GetNamedObjects(table)
@@ -2698,7 +2698,7 @@ func TestObjAPI(t *testing.T) {
 	})
 
 	if err := c.Flush(); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 
 	objs, err := c.GetObjects(table)
@@ -3049,7 +3049,7 @@ func TestObjAPICounterLegacyType(t *testing.T) {
 	})
 
 	if err := c.Flush(); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatal(err)
 	}
 
 	objs, err := c.GetObjects(table)
