@@ -33,3 +33,5 @@ jobs:
         go test ./...
         go test -c github.com/google/nftables
         sudo ./nftables.test -test.v -run_system_tests
+        go test -c github.com/google/nftables/integration
+        (cd integration && sudo ../integration.test -test.v -run_system_tests)

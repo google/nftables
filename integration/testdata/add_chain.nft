@@ -1,0 +1,5 @@
+table inet test-table {
+        chain test-chain {
+                type nat hook output priority dstnat; policy accept;
+        }
+}
