@@ -288,6 +288,7 @@ type SetElement struct {
 	Expires time.Duration
 
 	Counter *expr.Counter
+	Comment string
 }
 
 func (s *SetElement) decode(fam byte) func(b []byte) error {
@@ -322,6 +323,12 @@ func (s *SetElement) decode(fam byte) func(b []byte) error {
 				s.Timeout = time.Millisecond * time.Duration(ad.Uint64())
 			case unix.NFTA_SET_ELEM_EXPIRATION:
 				s.Expires = time.Millisecond * time.Duration(ad.Uint64())
+			case unix.NFTA_SET_ELEM_USERDATA:
+				userData := ad.Bytes()
+				// Try to extract comment from userdata if present
+				if comment, ok := userdata.GetString(userData, userdata.NFTNL_UDATA_SET_ELEM_COMMENT); ok {
+					s.Comment = comment
+				}
 			case unix.NFTA_SET_ELEM_EXPR:
 				elems, err := parseexprfunc.ParseExprBytesFunc(fam, ad)
 				if err != nil {
@@ -452,6 +459,12 @@ func (s *Set) makeElemList(vals []SetElement, id uint32) ([]netlink.Attribute, e
 			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVal})
 		default:
 			// If niether of previous cases matche, it means 'e' is an element of a regular Set, no need to add to the attributes
+		}
+
+		// Add comment to userdata if present
+		if len(v.Comment) > 0 {
+			userData := userdata.AppendString(nil, userdata.NFTNL_UDATA_SET_ELEM_COMMENT, v.Comment)
+			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_USERDATA, Data: userData})
 		}
 
 		encodedItem, err := netlink.MarshalAttributes(item)
@@ -807,6 +820,7 @@ func elementsFromMsg(fam byte, msg netlink.Message) ([]SetElement, error) {
 		b := ad.Bytes()
 		if ad.Type() == unix.NFTA_SET_ELEM_LIST_ELEMENTS {
 			ad, err := netlink.NewAttributeDecoder(b)
+
 			if err != nil {
 				return nil, err
 			}
@@ -818,6 +832,7 @@ func elementsFromMsg(fam byte, msg netlink.Message) ([]SetElement, error) {
 				case unix.NFTA_LIST_ELEM:
 					ad.Do(elem.decode(fam))
 				}
+
 				elements = append(elements, elem)
 			}
 		}

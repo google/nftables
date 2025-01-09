@@ -7816,3 +7816,74 @@ func TestNftablesDeadlock(t *testing.T) {
 		})
 	}
 }
+func TestSetElementComment(t *testing.T) {
+	// Create a new network namespace to test these operations
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	// Add a new table
+	table := &nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	}
+	conn.AddTable(table)
+
+	// Create a new set
+	set := &nftables.Set{
+		Name:    "test-set",
+		Table:   table,
+		KeyType: nftables.TypeIPAddr,
+	}
+
+	// Create set elements with comments
+	elements := []nftables.SetElement{
+		{
+			Key:     net.ParseIP("192.0.2.1").To4(),
+			Comment: "First IP address",
+		},
+		{
+			Key:     net.ParseIP("192.0.2.2").To4(),
+			Comment: "Second IP address",
+		},
+	}
+
+	// Add the set with elements
+	if err := conn.AddSet(set, elements); err != nil {
+		t.Fatalf("failed to add set: %v", err)
+	}
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("failed to flush: %v", err)
+	}
+
+	// Get the set elements back and verify comments
+	gotElements, err := conn.GetSetElements(set)
+	if err != nil {
+		t.Fatalf("failed to get set elements: %v", err)
+	}
+
+	if got, want := len(gotElements), len(elements); got != want {
+		t.Fatalf("got %d elements, want %d", got, want)
+	}
+
+	// Create maps to compare elements by their IP addresses
+	wantMap := make(map[string]string)
+	for _, elem := range elements {
+		wantMap[string(elem.Key)] = elem.Comment
+	}
+
+	gotMap := make(map[string]string)
+	for _, elem := range gotElements {
+		gotMap[string(elem.Key)] = elem.Comment
+	}
+
+	// Compare the comments for each IP
+	for ip, wantComment := range wantMap {
+		if gotComment, ok := gotMap[ip]; !ok {
+			t.Errorf("IP %s not found in retrieved elements", ip)
+		} else if gotComment != wantComment {
+			t.Errorf("for IP %s: got comment %q, want comment %q", ip, gotComment, wantComment)
+		}
+	}
+}

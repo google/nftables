@@ -46,6 +46,12 @@ const (
 	NFTNL_UDATA_SET_MAX
 )
 
+// Set element userdata types
+const (
+	NFTNL_UDATA_SET_ELEM_COMMENT Type = iota
+	NFTNL_UDATA_SET_ELEM_FLAGS
+)
+
 func Append(udata []byte, typ Type, data []byte) []byte {
 	udata = append(udata, byte(typ), byte(len(data)))
 	udata = append(udata, data...)
