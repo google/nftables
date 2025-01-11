@@ -747,6 +747,7 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			set.Interval = (flags & unix.NFT_SET_INTERVAL) != 0
 			set.IsMap = (flags & unix.NFT_SET_MAP) != 0
 			set.HasTimeout = (flags & unix.NFT_SET_TIMEOUT) != 0
+			set.Dynamic = (flags & unix.NFT_SET_EVAL) != 0
 			set.Concatenation = (flags & NFT_SET_CONCAT) != 0
 		case unix.NFTA_SET_KEY_TYPE:
 			nftMagic := ad.Uint32()
