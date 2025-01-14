@@ -207,6 +207,8 @@ func exprFromName(name string) Any {
 		e = &SecMark{}
 	case "cttimeout":
 		e = &CtTimeout{}
+	case "fib":
+		e = &Fib{}
 	}
 	return e
 }

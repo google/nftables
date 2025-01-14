@@ -6387,6 +6387,61 @@ func TestFib(t *testing.T) {
 	}
 }
 
+func TestFibSystem(t *testing.T) {
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+
+	chain := c.AddChain(&nftables.Chain{
+		Name:  "test-chain",
+		Table: filter,
+	})
+
+	expect := &expr.Fib{
+		Register:       1,
+		FlagDADDR:      true,
+		ResultADDRTYPE: true,
+	}
+
+	c.AddRule(&nftables.Rule{
+		Table: filter,
+		Chain: chain,
+		Exprs: []expr.Any{expect},
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatalf("c.Flush() failed with error %+v", err)
+	}
+
+	rules, err := c.GetRules(filter, chain)
+	if err != nil {
+		t.Fatalf("GetRules failed: %v", err)
+	}
+
+	if got, want := len(rules), 1; got != want {
+		t.Fatalf("unexpected number of rules: got %d, want %d", got, want)
+	}
+
+	if got, want := len(rules[0].Exprs), 1; got != want {
+		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
+	}
+
+	fib := rules[0].Exprs[0].(*expr.Fib)
+	if got, want := fib.FlagDADDR, expect.FlagDADDR; got != want {
+		t.Errorf("fib daddr not equal: got %+v, want %+v", got, want)
+	}
+
+	if got, want := fib.ResultADDRTYPE, expect.ResultADDRTYPE; got != want {
+		t.Errorf("fib addr type not equal: got %+v, want %+v", got, want)
+	}
+}
+
 func TestNumgen(t *testing.T) {
 	tests := []struct {
 		name        string

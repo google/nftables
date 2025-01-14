@@ -36,7 +36,7 @@ func (q *QuotaObj) unmarshal(ad *netlink.AttributeDecoder) error {
 		case unix.NFTA_QUOTA_CONSUMED:
 			q.Consumed = ad.Uint64()
 		case unix.NFTA_QUOTA_FLAGS:
-			q.Over = (ad.Uint32() & unix.NFT_QUOTA_F_INV) == 1
+			q.Over = (ad.Uint32() & unix.NFT_QUOTA_F_INV) != 0
 		}
 	}
 	return nil
