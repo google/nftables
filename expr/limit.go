@@ -123,7 +123,7 @@ func (l *Limit) unmarshal(fam byte, data []byte) error {
 				return fmt.Errorf("expr: invalid limit type %d", l.Type)
 			}
 		case unix.NFTA_LIMIT_FLAGS:
-			l.Over = (ad.Uint32() & unix.NFT_LIMIT_F_INV) == 1
+			l.Over = (ad.Uint32() & unix.NFT_LIMIT_F_INV) != 0
 		default:
 			return errors.New("expr: unhandled limit netlink attribute")
 		}
