@@ -209,6 +209,8 @@ func exprFromName(name string) Any {
 		e = &CtTimeout{}
 	case "fib":
 		e = &Fib{}
+	case "numgen":
+		e = &Numgen{}
 	}
 	return e
 }
