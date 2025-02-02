@@ -1,0 +1,17 @@
+table ip filter {
+	chain output {
+		type filter hook output priority 100; policy accept;
+	}
+
+	chain input {
+		type filter hook input priority 0; policy accept;
+		iifname "lan0" accept
+		iifname "wan0" drop
+	}
+
+	chain forward {
+		type filter hook forward priority 0; policy drop;
+		iifname "lan0" oifname "wan0" accept
+		iifname "wan0" oifname "lan0" ct state related,established accept
+	}
+}
