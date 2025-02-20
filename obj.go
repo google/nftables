@@ -124,7 +124,7 @@ func (cc *Conn) AddObj(o Obj) Obj {
 		attrs = append(attrs, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_OBJ_DATA, Data: data})
 	}
 
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
@@ -146,7 +146,7 @@ func (cc *Conn) DeleteObject(o Obj) {
 	data := cc.marshalAttr(attrs)
 	data = append(data, cc.marshalAttr([]netlink.Attribute{{Type: unix.NLA_F_NESTED | unix.NFTA_OBJ_DATA}})...)
 
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELOBJ),
 			Flags: netlink.Request | netlink.Acknowledge,
