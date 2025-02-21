@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	"github.com/google/nftables"
+	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
+	"golang.org/x/sys/unix"
 )
 
 // Recorder provides an nftables connection that does not send to the Linux
@@ -21,14 +23,34 @@ type Recorder struct {
 // Conn opens an nftables connection that records netlink messages into the
 // Recorder.
 func (r *Recorder) Conn() (*nftables.Conn, error) {
+	nextHandle := uint64(1)
 	return nftables.New(nftables.WithTestDial(
 		func(req []netlink.Message) ([]netlink.Message, error) {
 			r.requests = append(r.requests, req...)
 
-			acks := make([]netlink.Message, 0, len(req))
+			replies := make([]netlink.Message, 0, len(req))
+			// Generate replies.
+			for _, msg := range req {
+				if msg.Header.Flags&netlink.Echo != 0 {
+					data := append([]byte{}, msg.Data...)
+					switch msg.Header.Type {
+					case netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWRULE):
+						attrs, _ := netlink.MarshalAttributes([]netlink.Attribute{
+							{Type: unix.NFTA_RULE_HANDLE, Data: binaryutil.BigEndian.PutUint64(nextHandle)},
+						})
+						nextHandle++
+						data = append(data, attrs...)
+					}
+					replies = append(replies, netlink.Message{
+						Header: msg.Header,
+						Data:   data,
+					})
+				}
+			}
+			// Generate acknowledgements.
 			for _, msg := range req {
 				if msg.Header.Flags&netlink.Acknowledge != 0 {
-					acks = append(acks, netlink.Message{
+					replies = append(replies, netlink.Message{
 						Header: netlink.Header{
 							Length:   4,
 							Type:     netlink.Error,
@@ -39,7 +61,7 @@ func (r *Recorder) Conn() (*nftables.Conn, error) {
 					})
 				}
 			}
-			return acks, nil
+			return replies, nil
 		}))
 }
 
