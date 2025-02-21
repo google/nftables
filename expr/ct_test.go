@@ -38,6 +38,14 @@ func TestCt(t *testing.T) {
 				Direction: 1, // direction: reply
 			},
 		},
+		{
+			name: "Unmarshal Ct source register case",
+			ct: Ct{
+				Register:       1,
+				Key:            CtKeySRC,
+				SourceRegister: true,
+			},
+		},
 	}
 
 	for _, tt := range tests {

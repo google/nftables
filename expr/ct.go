@@ -186,6 +186,9 @@ func (e *Ct) unmarshal(fam byte, data []byte) error {
 			e.Register = ad.Uint32()
 		case unix.NFTA_CT_DIRECTION:
 			e.Direction = ad.Uint32()
+		case unix.NFTA_CT_SREG:
+			e.SourceRegister = true
+			e.Register = ad.Uint32()
 		}
 	}
 	return ad.Err()
