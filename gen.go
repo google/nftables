@@ -3,6 +3,7 @@ package nftables
 import (
 	"encoding/binary"
 	"fmt"
+
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -13,7 +14,7 @@ type GenMsg struct {
 	ProcComm string // [16]byte - max 16bytes - kernel TASK_COMM_LEN
 }
 
-var genHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWGEN)
+const genHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWGEN)
 
 func genFromMsg(msg netlink.Message) (*GenMsg, error) {
 	if got, want := msg.Header.Type, genHeaderType; got != want {

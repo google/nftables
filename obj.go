@@ -25,7 +25,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var (
+const (
 	newObjHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ)
 	delObjHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELOBJ)
 )

@@ -25,7 +25,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var (
+const (
 	newRuleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWRULE)
 	delRuleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE)
 )
