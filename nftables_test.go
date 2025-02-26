@@ -3865,7 +3865,58 @@ func TestIP6SetAddElements(t *testing.T) {
 		t.Errorf("c.GetSetElements(portSet) failed: %v", err)
 	}
 	if len(elements) != 2 {
-		t.Fatalf("len(portSetElements) = %d, want 2", len(sets))
+		t.Fatalf("len(portSetElements) = %d, want 2", len(elements))
+	}
+}
+
+func TestSetElementBatching(t *testing.T) {
+	// Create a new network namespace to test these operations,
+	// and tear down the namespace at test completion.
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	// Clear all rules at the beginning + end of the test.
+	c.FlushRuleset()
+	defer c.FlushRuleset()
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	})
+	portSet := &nftables.Set{
+		Table:   filter,
+		Name:    "ports",
+		KeyType: nftables.TypeInetService,
+	}
+	// The 5000 elements will need to be split into 3 batches to make each batch
+	// fit into a message.
+	elements := make([]nftables.SetElement, 5000)
+	for i := range elements {
+		elements[i].Key = binaryutil.BigEndian.PutUint16(uint16(i))
+		elements[i].Comment = "0123456789"
+	}
+	if err := c.AddSet(portSet, elements); err != nil {
+		t.Errorf("c.AddSet(portSet) failed: %v", err)
+	}
+	if err := c.Flush(); err != nil {
+		t.Errorf("c.Flush() failed: %v", err)
+	}
+
+	gotElements, err := c.GetSetElements(portSet)
+	if err != nil {
+		t.Errorf("c.GetSetElements(portSet) failed: %v", err)
+	}
+	if len(gotElements) != len(elements) {
+		t.Errorf("len(gotElements) = %d, want %d", len(gotElements), len(elements))
+	}
+	gotNumbers := make([]bool, len(elements))
+	for _, element := range gotElements {
+		gotNumbers[binaryutil.BigEndian.Uint16(element.Key)] = true
+	}
+	for i := range gotNumbers {
+		if !gotNumbers[i] {
+			t.Errorf("Missing element %d", i)
+			break
+		}
 	}
 }
 
