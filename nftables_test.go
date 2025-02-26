@@ -622,6 +622,14 @@ func TestMasqMarshalUnmarshal(t *testing.T) {
 		Table: filter,
 		Chain: postrouting,
 		Exprs: []expr.Any{
+			&expr.Immediate{
+				Register: min,
+				Data:     binaryutil.BigEndian.PutUint16(4070),
+			},
+			&expr.Immediate{
+				Register: max,
+				Data:     binaryutil.BigEndian.PutUint16(4090),
+			},
 			&expr.Masq{
 				ToPorts:     true,
 				RegProtoMin: min,
@@ -652,13 +660,13 @@ func TestMasqMarshalUnmarshal(t *testing.T) {
 	}
 
 	rule := rules[0]
-	if got, want := len(rule.Exprs), 1; got != want {
+	if got, want := len(rule.Exprs), 3; got != want {
 		t.Fatalf("unexpected number of exprs: got %d, want %d", got, want)
 	}
 
-	me, ok := rule.Exprs[0].(*expr.Masq)
+	me, ok := rule.Exprs[2].(*expr.Masq)
 	if !ok {
-		t.Fatalf("unexpected expression type: got %T, want *expr.Masq", rule.Exprs[0])
+		t.Fatalf("unexpected expression type: got %T, want *expr.Masq", rule.Exprs[2])
 	}
 
 	if got, want := me.ToPorts, true; got != want {
