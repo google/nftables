@@ -166,7 +166,9 @@ var (
 		TypeTimeDay,
 		TypeCGroupV2,
 	}
+)
 
+const (
 	// ctLabelBitSize is defined in https://git.netfilter.org/nftables/tree/src/ct.c.
 	ctLabelBitSize uint32 = 128
 
@@ -737,7 +739,7 @@ func (cc *Conn) FlushSet(s *Set) {
 	})
 }
 
-var (
+const (
 	newSetHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSET)
 	delSetHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSET)
 )
@@ -837,7 +839,7 @@ func parseSetDatatype(magic uint32) (SetDatatype, error) {
 	return dt, nil
 }
 
-var (
+const (
 	newElemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSETELEM)
 	delElemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSETELEM)
 )
