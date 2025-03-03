@@ -46,10 +46,8 @@ type Rule struct {
 	Chain    *Chain
 	Position uint64
 	Handle   uint64
-	// The list of possible flags are specified by nftnl_rule_attr, see
-	// https://git.netfilter.org/libnftnl/tree/include/libnftnl/rule.h#n21
-	// Current nftables go implementation supports only
-	// NFTNL_RULE_POSITION flag for setting rule at position 0
+	// Deprecated: The feature for which this field was added never worked.
+	// The field may be removed in a later version.
 	Flags    uint32
 	Exprs    []expr.Any
 	UserData []byte
@@ -163,7 +161,7 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 		flags = netlink.Request | netlink.Acknowledge | netlink.Replace | unix.NLM_F_ECHO | unix.NLM_F_REPLACE
 	}
 
-	if r.Position != 0 || (r.Flags&(1<<unix.NFTA_RULE_POSITION)) != 0 {
+	if r.Position != 0 {
 		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NFTA_RULE_POSITION, Data: binaryutil.BigEndian.PutUint64(r.Position)},
 		})...)
