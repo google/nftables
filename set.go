@@ -46,8 +46,6 @@ const (
 	NFTA_SET_ELEM_EXPRESSIONS = 0x11
 )
 
-var allocSetID uint32
-
 // SetDatatype represents a datatype declared by nft.
 type SetDatatype struct {
 	Name  string
@@ -532,8 +530,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	}
 
 	if s.ID == 0 {
-		allocSetID++
-		s.ID = allocSetID
+		s.ID = cc.allocateTransactionID()
 		if s.Anonymous {
 			s.Name = "__set%d"
 			if s.IsMap {
