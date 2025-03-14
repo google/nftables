@@ -30,6 +30,10 @@ const (
 	delRuleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE)
 )
 
+// This constant is missing at unix.NFTA_RULE_POSITION_ID.
+// TODO: Add the constant in unix and then remove it here.
+const nfta_rule_position_id = 0xa
+
 type ruleOperation uint32
 
 // Possible PayloadOperationType values.
@@ -42,10 +46,19 @@ const (
 // A Rule does something with a packet. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Simple_rule_management
 type Rule struct {
-	Table    *Table
-	Chain    *Chain
+	Table *Table
+	Chain *Chain
+	// Handle identifies an existing Rule.
+	Handle uint64
+	// ID is an identifier for a new Rule, which is assigned by
+	// AddRule/InsertRule, and only valid before the rule is committed by Flush().
+	ID uint32
+	// Position can be set to the Handle of another Rule to insert the new Rule
+	// before (InsertRule) or after (AddRule) the existing rule.
 	Position uint64
-	Handle   uint64
+	// PositionID can be set to the ID of another Rule, same as Position, for when
+	// the existing rule is not yet committed.
+	PositionID uint32
 	// The list of possible flags are specified by nftnl_rule_attr, see
 	// https://git.netfilter.org/libnftnl/tree/include/libnftnl/rule.h#n21
 	// Current nftables go implementation supports only
@@ -106,7 +119,6 @@ func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
 	return rules, nil
 }
 
-// AddRule adds the specified Rule
 func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
@@ -126,6 +138,11 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	if r.Handle != 0 {
 		data = append(data, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NFTA_RULE_HANDLE, Data: binaryutil.BigEndian.PutUint64(r.Handle)},
+		})...)
+	} else {
+		r.ID = cc.allocateTransactionID()
+		data = append(data, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_RULE_ID, Data: binaryutil.BigEndian.PutUint32(r.ID)},
 		})...)
 	}
 
@@ -167,6 +184,10 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NFTA_RULE_POSITION, Data: binaryutil.BigEndian.PutUint64(r.Position)},
 		})...)
+	} else if r.PositionID != 0 {
+		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
+			{Type: nfta_rule_position_id, Data: binaryutil.BigEndian.PutUint32(r.PositionID)},
+		})...)
 	}
 
 	cc.messages = append(cc.messages, netlink.Message{
@@ -184,6 +205,8 @@ func (cc *Conn) ReplaceRule(r *Rule) *Rule {
 	return cc.newRule(r, operationReplace)
 }
 
+// AddRule inserts the specified Rule after the existing Rule referenced by
+// Position/PositionID if set, otherwise at the end of the chain.
 func (cc *Conn) AddRule(r *Rule) *Rule {
 	if r.Handle != 0 {
 		return cc.newRule(r, operationReplace)
@@ -192,6 +215,8 @@ func (cc *Conn) AddRule(r *Rule) *Rule {
 	return cc.newRule(r, operationAdd)
 }
 
+// InsertRule inserts the specified Rule before the existing Rule referenced by
+// Position/PositionID if set, otherwise at the beginning of the chain.
 func (cc *Conn) InsertRule(r *Rule) *Rule {
 	if r.Handle != 0 {
 		return cc.newRule(r, operationReplace)
@@ -200,7 +225,8 @@ func (cc *Conn) InsertRule(r *Rule) *Rule {
 	return cc.newRule(r, operationInsert)
 }
 
-// DelRule deletes the specified Rule, rule's handle cannot be 0
+// DelRule deletes the specified Rule. Either the Handle or ID of the
+// rule must be set.
 func (cc *Conn) DelRule(r *Rule) error {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
@@ -208,12 +234,17 @@ func (cc *Conn) DelRule(r *Rule) error {
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(r.Table.Name + "\x00")},
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(r.Chain.Name + "\x00")},
 	})
-	if r.Handle == 0 {
-		return fmt.Errorf("rule's handle cannot be 0")
+	if r.Handle != 0 {
+		data = append(data, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_RULE_HANDLE, Data: binaryutil.BigEndian.PutUint64(r.Handle)},
+		})...)
+	} else if r.ID != 0 {
+		data = append(data, cc.marshalAttr([]netlink.Attribute{
+			{Type: unix.NFTA_RULE_ID, Data: binaryutil.BigEndian.PutUint32(r.ID)},
+		})...)
+	} else {
+		return fmt.Errorf("rule must have a handle or ID")
 	}
-	data = append(data, cc.marshalAttr([]netlink.Attribute{
-		{Type: unix.NFTA_RULE_HANDLE, Data: binaryutil.BigEndian.PutUint64(r.Handle)},
-	})...)
 	flags := netlink.Request | netlink.Acknowledge
 
 	cc.messages = append(cc.messages, netlink.Message{
