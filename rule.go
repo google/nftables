@@ -48,10 +48,13 @@ const (
 type Rule struct {
 	Table *Table
 	Chain *Chain
-	// Handle identifies an existing Rule.
+	// Handle identifies an existing Rule. For a new Rule, this field is set
+	// during the Flush() in which the rule is committed. Make sure to not access
+	// this field concurrently with this Flush() to avoid data races.
 	Handle uint64
 	// ID is an identifier for a new Rule, which is assigned by
 	// AddRule/InsertRule, and only valid before the rule is committed by Flush().
+	// The field is set to 0 during Flush().
 	ID uint32
 	// Position can be set to the Handle of another Rule to insert the new Rule
 	// before (InsertRule) or after (AddRule) the existing rule.
@@ -94,7 +97,7 @@ func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETRULE),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump | unix.NLM_F_ECHO,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
@@ -164,20 +167,23 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	msgData := []byte{}
 
 	msgData = append(msgData, data...)
-	var flags netlink.HeaderFlags
 	if r.UserData != nil {
 		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NFTA_RULE_USERDATA, Data: r.UserData},
 		})...)
 	}
 
+	var flags netlink.HeaderFlags
+	var handleReply func(reply netlink.Message) error
 	switch op {
 	case operationAdd:
-		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO | unix.NLM_F_APPEND
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | netlink.Echo | netlink.Append
+		handleReply = r.handleCreateReply
 	case operationInsert:
-		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | netlink.Echo
+		handleReply = r.handleCreateReply
 	case operationReplace:
-		flags = netlink.Request | netlink.Acknowledge | netlink.Replace | unix.NLM_F_ECHO | unix.NLM_F_REPLACE
+		flags = netlink.Request | netlink.Acknowledge | netlink.Replace
 	}
 
 	if r.Position != 0 || (r.Flags&(1<<unix.NFTA_RULE_POSITION)) != 0 {
@@ -190,15 +196,40 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 		})...)
 	}
 
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  newRuleHeaderType,
 			Flags: flags,
 		},
-		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
+		Data:        append(extraHeader(uint8(r.Table.Family), 0), msgData...),
+		handleReply: handleReply,
 	})
 
 	return r
+}
+
+func (r *Rule) handleCreateReply(reply netlink.Message) error {
+	ad, err := netlink.NewAttributeDecoder(reply.Data[4:])
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	var handle uint64
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_RULE_HANDLE:
+			handle = ad.Uint64()
+		}
+	}
+	if ad.Err() != nil {
+		return ad.Err()
+	}
+	if handle == 0 {
+		return fmt.Errorf("missing rule handle in create reply")
+	}
+	r.Handle = handle
+	r.ID = 0
+	return nil
 }
 
 func (cc *Conn) ReplaceRule(r *Rule) *Rule {
@@ -247,7 +278,7 @@ func (cc *Conn) DelRule(r *Rule) error {
 	}
 	flags := netlink.Request | netlink.Acknowledge
 
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  delRuleHeaderType,
 			Flags: flags,

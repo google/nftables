@@ -41,12 +41,18 @@ type Conn struct {
 
 	lasting      bool       // establish a lasting connection to be used across multiple netlink operations.
 	mu           sync.Mutex // protects the following state
-	messages     []netlink.Message
+	messages     []netlinkMessage
 	err          error
 	nlconn       *netlink.Conn // netlink socket using NETLINK_NETFILTER protocol.
 	sockOptions  []SockOption
 	lastID       uint32
 	allocatedIDs uint32
+}
+
+type netlinkMessage struct {
+	Header      netlink.Header
+	Data        []byte
+	handleReply func(reply netlink.Message) error
 }
 
 // ConnOption is an option to change the behavior of the nftables Conn returned by Open.
@@ -171,24 +177,6 @@ func receiveAckAware(nlconn *netlink.Conn, sentMsgFlags netlink.HeaderFlags) ([]
 		return reply, nil
 	}
 
-	if len(reply) != 0 {
-		last := reply[len(reply)-1]
-		for re := last.Header.Type; (re&netlink.Overrun) == netlink.Overrun && (re&netlink.Done) != netlink.Done; re = last.Header.Type {
-			// we are not finished, the message is overrun
-			r, err := nlconn.Receive()
-			if err != nil {
-				return nil, err
-			}
-			reply = append(reply, r...)
-			last = reply[len(reply)-1]
-		}
-
-		if last.Header.Type == netlink.Error && binaryutil.BigEndian.Uint32(last.Data[:4]) == 0 {
-			// we have already collected an ack
-			return reply, nil
-		}
-	}
-
 	// Now we expect an ack
 	ack, err := nlconn.Receive()
 	if err != nil {
@@ -196,8 +184,7 @@ func receiveAckAware(nlconn *netlink.Conn, sentMsgFlags netlink.HeaderFlags) ([]
 	}
 
 	if len(ack) == 0 {
-		// received an empty ack?
-		return reply, nil
+		return nil, errors.New("received an empty ack")
 	}
 
 	msg := ack[0]
@@ -263,15 +250,53 @@ func (cc *Conn) Flush() error {
 	}
 	defer func() { _ = closer() }()
 
-	if _, err := conn.SendMessages(batch(cc.messages)); err != nil {
+	messages, err := conn.SendMessages(batch(cc.messages))
+	if err != nil {
 		return fmt.Errorf("SendMessages: %w", err)
 	}
 
 	var errs error
+
+	// Fetch replies. Each message with the Echo flag triggers a reply of the same
+	// type. Additionally, if the first message of the batch has the Echo flag, we
+	// get a reply of type NFT_MSG_NEWGEN, which we ignore.
+	replyIndex := 0
+	for replyIndex < len(cc.messages) && cc.messages[replyIndex].Header.Flags&netlink.Echo == 0 {
+		replyIndex++
+	}
+	replies, err := conn.Receive()
+	for err == nil && len(replies) != 0 {
+		reply := replies[0]
+		if reply.Header.Type == netlink.Error && reply.Header.Sequence == messages[1].Header.Sequence {
+			// The next message is the acknowledgement for the first message in the
+			// batch; stop looking for replies.
+			break
+		} else if replyIndex < len(cc.messages) {
+			msg := messages[replyIndex+1]
+			if msg.Header.Sequence == reply.Header.Sequence && msg.Header.Type == reply.Header.Type {
+				err := cc.messages[replyIndex].handleReply(reply)
+				if err != nil {
+					errs = errors.Join(errs, err)
+				}
+				replyIndex++
+				for replyIndex < len(cc.messages) && cc.messages[replyIndex].Header.Flags&netlink.Echo == 0 {
+					replyIndex++
+				}
+			}
+		}
+		replies = replies[1:]
+		if len(replies) == 0 {
+			replies, err = conn.Receive()
+		}
+	}
+
 	// Fetch the requested acknowledgement for each message we sent.
-	for _, msg := range cc.messages {
-		if _, err := receiveAckAware(conn, msg.Header.Flags); err != nil {
-			if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.ENOBUFS) {
+	for i := range cc.messages {
+		if i != 0 {
+			_, err = conn.Receive()
+		}
+		if err != nil {
+			if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.ENOBUFS) || errors.Is(err, syscall.ENOMEM) {
 				// Kernel will only send one error to user space.
 				return err
 			}
@@ -282,6 +307,9 @@ func (cc *Conn) Flush() error {
 	if errs != nil {
 		return fmt.Errorf("conn.Receive: %w", errs)
 	}
+	if replyIndex < len(cc.messages) {
+		return fmt.Errorf("missing reply for message %d in batch", replyIndex)
+	}
 
 	return nil
 }
@@ -291,7 +319,7 @@ func (cc *Conn) Flush() error {
 func (cc *Conn) FlushRuleset() {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
@@ -350,26 +378,30 @@ func (cc *Conn) marshalExpr(fam byte, e expr.Any) []byte {
 	return b
 }
 
-func batch(messages []netlink.Message) []netlink.Message {
-	batch := []netlink.Message{
-		{
-			Header: netlink.Header{
-				Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
-				Flags: netlink.Request,
-			},
-			Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
+func batch(messages []netlinkMessage) []netlink.Message {
+	batch := make([]netlink.Message, len(messages)+2)
+	batch[0] = netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
+			Flags: netlink.Request,
 		},
+		Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
 	}
 
-	batch = append(batch, messages...)
+	for i, msg := range messages {
+		batch[i+1] = netlink.Message{
+			Header: msg.Header,
+			Data:   msg.Data,
+		}
+	}
 
-	batch = append(batch, netlink.Message{
+	batch[len(messages)+1] = netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_END),
 			Flags: netlink.Request,
 		},
 		Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
-	})
+	}
 
 	return batch
 }
