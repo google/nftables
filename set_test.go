@@ -254,7 +254,10 @@ func TestMarshalSet(t *testing.T) {
 			}
 			msg := c.messages[connMsgSetIdx]
 
-			nset, err := setsFromMsg(msg)
+			nset, err := setsFromMsg(netlink.Message{
+				Header: msg.Header,
+				Data:   msg.Data,
+			})
 			if err != nil {
 				t.Fatalf("setsFromMsg() error: %+v", err)
 			}
