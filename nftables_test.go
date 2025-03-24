@@ -79,6 +79,40 @@ func linediff(a, b string) string {
 	return buf.String()
 }
 
+func expectMessages(t *testing.T, want [][]byte) nftables.ConnOption {
+	return nftables.WithTestDial(func(req []netlink.Message) ([]netlink.Message, error) {
+		var replies []netlink.Message
+		for idx, msg := range req {
+			b, err := msg.MarshalBinary()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(b) < 16 {
+				continue
+			}
+			b = b[16:]
+			if len(want) == 0 {
+				t.Errorf("no want entry for message %d: %x", idx, b)
+				continue
+			}
+			if got, want := b, want[0]; !bytes.Equal(got, want) {
+				t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
+			}
+			want = want[1:]
+
+			// Generate replies.
+			if msg.Header.Flags&netlink.Echo != 0 {
+				data := append([]byte{}, msg.Data...)
+				replies = append(replies, netlink.Message{
+					Header: msg.Header,
+					Data:   data,
+				})
+			}
+		}
+		return replies, nil
+	})
+}
+
 func ifname(n string) []byte {
 	b := make([]byte, 16)
 	copy(b, []byte(n+"\x00"))
@@ -370,28 +404,7 @@ func TestConfigureNAT(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -638,28 +651,7 @@ func TestConfigureNATSourceAddress(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1106,28 +1098,7 @@ func TestAddCounter(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1172,28 +1143,7 @@ func TestDeleteCounter(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1225,28 +1175,7 @@ func TestDelRule(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1272,28 +1201,7 @@ func TestLog(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1324,28 +1232,7 @@ func TestTProxy(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1389,28 +1276,7 @@ func TestTProxyWithAddrField(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1457,28 +1323,7 @@ func TestCt(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1518,28 +1363,7 @@ func TestSecMarkMarshaling(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	conn, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	conn, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1922,28 +1746,7 @@ func TestCtSet(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1982,28 +1785,7 @@ func TestCtStat(t *testing.T) {
 		// batch end
 		[]byte("\x00\x00\x00\x0a"),
 	}
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2042,28 +1824,7 @@ func TestAddRuleWithPosition(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2472,28 +2233,7 @@ func TestAddChain(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c, err := nftables.New(nftables.WithTestDial(
-			func(req []netlink.Message) ([]netlink.Message, error) {
-				for idx, msg := range req {
-					b, err := msg.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(b) < 16 {
-						continue
-					}
-					b = b[16:]
-					if len(tt.want[idx]) == 0 {
-						t.Errorf("no want entry for message %d: %x", idx, b)
-						continue
-					}
-					got := b
-					if !bytes.Equal(got, tt.want[idx]) {
-						t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(tt.want[idx])))
-					}
-				}
-				return req, nil
-			}))
+		c, err := nftables.New(expectMessages(t, tt.want))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2551,28 +2291,7 @@ func TestDelChain(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c, err := nftables.New(nftables.WithTestDial(
-			func(req []netlink.Message) ([]netlink.Message, error) {
-				for idx, msg := range req {
-					b, err := msg.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(b) < 16 {
-						continue
-					}
-					b = b[16:]
-					if len(tt.want[idx]) == 0 {
-						t.Errorf("no want entry for message %d: %x", idx, b)
-						continue
-					}
-					got := b
-					if !bytes.Equal(got, tt.want[idx]) {
-						t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(tt.want[idx])))
-					}
-				}
-				return req, nil
-			}))
+		c, err := nftables.New(expectMessages(t, tt.want))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3284,28 +3003,7 @@ func TestConfigureClamping(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3419,28 +3117,7 @@ func TestMatchPacketHeader(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3549,28 +3226,7 @@ func TestDropVerdict(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3651,28 +3307,7 @@ func TestCreateUseAnonymousSet(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5431,28 +5066,7 @@ func TestConfigureNATRedirect(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5538,28 +5152,7 @@ func TestConfigureJumpVerdict(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5646,28 +5239,7 @@ func TestConfigureReturnVerdict(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5733,28 +5305,7 @@ func TestConfigureRangePort(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5833,28 +5384,7 @@ func TestConfigureRangeIPv4(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -5925,28 +5455,7 @@ func TestConfigureRangeIPv6(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -6039,28 +5548,7 @@ func TestSet4(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -6144,28 +5632,7 @@ func TestSetComment(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -6289,28 +5756,7 @@ func TestMasq(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c, err := nftables.New(nftables.WithTestDial(
-			func(req []netlink.Message) ([]netlink.Message, error) {
-				for idx, msg := range req {
-					b, err := msg.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(b) < 16 {
-						continue
-					}
-					b = b[16:]
-					if len(tt.want[idx]) == 0 {
-						t.Errorf("no want entry for message %d: %x", idx, b)
-						continue
-					}
-					got := b
-					if !bytes.Equal(got, tt.want[idx]) {
-						t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(tt.want[idx])))
-					}
-				}
-				return req, nil
-			}))
+		c, err := nftables.New(expectMessages(t, tt.want))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -6422,28 +5868,7 @@ func TestReject(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c, err := nftables.New(nftables.WithTestDial(
-			func(req []netlink.Message) ([]netlink.Message, error) {
-				for idx, msg := range req {
-					b, err := msg.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(b) < 16 {
-						continue
-					}
-					b = b[16:]
-					if len(tt.want[idx]) == 0 {
-						t.Errorf("no want entry for message %d: %x", idx, b)
-						continue
-					}
-					got := b
-					if !bytes.Equal(got, tt.want[idx]) {
-						t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(tt.want[idx])))
-					}
-				}
-				return req, nil
-			}))
+		c, err := nftables.New(expectMessages(t, tt.want))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -6552,28 +5977,7 @@ func TestFib(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c, err := nftables.New(nftables.WithTestDial(
-			func(req []netlink.Message) ([]netlink.Message, error) {
-				for idx, msg := range req {
-					b, err := msg.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(b) < 16 {
-						continue
-					}
-					b = b[16:]
-					if len(tt.want[idx]) == 0 {
-						t.Errorf("no want entry for message %d: %x", idx, b)
-						continue
-					}
-					got := b
-					if !bytes.Equal(got, tt.want[idx]) {
-						t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(tt.want[idx])))
-					}
-				}
-				return req, nil
-			}))
+		c, err := nftables.New(expectMessages(t, tt.want))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -6713,28 +6117,7 @@ func TestNumgen(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c, err := nftables.New(nftables.WithTestDial(
-			func(req []netlink.Message) ([]netlink.Message, error) {
-				for idx, msg := range req {
-					b, err := msg.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(b) < 16 {
-						continue
-					}
-					b = b[16:]
-					if len(tt.want[idx]) == 0 {
-						t.Errorf("no want entry for message %d: %x", idx, b)
-						continue
-					}
-					got := b
-					if !bytes.Equal(got, tt.want[idx]) {
-						t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(tt.want[idx])))
-					}
-				}
-				return req, nil
-			}))
+		c, err := nftables.New(expectMessages(t, tt.want))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -6800,28 +6183,7 @@ func TestMap(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c, err := nftables.New(nftables.WithTestDial(
-			func(req []netlink.Message) ([]netlink.Message, error) {
-				for idx, msg := range req {
-					b, err := msg.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(b) < 16 {
-						continue
-					}
-					b = b[16:]
-					if len(tt.want[idx]) == 0 {
-						t.Errorf("no want entry for message %d: %x", idx, b)
-						continue
-					}
-					got := b
-					if !bytes.Equal(got, tt.want[idx]) {
-						t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(tt.want[idx])))
-					}
-				}
-				return req, nil
-			}))
+		c, err := nftables.New(expectMessages(t, tt.want))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -6920,28 +6282,7 @@ func TestVmap(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		c, err := nftables.New(nftables.WithTestDial(
-			func(req []netlink.Message) ([]netlink.Message, error) {
-				for idx, msg := range req {
-					b, err := msg.MarshalBinary()
-					if err != nil {
-						t.Fatal(err)
-					}
-					if len(b) < 16 {
-						continue
-					}
-					b = b[16:]
-					if len(tt.want[idx]) == 0 {
-						t.Errorf("no want entry for message %d: %x", idx, b)
-						continue
-					}
-					got := b
-					if !bytes.Equal(got, tt.want[idx]) {
-						t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(tt.want[idx])))
-					}
-				}
-				return req, nil
-			}))
+		c, err := nftables.New(expectMessages(t, tt.want))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -6982,28 +6323,7 @@ func TestJHash(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7084,28 +6404,7 @@ func TestDup(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7184,28 +6483,7 @@ func TestDupWoDev(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7311,28 +6589,7 @@ func TestQuota(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want[idx]) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				got := b
-				if !bytes.Equal(got, want[idx]) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want[idx])))
-				}
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -7388,28 +6645,7 @@ func TestStatelessNAT(t *testing.T) {
 		[]byte("\x00\x00\x00\x0a"),
 	}
 
-	c, err := nftables.New(nftables.WithTestDial(
-		func(req []netlink.Message) ([]netlink.Message, error) {
-			for idx, msg := range req {
-				b, err := msg.MarshalBinary()
-				if err != nil {
-					t.Fatal(err)
-				}
-				if len(b) < 16 {
-					continue
-				}
-				b = b[16:]
-				if len(want) == 0 {
-					t.Errorf("no want entry for message %d: %x", idx, b)
-					continue
-				}
-				if got, want := b, want[0]; !bytes.Equal(got, want) {
-					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
-				}
-				want = want[1:]
-			}
-			return req, nil
-		}))
+	c, err := nftables.New(expectMessages(t, want))
 	if err != nil {
 		t.Fatal(err)
 	}

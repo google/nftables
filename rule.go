@@ -94,7 +94,7 @@ func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETRULE),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump | unix.NLM_F_ECHO,
+			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
@@ -164,20 +164,20 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	msgData := []byte{}
 
 	msgData = append(msgData, data...)
-	var flags netlink.HeaderFlags
 	if r.UserData != nil {
 		msgData = append(msgData, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NFTA_RULE_USERDATA, Data: r.UserData},
 		})...)
 	}
 
+	var flags netlink.HeaderFlags
 	switch op {
 	case operationAdd:
-		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO | unix.NLM_F_APPEND
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | netlink.Echo | netlink.Append
 	case operationInsert:
-		flags = netlink.Request | netlink.Acknowledge | netlink.Create | unix.NLM_F_ECHO
+		flags = netlink.Request | netlink.Acknowledge | netlink.Create | netlink.Echo
 	case operationReplace:
-		flags = netlink.Request | netlink.Acknowledge | netlink.Replace | unix.NLM_F_ECHO | unix.NLM_F_REPLACE
+		flags = netlink.Request | netlink.Acknowledge | netlink.Replace
 	}
 
 	if r.Position != 0 || (r.Flags&(1<<unix.NFTA_RULE_POSITION)) != 0 {

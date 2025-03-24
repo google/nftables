@@ -25,10 +25,21 @@ func (r *Recorder) Conn() (*nftables.Conn, error) {
 		func(req []netlink.Message) ([]netlink.Message, error) {
 			r.requests = append(r.requests, req...)
 
-			acks := make([]netlink.Message, 0, len(req))
+			replies := make([]netlink.Message, 0, len(req))
+			// Generate replies.
+			for _, msg := range req {
+				if msg.Header.Flags&netlink.Echo != 0 {
+					data := append([]byte{}, msg.Data...)
+					replies = append(replies, netlink.Message{
+						Header: msg.Header,
+						Data:   data,
+					})
+				}
+			}
+			// Generate acknowledgements.
 			for _, msg := range req {
 				if msg.Header.Flags&netlink.Acknowledge != 0 {
-					acks = append(acks, netlink.Message{
+					replies = append(replies, netlink.Message{
 						Header: netlink.Header{
 							Length:   4,
 							Type:     netlink.Error,
@@ -39,7 +50,7 @@ func (r *Recorder) Conn() (*nftables.Conn, error) {
 					})
 				}
 			}
-			return acks, nil
+			return replies, nil
 		}))
 }
 
