@@ -41,12 +41,18 @@ type Conn struct {
 
 	lasting      bool       // establish a lasting connection to be used across multiple netlink operations.
 	mu           sync.Mutex // protects the following state
-	messages     []netlink.Message
+	messages     []netlinkMessage
 	err          error
 	nlconn       *netlink.Conn // netlink socket using NETLINK_NETFILTER protocol.
 	sockOptions  []SockOption
 	lastID       uint32
 	allocatedIDs uint32
+}
+
+type netlinkMessage struct {
+	Header netlink.Header
+	Data   []byte
+	rule   *Rule
 }
 
 // ConnOption is an option to change the behavior of the nftables Conn returned by Open.
@@ -268,6 +274,11 @@ func (cc *Conn) Flush() error {
 		} else if replyIndex < len(cc.messages) {
 			msg := messages[replyIndex+1]
 			if msg.Header.Sequence == reply.Header.Sequence && msg.Header.Type == reply.Header.Type {
+				// The only messages which set the echo flag are rule create messages.
+				err := cc.messages[replyIndex].rule.handleCreateReply(reply)
+				if err != nil {
+					errs = errors.Join(errs, err)
+				}
 				replyIndex++
 				for replyIndex < len(cc.messages) && cc.messages[replyIndex].Header.Flags&netlink.Echo == 0 {
 					replyIndex++
@@ -309,7 +320,7 @@ func (cc *Conn) Flush() error {
 func (cc *Conn) FlushRuleset() {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
@@ -368,26 +379,30 @@ func (cc *Conn) marshalExpr(fam byte, e expr.Any) []byte {
 	return b
 }
 
-func batch(messages []netlink.Message) []netlink.Message {
-	batch := []netlink.Message{
-		{
-			Header: netlink.Header{
-				Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
-				Flags: netlink.Request,
-			},
-			Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
+func batch(messages []netlinkMessage) []netlink.Message {
+	batch := make([]netlink.Message, len(messages)+2)
+	batch[0] = netlink.Message{
+		Header: netlink.Header{
+			Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
+			Flags: netlink.Request,
 		},
+		Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
 	}
 
-	batch = append(batch, messages...)
+	for i, msg := range messages {
+		batch[i+1] = netlink.Message{
+			Header: msg.Header,
+			Data:   msg.Data,
+		}
+	}
 
-	batch = append(batch, netlink.Message{
+	batch[len(messages)+1] = netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_END),
 			Flags: netlink.Request,
 		},
 		Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
-	})
+	}
 
 	return batch
 }

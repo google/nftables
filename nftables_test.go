@@ -80,6 +80,7 @@ func linediff(a, b string) string {
 }
 
 func expectMessages(t *testing.T, want [][]byte) nftables.ConnOption {
+	nextHandle := uint64(1)
 	return nftables.WithTestDial(func(req []netlink.Message) ([]netlink.Message, error) {
 		var replies []netlink.Message
 		for idx, msg := range req {
@@ -103,6 +104,14 @@ func expectMessages(t *testing.T, want [][]byte) nftables.ConnOption {
 			// Generate replies.
 			if msg.Header.Flags&netlink.Echo != 0 {
 				data := append([]byte{}, msg.Data...)
+				switch msg.Header.Type {
+				case netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWRULE):
+					attrs, _ := netlink.MarshalAttributes([]netlink.Attribute{
+						{Type: unix.NFTA_RULE_HANDLE, Data: binaryutil.BigEndian.PutUint64(nextHandle)},
+					})
+					nextHandle++
+					data = append(data, attrs...)
+				}
 				replies = append(replies, netlink.Message{
 					Header: msg.Header,
 					Data:   data,
@@ -316,7 +325,7 @@ func TestRuleHandle(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		for _, afterFlush := range []bool{false} {
+		for _, afterFlush := range []bool{false, true} {
 			flushName := map[bool]string{
 				false: "-before-flush",
 				true:  "-after-flush",

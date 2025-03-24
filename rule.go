@@ -48,10 +48,13 @@ const (
 type Rule struct {
 	Table *Table
 	Chain *Chain
-	// Handle identifies an existing Rule.
+	// Handle identifies an existing Rule. For a new Rule, this field is set
+	// during the Flush() in which the rule is committed. Make sure to not access
+	// this field concurrently with this Flush() to avoid data races.
 	Handle uint64
 	// ID is an identifier for a new Rule, which is assigned by
 	// AddRule/InsertRule, and only valid before the rule is committed by Flush().
+	// The field is set to 0 during Flush().
 	ID uint32
 	// Position can be set to the Handle of another Rule to insert the new Rule
 	// before (InsertRule) or after (AddRule) the existing rule.
@@ -171,11 +174,14 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	}
 
 	var flags netlink.HeaderFlags
+	var ruleRef *Rule
 	switch op {
 	case operationAdd:
 		flags = netlink.Request | netlink.Acknowledge | netlink.Create | netlink.Echo | netlink.Append
+		ruleRef = r
 	case operationInsert:
 		flags = netlink.Request | netlink.Acknowledge | netlink.Create | netlink.Echo
+		ruleRef = r
 	case operationReplace:
 		flags = netlink.Request | netlink.Acknowledge | netlink.Replace
 	}
@@ -190,15 +196,40 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 		})...)
 	}
 
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  newRuleHeaderType,
 			Flags: flags,
 		},
 		Data: append(extraHeader(uint8(r.Table.Family), 0), msgData...),
+		rule: ruleRef,
 	})
 
 	return r
+}
+
+func (r *Rule) handleCreateReply(reply netlink.Message) error {
+	ad, err := netlink.NewAttributeDecoder(reply.Data[4:])
+	if err != nil {
+		return err
+	}
+	ad.ByteOrder = binary.BigEndian
+	var handle uint64
+	for ad.Next() {
+		switch ad.Type() {
+		case unix.NFTA_RULE_HANDLE:
+			handle = ad.Uint64()
+		}
+	}
+	if ad.Err() != nil {
+		return ad.Err()
+	}
+	if handle == 0 {
+		return fmt.Errorf("missing rule handle in create reply")
+	}
+	r.Handle = handle
+	r.ID = 0
+	return nil
 }
 
 func (cc *Conn) ReplaceRule(r *Rule) *Rule {
@@ -247,7 +278,7 @@ func (cc *Conn) DelRule(r *Rule) error {
 	}
 	flags := netlink.Request | netlink.Acknowledge
 
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  delRuleHeaderType,
 			Flags: flags,

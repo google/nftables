@@ -57,7 +57,7 @@ func (cc *Conn) DelTable(t *Table) {
 		{Type: unix.NFTA_TABLE_NAME, Data: []byte(t.Name + "\x00")},
 		{Type: unix.NFTA_TABLE_FLAGS, Data: []byte{0, 0, 0, 0}},
 	})
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
 			Flags: netlink.Request | netlink.Acknowledge,
@@ -73,7 +73,7 @@ func (cc *Conn) addTable(t *Table, flag netlink.HeaderFlags) *Table {
 		{Type: unix.NFTA_TABLE_NAME, Data: []byte(t.Name + "\x00")},
 		{Type: unix.NFTA_TABLE_FLAGS, Data: []byte{0, 0, 0, 0}},
 	})
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWTABLE),
 			Flags: netlink.Request | netlink.Acknowledge | flag,
@@ -103,7 +103,7 @@ func (cc *Conn) FlushTable(t *Table) {
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(t.Name + "\x00")},
 	})
-	cc.messages = append(cc.messages, netlink.Message{
+	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE),
 			Flags: netlink.Request | netlink.Acknowledge,
