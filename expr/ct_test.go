@@ -46,6 +46,38 @@ func TestCt(t *testing.T) {
 				SourceRegister: true,
 			},
 		},
+		{
+			name: "Unmarshal Ct ip direction original case",
+			ct: Ct{
+				Register:  1,
+				Key:       CtKeySRCIP,
+				Direction: 0,
+			},
+		},
+		{
+			name: "Unmarshal Ct ip direction reply case",
+			ct: Ct{
+				Register:  1,
+				Key:       CtKeySRCIP,
+				Direction: 1,
+			},
+		},
+		{
+			name: "Unmarshal Ct ip6 direction original case",
+			ct: Ct{
+				Register:  1,
+				Key:       CtKeySRCIP6,
+				Direction: 0,
+			},
+		},
+		{
+			name: "Unmarshal Ct ip6 direction reply case",
+			ct: Ct{
+				Register:  1,
+				Key:       CtKeyDSTIP6,
+				Direction: 1,
+			},
+		},
 	}
 
 	for _, tt := range tests {

@@ -27,6 +27,7 @@ import (
 type CtKey uint32
 
 // Possible CtKey values.
+// Retrieved from https://git.netfilter.org/libnftnl/tree/include/linux/netfilter/nf_tables.h#n1121
 const (
 	CtKeySTATE      CtKey = unix.NFT_CT_STATE
 	CtKeyDIRECTION  CtKey = unix.NFT_CT_DIRECTION
@@ -47,6 +48,13 @@ const (
 	CtKeyAVGPKT     CtKey = unix.NFT_CT_AVGPKT
 	CtKeyZONE       CtKey = unix.NFT_CT_ZONE
 	CtKeyEVENTMASK  CtKey = unix.NFT_CT_EVENTMASK
+
+	// These values seem to be missing from the unix package
+	CtKeySRCIP  CtKey = 19
+	CtKeyDSTIP  CtKey = 20
+	CtKeySRCIP6 CtKey = 21
+	CtKeyDSTIP6 CtKey = 22
+	CtKeyID     CtKey = 23
 
 	// https://sources.debian.org/src//nftables/0.9.8-3/src/ct.c/?hl=39#L39
 	CtStateBitINVALID     uint32 = 1
@@ -157,7 +165,7 @@ func (e *Ct) marshalData(fam byte) ([]byte, error) {
 	exprData = append(exprData, regData...)
 
 	switch e.Key {
-	case CtKeySRC, CtKeyDST, CtKeyPROTOSRC, CtKeyPROTODST:
+	case CtKeySRC, CtKeyDST, CtKeyPROTOSRC, CtKeyPROTODST, CtKeySRCIP, CtKeyDSTIP, CtKeySRCIP6, CtKeyDSTIP6:
 		regData, err = netlink.MarshalAttributes(
 			[]netlink.Attribute{
 				{Type: unix.NFTA_CT_DIRECTION, Data: binaryutil.BigEndian.PutUint32(e.Direction)},
