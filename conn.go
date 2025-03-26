@@ -329,6 +329,22 @@ func (cc *Conn) FlushRuleset() {
 	})
 }
 
+// GetMessageSize returns the total size of all messages in the buffer.
+// This is useful for making sure that the messages will not exceed the limits
+// of the netlink buffer which is 32768 + ~320 bytes. See also
+// https://web.git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/net/netlink/af_netlink.c?id=1e26c5e28ca5821a824e90dd359556f5e9e7b89f#n1930
+// and
+// https://web.git.kernel.org/pub/scm/linux/kernel/git/netdev/net-next.git/commit/?id=d35c99ff77ecb2eb239731b799386f3b3637a31e
+func (cc *Conn) GetMessageSize() uint32 {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	var total uint32
+	for _, msg := range cc.messages {
+		total += uint32(len(msg.Data)) + 16 // 16 bytes for the header
+	}
+	return total
+}
+
 func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
 	var (
 		conn *netlink.Conn
