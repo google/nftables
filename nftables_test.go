@@ -7396,3 +7396,37 @@ func TestSetElementComment(t *testing.T) {
 		}
 	}
 }
+
+func TestAutoBufferSize(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "test-table",
+	})
+
+	chain := conn.AddChain(&nftables.Chain{
+		Name:  "test-chain",
+		Table: table,
+	})
+
+	for i := 0; i < 4096; i++ {
+		conn.AddRule(&nftables.Rule{
+			Table: table,
+			Chain: chain,
+			Exprs: []expr.Any{
+				&expr.Verdict{
+					Kind: expr.VerdictAccept,
+				},
+			},
+		})
+	}
+
+	err := conn.Flush()
+	if err != nil {
+		t.Fatalf("failed to flush: %v", err)
+	}
+}
