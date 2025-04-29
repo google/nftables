@@ -298,7 +298,7 @@ func (s *SetElement) decode(fam byte) func(b []byte) error {
 	return func(b []byte) error {
 		ad, err := netlink.NewAttributeDecoder(b)
 		if err != nil {
-			return fmt.Errorf("failed to create nested attribute decoder: %v", err)
+			return fmt.Errorf("failed to create nested attribute decoder: %w", err)
 		}
 		ad.ByteOrder = binary.BigEndian
 
@@ -353,7 +353,7 @@ func (s *SetElement) decode(fam byte) func(b []byte) error {
 func decodeElement(d []byte) ([]byte, error) {
 	ad, err := netlink.NewAttributeDecoder(d)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create nested attribute decoder: %v", err)
+		return nil, fmt.Errorf("failed to create nested attribute decoder: %w", err)
 	}
 	ad.ByteOrder = binary.BigEndian
 	var b []byte
@@ -414,14 +414,14 @@ func (cc *Conn) appendElemList(s *Set, vals []SetElement, hdrType uint16) error 
 
 		encodedKey, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.Key}})
 		if err != nil {
-			return fmt.Errorf("marshal key %d: %v", i, err)
+			return fmt.Errorf("marshal key %d: %w", i, err)
 		}
 
 		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey})
 		if len(v.KeyEnd) > 0 {
 			encodedKeyEnd, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.KeyEnd}})
 			if err != nil {
-				return fmt.Errorf("marshal key end %d: %v", i, err)
+				return fmt.Errorf("marshal key end %d: %w", i, err)
 			}
 			item = append(item, netlink.Attribute{Type: NFTA_SET_ELEM_KEY_END | unix.NLA_F_NESTED, Data: encodedKeyEnd})
 		}
@@ -441,7 +441,7 @@ func (cc *Conn) appendElemList(s *Set, vals []SetElement, hdrType uint16) error 
 				{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(uint32(v.VerdictData.Kind))},
 			})
 			if err != nil {
-				return fmt.Errorf("marshal item %d: %v", i, err)
+				return fmt.Errorf("marshal item %d: %w", i, err)
 			}
 			encodedVal = append(encodedVal, encodedKind...)
 			if len(v.VerdictData.Chain) != 0 {
@@ -449,21 +449,21 @@ func (cc *Conn) appendElemList(s *Set, vals []SetElement, hdrType uint16) error 
 					{Type: unix.NFTA_SET_ELEM_DATA, Data: []byte(v.VerdictData.Chain + "\x00")},
 				})
 				if err != nil {
-					return fmt.Errorf("marshal item %d: %v", i, err)
+					return fmt.Errorf("marshal item %d: %w", i, err)
 				}
 				encodedVal = append(encodedVal, encodedChain...)
 			}
 			encodedVerdict, err := netlink.MarshalAttributes([]netlink.Attribute{
 				{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVal}})
 			if err != nil {
-				return fmt.Errorf("marshal item %d: %v", i, err)
+				return fmt.Errorf("marshal item %d: %w", i, err)
 			}
 			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVerdict})
 		case len(v.Val) > 0:
 			// Since v.Val's length is not 0 then, v is a regular map element, need to add to the attributes
 			encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.Val}})
 			if err != nil {
-				return fmt.Errorf("marshal item %d: %v", i, err)
+				return fmt.Errorf("marshal item %d: %w", i, err)
 			}
 
 			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVal})
@@ -479,7 +479,7 @@ func (cc *Conn) appendElemList(s *Set, vals []SetElement, hdrType uint16) error 
 
 		encodedItem, err := netlink.MarshalAttributes(item)
 		if err != nil {
-			return fmt.Errorf("marshal item %d: %v", i, err)
+			return fmt.Errorf("marshal item %d: %w", i, err)
 		}
 
 		itemSize := unix.NLA_HDRLEN + len(encodedItem)
@@ -496,7 +496,7 @@ func (cc *Conn) appendElemList(s *Set, vals []SetElement, hdrType uint16) error 
 	for _, batch := range batches {
 		encodedElem, err := netlink.MarshalAttributes(batch)
 		if err != nil {
-			return fmt.Errorf("marshal elements: %v", err)
+			return fmt.Errorf("marshal elements: %w", err)
 		}
 
 		message := []netlink.Attribute{
@@ -591,7 +591,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 			{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(uint32(len(vals)))},
 		})
 		if err != nil {
-			return fmt.Errorf("fail to marshal number of elements %d: %v", len(vals), err)
+			return fmt.Errorf("fail to marshal number of elements %d: %w", len(vals), err)
 		}
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: numberOfElements})
 	}
@@ -620,7 +620,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 				{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(v.Bytes)},
 			})
 			if err != nil {
-				return fmt.Errorf("fail to marshal element key size %d: %v", i, err)
+				return fmt.Errorf("fail to marshal element key size %d: %w", i, err)
 			}
 			// Marshal base type size description
 			descSize, err := netlink.MarshalAttributes([]netlink.Attribute{
@@ -634,7 +634,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		// Marshal all base type descriptions into concatenation size description
 		concatBytes, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NLA_F_NESTED | NFTA_SET_DESC_CONCAT, Data: concatDefinition}})
 		if err != nil {
-			return fmt.Errorf("fail to marshal concat definition %v", err)
+			return fmt.Errorf("fail to marshal concat definition %w", err)
 		}
 
 		descBytes = append(descBytes, concatBytes...)
@@ -890,12 +890,12 @@ func (cc *Conn) GetSets(t *Table) ([]*Set, error) {
 	}
 
 	if _, err := conn.SendMessages([]netlink.Message{message}); err != nil {
-		return nil, fmt.Errorf("SendMessages: %v", err)
+		return nil, fmt.Errorf("SendMessages: %w", err)
 	}
 
 	reply, err := receiveAckAware(conn, message.Header.Flags)
 	if err != nil {
-		return nil, fmt.Errorf("receiveAckAware: %v", err)
+		return nil, fmt.Errorf("receiveAckAware: %w", err)
 	}
 	var sets []*Set
 	for _, msg := range reply {
@@ -980,12 +980,12 @@ func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
 	}
 
 	if _, err := conn.SendMessages([]netlink.Message{message}); err != nil {
-		return nil, fmt.Errorf("SendMessages: %v", err)
+		return nil, fmt.Errorf("SendMessages: %w", err)
 	}
 
 	reply, err := receiveAckAware(conn, message.Header.Flags)
 	if err != nil {
-		return nil, fmt.Errorf("receiveAckAware: %v", err)
+		return nil, fmt.Errorf("receiveAckAware: %w", err)
 	}
 	var elems []SetElement
 	for _, msg := range reply {

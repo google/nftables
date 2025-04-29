@@ -361,12 +361,12 @@ func (cc *Conn) getObjWithLegacyType(o Obj, t *Table, msgType uint16, returnLega
 	}
 
 	if _, err := conn.SendMessages([]netlink.Message{message}); err != nil {
-		return nil, fmt.Errorf("SendMessages: %v", err)
+		return nil, fmt.Errorf("SendMessages: %w", err)
 	}
 
 	reply, err := receiveAckAware(conn, message.Header.Flags)
 	if err != nil {
-		return nil, fmt.Errorf("receiveAckAware: %v", err)
+		return nil, fmt.Errorf("receiveAckAware: %w", err)
 	}
 	var objs []Obj
 	for _, msg := range reply {
