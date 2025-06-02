@@ -110,6 +110,12 @@ const (
 	CtStateUDPREPLIED
 )
 
+const (
+	// https://git.netfilter.org/libnftnl/tree/src/expr/ct.c?id=116e95aa7b6358c917de8c69f6f173874030b46b#n31
+	CtDirOriginal = iota
+	CtDirReply
+)
+
 // https://git.netfilter.org/libnftnl/tree/src/obj/ct_timeout.c?id=116e95aa7b6358c917de8c69f6f173874030b46b#n57
 var CtStateUDPTimeoutDefaults CtStatePolicyTimeout = map[uint16]uint32{
 	CtStateUDPUNREPLIED: 30,
@@ -122,6 +128,7 @@ type Ct struct {
 	SourceRegister bool
 	Key            CtKey
 	Direction      uint32
+	OptDirection   bool
 }
 
 func (e *Ct) marshal(fam byte) ([]byte, error) {
@@ -165,10 +172,16 @@ func (e *Ct) marshalData(fam byte) ([]byte, error) {
 	exprData = append(exprData, regData...)
 
 	switch e.Key {
+	case CtKeyPKTS, CtKeyBYTES, CtKeyAVGPKT, CtKeyL3PROTOCOL, CtKeyPROTOCOL:
+		if !e.OptDirection {
+			break
+		}
+
+		fallthrough
 	case CtKeySRC, CtKeyDST, CtKeyPROTOSRC, CtKeyPROTODST, CtKeySRCIP, CtKeyDSTIP, CtKeySRCIP6, CtKeyDSTIP6:
 		regData, err = netlink.MarshalAttributes(
 			[]netlink.Attribute{
-				{Type: unix.NFTA_CT_DIRECTION, Data: binaryutil.BigEndian.PutUint32(e.Direction)},
+				{Type: unix.NFTA_CT_DIRECTION, Data: []byte{uint8(e.Direction)}},
 			},
 		)
 		if err != nil {
@@ -186,6 +199,8 @@ func (e *Ct) unmarshal(fam byte, data []byte) error {
 		return err
 	}
 	ad.ByteOrder = binary.BigEndian
+
+	var hasDirection bool
 	for ad.Next() {
 		switch ad.Type() {
 		case unix.NFTA_CT_KEY:
@@ -193,12 +208,19 @@ func (e *Ct) unmarshal(fam byte, data []byte) error {
 		case unix.NFTA_CT_DREG:
 			e.Register = ad.Uint32()
 		case unix.NFTA_CT_DIRECTION:
-			e.Direction = ad.Uint32()
+			e.Direction = uint32(ad.Uint8())
+			hasDirection = true
 		case unix.NFTA_CT_SREG:
 			e.SourceRegister = true
 			e.Register = ad.Uint32()
 		}
 	}
+
+	switch e.Key {
+	case CtKeyPKTS, CtKeyBYTES, CtKeyAVGPKT, CtKeyL3PROTOCOL, CtKeyPROTOCOL:
+		e.OptDirection = hasDirection
+	}
+
 	return ad.Err()
 }
 
