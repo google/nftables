@@ -215,7 +215,7 @@ func (cc *Conn) ListChain(table *Table, chain string) (*Chain, error) {
 
 	response, err := conn.Execute(msg)
 	if err != nil {
-		return nil, fmt.Errorf("conn.Execute failed: %v", err)
+		return nil, fmt.Errorf("conn.Execute failed: %w", err)
 	}
 
 	if got, want := len(response), 1; got != want {
