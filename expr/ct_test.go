@@ -78,6 +78,22 @@ func TestCt(t *testing.T) {
 				Direction: 1,
 			},
 		},
+		{
+			name: "Unmarshal Ct packets direction original case",
+			ct: Ct{
+				Register:     1,
+				Key:          CtKeyPKTS,
+				Direction:    CtDirOriginal,
+				OptDirection: true,
+			},
+		},
+		{
+			name: "Unmarshal Ct bytes without direction case",
+			ct: Ct{
+				Register: 1,
+				Key:      CtKeyBYTES,
+			},
+		},
 	}
 
 	for _, tt := range tests {
