@@ -7413,7 +7413,7 @@ func TestAutoBufferSize(t *testing.T) {
 		Table: table,
 	})
 
-	for i := 0; i < 4096; i++ {
+	for range 4096 {
 		conn.AddRule(&nftables.Rule{
 			Table: table,
 			Chain: chain,
@@ -7425,8 +7425,7 @@ func TestAutoBufferSize(t *testing.T) {
 		})
 	}
 
-	err := conn.Flush()
-	if err != nil {
+	if err := conn.Flush(); err != nil {
 		t.Fatalf("failed to flush: %v", err)
 	}
 }
