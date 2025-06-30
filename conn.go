@@ -250,10 +250,10 @@ func (cc *Conn) Flush() error {
 	}
 	defer func() { _ = closer() }()
 
-	if err = cc.enlargeWriteBuffer(conn); err != nil {
+	if err := cc.enlargeWriteBuffer(conn); err != nil {
 		return err
 	}
-	if err = cc.enlargeReadBuffer(conn); err != nil {
+	if err := cc.enlargeReadBuffer(conn); err != nil {
 		return err
 	}
 
