@@ -116,7 +116,9 @@ func WithTestDial(f nltest.Func) ConnOption {
 }
 
 // WithSockOptions sets the specified socket options when creating a new netlink
-// connection.
+// connection. Note that when using WithSockOptions, you are responsible for
+// providing a large-enough read and write buffer, whereas normally, the
+// nftables package automatically enlarges the buffers as needed.
 func WithSockOptions(opts ...SockOption) ConnOption {
 	return func(cc *Conn) {
 		cc.sockOptions = append(cc.sockOptions, opts...)
