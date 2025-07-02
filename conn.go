@@ -116,7 +116,9 @@ func WithTestDial(f nltest.Func) ConnOption {
 }
 
 // WithSockOptions sets the specified socket options when creating a new netlink
-// connection.
+// connection. Note that when using WithSockOptions, you are responsible for
+// providing a large-enough read and write buffer, whereas normally, the
+// nftables package automatically enlarges the buffers as needed.
 func WithSockOptions(opts ...SockOption) ConnOption {
 	return func(cc *Conn) {
 		cc.sockOptions = append(cc.sockOptions, opts...)
@@ -249,6 +251,13 @@ func (cc *Conn) Flush() error {
 		return err
 	}
 	defer func() { _ = closer() }()
+
+	if err := cc.enlargeWriteBuffer(conn); err != nil {
+		return err
+	}
+	if err := cc.enlargeReadBuffer(conn); err != nil {
+		return err
+	}
 
 	messages, err := conn.SendMessages(batch(cc.messages))
 	if err != nil {
@@ -422,4 +431,105 @@ func (cc *Conn) allocateTransactionID() uint32 {
 		cc.lastID = 1
 	}
 	return cc.lastID
+}
+
+// getMessageSize returns the total size of all messages in the buffer.
+func (cc *Conn) getMessageSize() int {
+	var total int
+	for _, msg := range cc.messages {
+		total += len(msg.Data) + unix.NLMSG_HDRLEN
+	}
+	return total
+}
+
+// canEnlargeBuffers returns true if the connection can automatically enlarge
+// the write and read buffers of the netlink connection.
+func (cc *Conn) canEnlargeBuffers() bool {
+	// If there are sock options, we assume that the user has already set the
+	// buffers to a fixed size.
+	if len(cc.sockOptions) > 0 {
+		return false
+	}
+
+	if cc.TestDial != nil {
+		return false
+	}
+
+	return true
+}
+
+// enlargeWriteBuffer automatically sets the write buffer of the given
+// connection to the accumulated message size. This is only done if the current
+// write buffer is smaller than the message size.
+//
+// nftables actually handles this differently, it multiplies the number of
+// iovec entries by 2MB. This is not possible to do here as our underlying
+// netlink and socket libraries will only add a single iovec entry and
+// won't expose the number of entries.
+// https://git.netfilter.org/nftables/tree/src/mnl.c?id=713592c6008a8c589a00d3d3d2e49709ff2de62c#n262
+//
+// TODO: Update this function to mimic the behavior of nftables once our
+// socket library supports multiple iovec entries.
+func (cc *Conn) enlargeWriteBuffer(conn *netlink.Conn) error {
+	if !cc.canEnlargeBuffers() {
+		return nil
+	}
+
+	messageSize := cc.getMessageSize()
+	writeBuffer, err := conn.WriteBuffer()
+	if err != nil {
+		return err
+	}
+	if writeBuffer < messageSize {
+		return conn.SetWriteBuffer(messageSize)
+	}
+
+	return nil
+}
+
+// getDefaultEchoReadBuffer returns the minimum read buffer size for batches
+// with echo messages.
+//
+// See https://git.netfilter.org/libmnl/tree/include/libmnl/libmnl.h?id=03da98bcd284d55212bc79e91dfb63da0ef7b937#n20
+// and https://git.netfilter.org/nftables/tree/src/mnl.c?id=713592c6008a8c589a00d3d3d2e49709ff2de62c#n391
+func (cc *Conn) getDefaultEchoReadBuffer() int {
+	pageSize := os.Getpagesize()
+	return max(pageSize, 8192) * 1024
+}
+
+// enlargeReadBuffer automatically sets the read buffer of the given connection
+// to the required size. This is only done if the current read buffer is smaller
+// than the required size.
+//
+// See https://git.netfilter.org/nftables/tree/src/mnl.c?id=713592c6008a8c589a00d3d3d2e49709ff2de62c#n426
+func (cc *Conn) enlargeReadBuffer(conn *netlink.Conn) error {
+	if !cc.canEnlargeBuffers() {
+		return nil
+	}
+
+	var bufferSize int
+
+	// If there are any messages with the Echo flag, we initialize the buffer size
+	// to the default echo read buffer size.
+	for _, msg := range cc.messages {
+		if msg.Header.Flags&netlink.Echo == 0 {
+			bufferSize = cc.getDefaultEchoReadBuffer()
+			break
+		}
+	}
+
+	// Just like nftables, we allocate 1024 bytes for each message in the batch.
+	requiredSize := len(cc.messages) * 1024
+	if bufferSize < requiredSize {
+		bufferSize = requiredSize
+	}
+
+	currSize, err := conn.ReadBuffer()
+	if err != nil {
+		return err
+	}
+	if currSize < bufferSize {
+		return conn.SetReadBuffer(bufferSize)
+	}
+	return nil
 }
