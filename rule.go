@@ -101,12 +101,12 @@ func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
 	}
 
 	if _, err := conn.SendMessages([]netlink.Message{message}); err != nil {
-		return nil, fmt.Errorf("SendMessages: %v", err)
+		return nil, fmt.Errorf("SendMessages: %w", err)
 	}
 
 	reply, err := receiveAckAware(conn, message.Header.Flags)
 	if err != nil {
-		return nil, fmt.Errorf("receiveAckAware: %v", err)
+		return nil, fmt.Errorf("receiveAckAware: %w", err)
 	}
 	var rules []*Rule
 	for _, msg := range reply {

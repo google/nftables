@@ -66,7 +66,7 @@ func (e *Immediate) unmarshal(fam byte, data []byte) error {
 		case unix.NFTA_IMMEDIATE_DATA:
 			nestedAD, err := netlink.NewAttributeDecoder(ad.Bytes())
 			if err != nil {
-				return fmt.Errorf("nested NewAttributeDecoder() failed: %v", err)
+				return fmt.Errorf("nested NewAttributeDecoder() failed: %w", err)
 			}
 			for nestedAD.Next() {
 				switch nestedAD.Type() {
@@ -75,7 +75,7 @@ func (e *Immediate) unmarshal(fam byte, data []byte) error {
 				}
 			}
 			if nestedAD.Err() != nil {
-				return fmt.Errorf("decoding immediate: %v", nestedAD.Err())
+				return fmt.Errorf("decoding immediate: %w", nestedAD.Err())
 			}
 		}
 	}
