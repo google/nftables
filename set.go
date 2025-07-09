@@ -572,7 +572,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	if s.IsMap {
 		// Check if it is vmap case
 		if s.DataType.nftMagic == 1 {
-			// For Verdict data type, the expected magic is 0xfffff0
+			// For Verdict data type, the expected magic is 0xffffff00
 			tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NFTA_SET_DATA_TYPE, Data: binaryutil.BigEndian.PutUint32(uint32(unix.NFT_DATA_VERDICT))},
 				netlink.Attribute{Type: unix.NFTA_SET_DATA_LEN, Data: binaryutil.BigEndian.PutUint32(s.DataType.Bytes)})
 		} else {
@@ -772,9 +772,8 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 		case unix.NFTA_SET_DATA_TYPE:
 			nftMagic := ad.Uint32()
 			// Special case for the data type verdict, in the message it is stored as 0xffffff00 but it is defined as 1
-			if nftMagic == 0xffffff00 {
-				set.KeyType = TypeVerdict
-				break
+			if nftMagic == unix.NFT_DATA_VERDICT {
+				nftMagic = 1
 			}
 			dt, err := parseSetDatatype(nftMagic)
 			if err != nil {
