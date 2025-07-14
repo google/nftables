@@ -240,6 +240,30 @@ func TestMarshalSet(t *testing.T) {
 				Timeout:    30 * time.Second,
 			},
 		},
+		{
+			name: "Map ip-ip", // generic case
+			set: Set{
+				Name:     "test-map",
+				ID:       uint32(3),
+				Table:    tbl,
+				KeyType:  TypeIPAddr,
+				DataType: TypeIPAddr,
+				IsMap:    true,
+			},
+		},
+		{
+			// special case, see
+			// sets.go:setsFromMsg:(case unix.NFTA_SET_DATA_TYPE) and sets.go:AddSet:(if s.DataType.nftMagic == 1)
+			name: "Vedict map",
+			set: Set{
+				Name:     "test-map",
+				ID:       uint32(3),
+				Table:    tbl,
+				KeyType:  TypeIPAddr,
+				DataType: TypeVerdict,
+				IsMap:    true,
+			},
+		},
 	}
 
 	for i, tt := range tests {
