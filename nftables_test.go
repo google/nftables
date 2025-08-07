@@ -128,6 +128,48 @@ func ifname(n string) []byte {
 	return b
 }
 
+func TestTableCreateDestroy(t *testing.T) {
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer c.FlushRuleset()
+
+	filter := &nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	}
+	c.DelTable(filter, true)
+	c.AddTable(filter)
+	err := c.Flush()
+	if err != nil {
+		t.Fatalf("on Flush: %q", err.Error())
+	}
+
+	LookupMyTable := func() bool {
+		ts, err := c.ListTables()
+		if err != nil {
+			t.Fatalf("on ListTables: %q", err.Error())
+		}
+		return slices.ContainsFunc(ts, func(t *nftables.Table) bool {
+			return t.Name == filter.Name && t.Family == filter.Family
+		})
+	}
+	if !LookupMyTable() {
+		t.Fatal("AddTable doesn't create my table!")
+	}
+
+	c.DelTable(filter)
+	err = c.Flush()
+	if err != nil {
+		t.Fatalf("on Flush: %q", err.Error())
+	}
+
+	if LookupMyTable() {
+		t.Fatal("DelTable doesn't delete my table!")
+	}
+
+	c.DelTable(filter, true) // just for test that 'force' ignore error 'not found'
+}
+
 func TestRuleOperations(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
