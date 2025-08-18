@@ -111,9 +111,7 @@ func TestNFTables(t *testing.T) {
 					})
 				}
 
-				if err := c.AddSet(devicesSet, elements); err != nil {
-					t.Errorf("failed to add Set %s : %v", devicesSet.Name, err)
-				}
+				c.AddSet(devicesSet, elements)
 
 				flowtable := &nftables.Flowtable{
 					Table:    table,

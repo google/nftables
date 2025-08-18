@@ -290,9 +290,7 @@ func TestRuleHandle(t *testing.T) {
 		{
 			Name: "delete-rule",
 			Func: func() {
-				if err := c.DelRule(rule2); err != nil {
-					t.Errorf("DelRule failed: %v", err)
-				}
+				c.DelRule(rule2)
 			},
 			Expect: []string{"1", "3"},
 		},
@@ -3335,12 +3333,10 @@ func TestCreateUseAnonymousSet(t *testing.T) {
 		KeyType:   nftables.TypeInetService,
 	}
 
-	if err := c.AddSet(set, []nftables.SetElement{
+	c.AddSet(set, []nftables.SetElement{
 		{Key: binaryutil.BigEndian.PutUint16(69)},
 		{Key: binaryutil.BigEndian.PutUint16(1163)},
-	}); err != nil {
-		t.Errorf("c.AddSet() failed: %v", err)
-	}
+	})
 
 	c.AddRule(&nftables.Rule{
 		Table: filter,
@@ -3414,9 +3410,7 @@ func TestCappedErrMsgOnSets(t *testing.T) {
 		Name:    "if_set",
 		KeyType: nftables.TypeIFName,
 	}
-	if err := c.AddSet(ifSet, nil); err != nil {
-		t.Errorf("c.AddSet(ifSet) failed: %v", err)
-	}
+	c.AddSet(ifSet, nil)
 	if err := c.Flush(); err != nil {
 		t.Errorf("failed adding set ifSet: %v", err)
 	}
@@ -3437,9 +3431,7 @@ func TestCappedErrMsgOnSets(t *testing.T) {
 	elements := []nftables.SetElement{
 		{Key: []byte("012345678912345\x00")},
 	}
-	if err := c.SetAddElements(ifSet, elements); err != nil {
-		t.Errorf("adding SetElements(ifSet) failed: %v", err)
-	}
+	c.SetAddElements(ifSet, elements)
 	if err := c.Flush(); err != nil {
 		t.Errorf("failed adding set elements ifSet: %v", err)
 	}
@@ -3477,24 +3469,16 @@ func TestCreateUseNamedSet(t *testing.T) {
 		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
-	if err := c.AddSet(portSet, nil); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
-	if err := c.SetAddElements(portSet, []nftables.SetElement{{Key: binaryutil.BigEndian.PutUint16(22)}}); err != nil {
-		t.Errorf("c.SetVal(portSet) failed: %v", err)
-	}
+	c.AddSet(portSet, nil)
+	c.SetAddElements(portSet, []nftables.SetElement{{Key: binaryutil.BigEndian.PutUint16(22)}})
 
 	ipSet := &nftables.Set{
 		Table:   filter,
 		Name:    "IPs_4_dayz",
 		KeyType: nftables.TypeIPAddr,
 	}
-	if err := c.AddSet(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.64").To4())}}); err != nil {
-		t.Errorf("c.AddSet(ipSet) failed: %v", err)
-	}
-	if err := c.SetAddElements(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.42").To4())}}); err != nil {
-		t.Errorf("c.SetVal(ipSet) failed: %v", err)
-	}
+	c.AddSet(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.64").To4())}})
+	c.SetAddElements(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.42").To4())}})
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -3535,12 +3519,8 @@ func TestCreateAutoMergeSet(t *testing.T) {
 		Interval:  true,
 		AutoMerge: true,
 	}
-	if err := c.AddSet(portSet, nil); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
-	if err := c.SetAddElements(portSet, []nftables.SetElement{{Key: binaryutil.BigEndian.PutUint16(22)}}); err != nil {
-		t.Errorf("c.SetVal(portSet) failed: %v", err)
-	}
+	c.AddSet(portSet, nil)
+	c.SetAddElements(portSet, []nftables.SetElement{{Key: binaryutil.BigEndian.PutUint16(22)}})
 
 	ipSet := &nftables.Set{
 		Table:     filter,
@@ -3549,12 +3529,8 @@ func TestCreateAutoMergeSet(t *testing.T) {
 		Interval:  true,
 		AutoMerge: true,
 	}
-	if err := c.AddSet(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.64").To4())}}); err != nil {
-		t.Errorf("c.AddSet(ipSet) failed: %v", err)
-	}
-	if err := c.SetAddElements(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.42").To4())}}); err != nil {
-		t.Errorf("c.SetVal(ipSet) failed: %v", err)
-	}
+	c.AddSet(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.64").To4())}})
+	c.SetAddElements(ipSet, []nftables.SetElement{{Key: []byte(net.ParseIP("192.168.1.42").To4())}})
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -3592,15 +3568,11 @@ func TestIP6SetAddElements(t *testing.T) {
 		Name:    "ports",
 		KeyType: nftables.TypeInetService,
 	}
-	if err := c.AddSet(portSet, nil); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
-	if err := c.SetAddElements(portSet, []nftables.SetElement{
+	c.AddSet(portSet, nil)
+	c.SetAddElements(portSet, []nftables.SetElement{
 		{Key: binaryutil.BigEndian.PutUint16(22)},
 		{Key: binaryutil.BigEndian.PutUint16(80)},
-	}); err != nil {
-		t.Errorf("c.SetVal(portSet) failed: %v", err)
-	}
+	})
 
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
@@ -3648,9 +3620,7 @@ func TestSetElementBatching(t *testing.T) {
 		elements[i].Key = binaryutil.BigEndian.PutUint16(uint16(i))
 		elements[i].Comment = "0123456789"
 	}
-	if err := c.AddSet(portSet, elements); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
+	c.AddSet(portSet, elements)
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -3694,12 +3664,8 @@ func TestCreateUseCounterSet(t *testing.T) {
 		KeyType: nftables.TypeInetService,
 		Counter: true,
 	}
-	if err := c.AddSet(portSet, nil); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
-	if err := c.SetAddElements(portSet, []nftables.SetElement{{Key: binaryutil.BigEndian.PutUint16(22)}}); err != nil {
-		t.Errorf("c.SetVal(portSet) failed: %v", err)
-	}
+	c.AddSet(portSet, nil)
+	c.SetAddElements(portSet, []nftables.SetElement{{Key: binaryutil.BigEndian.PutUint16(22)}})
 
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
@@ -3736,9 +3702,7 @@ func TestCreateDeleteNamedSet(t *testing.T) {
 		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
-	if err := c.AddSet(portSet, nil); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
+	c.AddSet(portSet, nil)
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -3777,9 +3741,7 @@ func TestDeleteElementNamedSet(t *testing.T) {
 		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
-	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}}); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
+	c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}})
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -3824,9 +3786,7 @@ func TestFlushNamedSet(t *testing.T) {
 		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
-	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}}); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
+	c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}})
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -3866,20 +3826,16 @@ func TestSetElementsInterval(t *testing.T) {
 		Interval:      true,
 		Concatenation: true,
 	}
-	if err := c.AddSet(portSet, nil); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
+	c.AddSet(portSet, nil)
 
 	// { 777c:ab4b:85f0:1614:49e5:d29b:aa7b:cc90 . 50000 . 8709:1cb9:163e:9b55:357f:ef64:708a:edcb }
 	keyBytes := []byte{119, 124, 171, 75, 133, 240, 22, 20, 73, 229, 210, 155, 170, 123, 204, 144, 195, 80, 0, 0, 135, 9, 28, 185, 22, 62, 155, 85, 53, 127, 239, 100, 112, 138, 237, 203}
 	// { 777c:ab4b:85f0:1614:49e5:d29b:aa7b:cc90 . 60000 . 8709:1cb9:163e:9b55:357f:ef64:708a:edcb }
 	keyEndBytes := []byte{119, 124, 171, 75, 133, 240, 22, 20, 73, 229, 210, 155, 170, 123, 204, 144, 234, 96, 0, 0, 135, 9, 28, 185, 22, 62, 155, 85, 53, 127, 239, 100, 112, 138, 237, 203}
 	// elements = { 777c:ab4b:85f0:1614:49e5:d29b:aa7b:cc90 . 50000-60000 . 8709:1cb9:163e:9b55:357f:ef64:708a:edcb }
-	if err := c.SetAddElements(portSet, []nftables.SetElement{
+	c.SetAddElements(portSet, []nftables.SetElement{
 		{Key: keyBytes, KeyEnd: keyEndBytes},
-	}); err != nil {
-		t.Errorf("c.SetVal(portSet) failed: %v", err)
-	}
+	})
 
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
@@ -3939,9 +3895,7 @@ func TestSetSizeConcat(t *testing.T) {
 		Size:          200,
 	}
 
-	if err := c.AddSet(set, nil); err != nil {
-		t.Errorf("c.AddSet(set) failed: %v", err)
-	}
+	c.AddSet(set, nil)
 
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
@@ -4550,9 +4504,7 @@ func TestGetLookupExprDestSet(t *testing.T) {
 		KeyType:  nftables.TypeInetService,
 		DataType: nftables.TypeVerdict,
 	}
-	if err := c.AddSet(set, nil); err != nil {
-		t.Errorf("c.AddSet(set) failed: %v", err)
-	}
+	c.AddSet(set, nil)
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -4647,9 +4599,7 @@ func TestGetRuleLookupVerdictImmediate(t *testing.T) {
 		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
-	if err := c.AddSet(set, nil); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
+	c.AddSet(set, nil)
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -4776,9 +4726,8 @@ func TestDynset(t *testing.T) {
 		HasTimeout: true,
 		Timeout:    time.Duration(600 * time.Second),
 	}
-	if err := c.AddSet(set, nil); err != nil {
-		t.Errorf("c.AddSet(portSet) failed: %v", err)
-	}
+	c.AddSet(set, nil)
+
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -4866,9 +4815,7 @@ func TestDynsetWithOneExpression(t *testing.T) {
 	}
 	c.AddTable(table)
 	c.AddChain(chain)
-	if err := c.AddSet(set, nil); err != nil {
-		t.Errorf("c.AddSet(myMeter) failed: %v", err)
-	}
+	c.AddSet(set, nil)
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -4968,9 +4915,7 @@ func TestDynsetWithMultipleExpressions(t *testing.T) {
 	}
 	c.AddTable(table)
 	c.AddChain(chain)
-	if err := c.AddSet(set, nil); err != nil {
-		t.Errorf("c.AddSet(myMeter) failed: %v", err)
-	}
+	c.AddSet(set, nil)
 	if err := c.Flush(); err != nil {
 		t.Errorf("c.Flush() failed: %v", err)
 	}
@@ -5612,9 +5557,7 @@ func TestSet4(t *testing.T) {
 		setElements[i].Key = binaryutil.BigEndian.PutUint16(ports[i])
 	}
 
-	if err := c.AddSet(&set, setElements); err != nil {
-		t.Fatal(err)
-	}
+	c.AddSet(&set, setElements)
 
 	c.AddRule(&nftables.Rule{
 		Table: tbl,
@@ -5653,15 +5596,13 @@ func TestSetComment(t *testing.T) {
 		Name:   "filter",
 	})
 
-	if err := c.AddSet(&nftables.Set{
+	c.AddSet(&nftables.Set{
 		ID:      2,
 		Table:   filter,
 		Name:    "setname",
 		KeyType: nftables.TypeIPAddr,
 		Comment: "test comment",
-	}, nil); err != nil {
-		t.Fatal(err)
-	}
+	}, nil)
 
 	if err := c.Flush(); err != nil {
 		t.Fatal(err)
@@ -7359,9 +7300,8 @@ func TestSetElementComment(t *testing.T) {
 	}
 
 	// Add the set with elements
-	if err := conn.AddSet(set, elements); err != nil {
-		t.Fatalf("failed to add set: %v", err)
-	}
+	conn.AddSet(set, elements)
+
 	if err := conn.Flush(); err != nil {
 		t.Fatalf("failed to flush: %v", err)
 	}
@@ -7427,5 +7367,70 @@ func TestAutoBufferSize(t *testing.T) {
 
 	if err := conn.Flush(); err != nil {
 		t.Fatalf("failed to flush: %v", err)
+	}
+}
+
+func TestDeferredErrors(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Name:   "test-table",
+		Family: nftables.TableFamilyIPv4,
+	})
+
+	// Anonymous sets have to be constant. Adding this set should queue an error.
+	set := &nftables.Set{
+		KeyType:   nftables.TypeInetService,
+		Table:     table,
+		Anonymous: true,
+		Constant:  false,
+	}
+	conn.AddSet(set, []nftables.SetElement{
+		{Key: binaryutil.BigEndian.PutUint16(80)},
+		{Key: binaryutil.BigEndian.PutUint16(443)},
+	})
+
+	chain := conn.AddChain(&nftables.Chain{
+		Name:  "test-chain",
+		Table: table,
+	})
+
+	conn.AddRule(&nftables.Rule{
+		Table: table,
+		Chain: chain,
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			&expr.Lookup{
+				SourceRegister: 1,
+				SetID:          set.ID,
+			},
+		},
+	})
+
+	if err := conn.Flush(); err == nil {
+		t.Error("expected error when adding a non-constant anonymous set, got nil")
+	} else {
+		var errno syscall.Errno
+		if errors.As(err, &errno) {
+			t.Errorf("expected error to be not syscall.Errno, got %v", errno)
+		}
+	}
+
+	table, err := conn.ListTable("test-table")
+	if table != nil || !errors.Is(err, syscall.ENOENT) {
+		t.Error("expected table to not exist")
 	}
 }

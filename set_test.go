@@ -268,9 +268,7 @@ func TestMarshalSet(t *testing.T) {
 
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := c.AddSet(&tt.set, nil); err != nil {
-				t.Fatal(err)
-			}
+			c.AddSet(&tt.set, nil)
 
 			connMsgSetIdx := connMsgStart + i
 			if len(c.messages) != connMsgSetIdx+1 {

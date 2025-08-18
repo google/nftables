@@ -152,7 +152,7 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	})...)
 
 	if compatPolicy, err := getCompatPolicy(r.Exprs); err != nil {
-		cc.setErr(err)
+		cc.appendErr(err)
 	} else if compatPolicy != nil {
 		data = append(data, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_COMPAT, Data: cc.marshalAttr([]netlink.Attribute{
@@ -256,7 +256,7 @@ func (cc *Conn) InsertRule(r *Rule) *Rule {
 
 // DelRule deletes the specified Rule. Either the Handle or ID of the
 // rule must be set.
-func (cc *Conn) DelRule(r *Rule) error {
+func (cc *Conn) DelRule(r *Rule) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
@@ -272,7 +272,8 @@ func (cc *Conn) DelRule(r *Rule) error {
 			{Type: unix.NFTA_RULE_ID, Data: binaryutil.BigEndian.PutUint32(r.ID)},
 		})...)
 	} else {
-		return fmt.Errorf("rule must have a handle or ID")
+		cc.appendErr(fmt.Errorf("rule must have a handle or ID"))
+		return
 	}
 	flags := netlink.Request | netlink.Acknowledge
 
@@ -283,8 +284,6 @@ func (cc *Conn) DelRule(r *Rule) error {
 		},
 		Data: append(extraHeader(uint8(r.Table.Family), 0), data...),
 	})
-
-	return nil
 }
 
 func ruleFromMsg(fam TableFamily, msg netlink.Message) (*Rule, error) {

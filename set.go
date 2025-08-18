@@ -372,23 +372,32 @@ func decodeElement(d []byte) ([]byte, error) {
 }
 
 // SetAddElements applies data points to an nftables set.
-func (cc *Conn) SetAddElements(s *Set, vals []SetElement) error {
+func (cc *Conn) SetAddElements(s *Set, vals []SetElement) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
+
 	if s.Anonymous {
-		return errors.New("anonymous sets cannot be updated")
+		cc.appendErr(errors.New("anonymous sets cannot be updated"))
+		return
 	}
-	return cc.appendElemList(s, vals, unix.NFT_MSG_NEWSETELEM)
+	err := cc.appendElemList(s, vals, unix.NFT_MSG_NEWSETELEM)
+	if err != nil {
+		cc.appendErr(err)
+	}
 }
 
 // SetDeleteElements deletes data points from an nftables set.
-func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
+func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	if s.Anonymous {
-		return errors.New("anonymous sets cannot be updated")
+		cc.appendErr(errors.New("anonymous sets cannot be updated"))
+		return
 	}
-	return cc.appendElemList(s, vals, unix.NFT_MSG_DELSETELEM)
+	err := cc.appendElemList(s, vals, unix.NFT_MSG_DELSETELEM)
+	if err != nil {
+		cc.appendErr(err)
+	}
 }
 
 // maxElemBatchSize is the maximum size in bytes of encoded set elements which
@@ -518,7 +527,7 @@ func (cc *Conn) appendElemList(s *Set, vals []SetElement, hdrType uint16) error 
 }
 
 // AddSet adds the specified Set.
-func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
+func (cc *Conn) AddSet(s *Set, vals []SetElement) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	// Based on nft implementation & linux source.
@@ -526,7 +535,8 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	// Another reference: https://git.netfilter.org/nftables/tree/src
 
 	if s.Anonymous && !s.Constant {
-		return errors.New("anonymous structs must be constant")
+		cc.appendErr(errors.New("anonymous structs must be constant"))
+		return
 	}
 
 	if s.ID == 0 {
@@ -591,7 +601,8 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 			{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(uint32(len(vals)))},
 		})
 		if err != nil {
-			return fmt.Errorf("fail to marshal number of elements %d: %v", len(vals), err)
+			cc.appendErr(fmt.Errorf("fail to marshal number of elements %d: %v", len(vals), err))
+			return
 		}
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: numberOfElements})
 	}
@@ -604,7 +615,8 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 			{Type: unix.NFTA_SET_DESC_SIZE, Data: binaryutil.BigEndian.PutUint32(s.Size)},
 		})
 		if err != nil {
-			return fmt.Errorf("fail to marshal set size description: %w", err)
+			cc.appendErr(fmt.Errorf("fail to marshal set size description: %w", err))
+			return
 		}
 
 		descBytes = append(descBytes, descSizeBytes...)
@@ -620,21 +632,24 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 				{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(v.Bytes)},
 			})
 			if err != nil {
-				return fmt.Errorf("fail to marshal element key size %d: %v", i, err)
+				cc.appendErr(fmt.Errorf("fail to marshal element key size %d: %v", i, err))
+				return
 			}
 			// Marshal base type size description
 			descSize, err := netlink.MarshalAttributes([]netlink.Attribute{
 				{Type: unix.NFTA_SET_DESC_SIZE, Data: valData},
 			})
 			if err != nil {
-				return fmt.Errorf("fail to marshal base type size description: %w", err)
+				cc.appendErr(fmt.Errorf("fail to marshal base type size description: %w", err))
+				return
 			}
 			concatDefinition = append(concatDefinition, descSize...)
 		}
 		// Marshal all base type descriptions into concatenation size description
 		concatBytes, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NLA_F_NESTED | NFTA_SET_DESC_CONCAT, Data: concatDefinition}})
 		if err != nil {
-			return fmt.Errorf("fail to marshal concat definition %v", err)
+			cc.appendErr(fmt.Errorf("fail to marshal concat definition %v", err))
+			return
 		}
 
 		descBytes = append(descBytes, concatBytes...)
@@ -675,7 +690,8 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 			{Type: unix.NFTA_SET_ELEM_PAD | unix.NFTA_SET_ELEM_DATA, Data: []byte{}},
 		})
 		if err != nil {
-			return err
+			cc.appendErr(err)
+			return
 		}
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | NFTA_SET_ELEM_EXPRESSIONS, Data: data})
 	}
@@ -689,7 +705,8 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	})
 
 	// Set the values of the set if initial values were provided.
-	return cc.appendElemList(s, vals, unix.NFT_MSG_NEWSETELEM)
+	err := cc.appendElemList(s, vals, unix.NFT_MSG_NEWSETELEM)
+	cc.appendErr(err)
 }
 
 // DelSet deletes a specific set, along with all elements it contains.

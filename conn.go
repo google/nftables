@@ -42,7 +42,7 @@ type Conn struct {
 	lasting      bool       // establish a lasting connection to be used across multiple netlink operations.
 	mu           sync.Mutex // protects the following state
 	messages     []netlinkMessage
-	err          error
+	errs         []error
 	nlconn       *netlink.Conn // netlink socket using NETLINK_NETFILTER protocol.
 	sockOptions  []SockOption
 	lastID       uint32
@@ -237,14 +237,15 @@ func (cc *Conn) Flush() error {
 	defer func() {
 		cc.messages = nil
 		cc.allocatedIDs = 0
+		cc.errs = nil
 		cc.mu.Unlock()
 	}()
 	if len(cc.messages) == 0 {
 		// Messages were already programmed, returning nil
 		return nil
 	}
-	if cc.err != nil {
-		return cc.err // serialization error
+	if len(cc.errs) > 0 {
+		return errors.Join(cc.errs...)
 	}
 	conn, closer, err := cc.netlinkConnUnderLock()
 	if err != nil {
@@ -363,17 +364,17 @@ func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
 	return conn, nil
 }
 
-func (cc *Conn) setErr(err error) {
-	if cc.err != nil {
+func (cc *Conn) appendErr(err error) {
+	if err == nil {
 		return
 	}
-	cc.err = err
+	cc.errs = append(cc.errs, err)
 }
 
 func (cc *Conn) marshalAttr(attrs []netlink.Attribute) []byte {
 	b, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
-		cc.setErr(err)
+		cc.appendErr(err)
 		return nil
 	}
 	return b
@@ -382,7 +383,7 @@ func (cc *Conn) marshalAttr(attrs []netlink.Attribute) []byte {
 func (cc *Conn) marshalExpr(fam byte, e expr.Any) []byte {
 	b, err := expr.Marshal(fam, e)
 	if err != nil {
-		cc.setErr(err)
+		cc.appendErr(err)
 		return nil
 	}
 	return b
