@@ -232,7 +232,9 @@ func (cc *Conn) CloseLasting() error {
 }
 
 // Flush sends all buffered commands in a single batch to nftables.
-func (cc *Conn) Flush() error {
+// If an optional gen ID is provided, it will be used in the batch begin message.
+// If the gen ID is not matched by the kernel, it will return an ERESTART error.
+func (cc *Conn) Flush(genID ...uint32) error {
 	cc.mu.Lock()
 	defer func() {
 		cc.messages = nil
@@ -259,7 +261,12 @@ func (cc *Conn) Flush() error {
 		return err
 	}
 
-	messages, err := conn.SendMessages(batch(cc.messages))
+	batch, err := batch(cc.messages, genID...)
+	if err != nil {
+		return err
+	}
+
+	messages, err := conn.SendMessages(batch)
 	if err != nil {
 		return fmt.Errorf("SendMessages: %w", err)
 	}
@@ -388,14 +395,30 @@ func (cc *Conn) marshalExpr(fam byte, e expr.Any) []byte {
 	return b
 }
 
-func batch(messages []netlinkMessage) []netlink.Message {
+// Batch wraps the given messages in a batch begin and end message, and returns
+// the resulting slice of netlink messages. If a genID is provided, it is
+// included in both batch messages.
+func batch(messages []netlinkMessage, genID ...uint32) ([]netlink.Message, error) {
 	batch := make([]netlink.Message, len(messages)+2)
+
+	data := extraHeader(0, unix.NFNL_SUBSYS_NFTABLES)
+
+	if len(genID) > 0 && genID[0] > 0 {
+		attr, err := netlink.MarshalAttributes([]netlink.Attribute{
+			{Type: unix.NFNL_BATCH_GENID, Data: binaryutil.BigEndian.PutUint32(genID[0])},
+		})
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, attr...)
+	}
+
 	batch[0] = netlink.Message{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_BEGIN),
 			Flags: netlink.Request,
 		},
-		Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
+		Data: data,
 	}
 
 	for i, msg := range messages {
@@ -410,10 +433,10 @@ func batch(messages []netlinkMessage) []netlink.Message {
 			Type:  netlink.HeaderType(unix.NFNL_MSG_BATCH_END),
 			Flags: netlink.Request,
 		},
-		Data: extraHeader(0, unix.NFNL_SUBSYS_NFTABLES),
+		Data: data,
 	}
 
-	return batch
+	return batch, nil
 }
 
 // allocateTransactionID allocates an identifier which is only valid in the

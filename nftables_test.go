@@ -7429,3 +7429,77 @@ func TestAutoBufferSize(t *testing.T) {
 		t.Fatalf("failed to flush: %v", err)
 	}
 }
+
+func TestGetGen(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	gen, err := conn.GetGen()
+	if err != nil {
+		t.Fatalf("failed to get gen: %v", err)
+	}
+
+	conn.AddTable(&nftables.Table{
+		Name:   "test-table",
+		Family: nftables.TableFamilyIPv4,
+	})
+
+	// Flush to increment the generation ID.
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("failed to flush: %v", err)
+	}
+
+	newGen, err := conn.GetGen()
+	if err != nil {
+		t.Fatalf("failed to get gen: %v", err)
+	}
+
+	if newGen.ID <= gen.ID {
+		t.Fatalf("gen ID did not increase, got %d, want > %d", newGen.ID, gen.ID)
+	}
+
+	if newGen.ProcComm != gen.ProcComm {
+		t.Errorf("gen ProcComm changed, got %s, want %s", newGen.ProcComm, gen.ProcComm)
+	}
+
+	if newGen.ProcPID != gen.ProcPID {
+		t.Errorf("gen ProcPID changed, got %d, want %d", newGen.ProcPID, gen.ProcPID)
+	}
+}
+
+func TestFlushWithGenID(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	gen, err := conn.GetGen()
+	if err != nil {
+		t.Fatalf("failed to get gen: %v", err)
+	}
+
+	conn.AddTable(&nftables.Table{
+		Name:   "test-table",
+		Family: nftables.TableFamilyIPv4,
+	})
+
+	// Flush to increment the generation ID.
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("failed to flush: %v", err)
+	}
+
+	conn.AddTable(&nftables.Table{
+		Name:   "test-table-2",
+		Family: nftables.TableFamilyIPv4,
+	})
+
+	err = conn.Flush(gen.ID)
+	if err == nil || !errors.Is(err, syscall.ERESTART) {
+		t.Errorf("expected error to be ERESTART, got: %v", err)
+	}
+
+	table, err := conn.ListTable("test-table-2")
+	if table != nil && !errors.Is(err, syscall.ENOENT) {
+		t.Errorf("expected table to not exist, got: %v", table)
+	}
+}
