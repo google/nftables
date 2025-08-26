@@ -14,6 +14,7 @@ type Gen struct {
 	ProcComm string // [16]byte - max 16bytes - kernel TASK_COMM_LEN
 }
 
+// Deprecated: GenMsg is an inconsistent old name for Gen. Prefer using Gen.
 type GenMsg = Gen
 
 const genHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWGEN)

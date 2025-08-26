@@ -7493,7 +7493,7 @@ func TestFlushWithGenID(t *testing.T) {
 		Family: nftables.TableFamilyIPv4,
 	})
 
-	err = conn.Flush(gen.ID)
+	err = conn.FlushWithGenID(gen.ID)
 	if err == nil || !errors.Is(err, syscall.ERESTART) {
 		t.Errorf("expected error to be ERESTART, got: %v", err)
 	}
