@@ -3818,7 +3818,7 @@ func TestDeleteElementNamedSet(t *testing.T) {
 		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
-	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}}); err != nil {
+	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}, {Key: []byte{0, 24}}}); err != nil {
 		t.Errorf("c.AddSet(portSet) failed: %v", err)
 	}
 	if err := c.Flush(); err != nil {
@@ -3832,6 +3832,22 @@ func TestDeleteElementNamedSet(t *testing.T) {
 	}
 
 	elems, err := c.GetSetElements(portSet)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(elems) != 2 {
+		t.Fatalf("len(elems) = %d, want 2", len(elems))
+	}
+
+	c.SetDestroyElements(portSet, []nftables.SetElement{{Key: []byte{0, 24}}})
+	c.SetDestroyElements(portSet, []nftables.SetElement{{Key: []byte{0, 24}}})
+	c.SetDestroyElements(portSet, []nftables.SetElement{{Key: []byte{0, 99}}})
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("Third c.Flush() failed: %v", err)
+	}
+
+	elems, err = c.GetSetElements(portSet)
 	if err != nil {
 		t.Errorf("c.GetSets() failed: %v", err)
 	}

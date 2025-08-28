@@ -44,6 +44,9 @@ const (
 	NFTA_SET_ELEM_KEY_END = 10
 	// https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h?id=d1289bff58e1878c3162f574c603da993e29b113#n429
 	NFTA_SET_ELEM_EXPRESSIONS = 0x11
+	// FIXME: in sys@v0.34.0 no unix.NFT_MSG_DESTROYSETELEM const yet.
+	// See nf_tables_msg_types enum in https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h
+	NFT_MSG_DESTROYSETELEM = 0x1e
 )
 
 // SetDatatype represents a datatype declared by nft.
@@ -389,6 +392,16 @@ func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
 		return errors.New("anonymous sets cannot be updated")
 	}
 	return cc.appendElemList(s, vals, unix.NFT_MSG_DELSETELEM)
+}
+
+// SetDestroyElements like SetDeleteElements, but not an error if setelement doesn't exists
+func (cc *Conn) SetDestroyElements(s *Set, vals []SetElement) error {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	if s.Anonymous {
+		return errors.New("anonymous sets cannot be updated")
+	}
+	return cc.appendElemList(s, vals, NFT_MSG_DESTROYSETELEM)
 }
 
 // maxElemBatchSize is the maximum size in bytes of encoded set elements which
@@ -826,8 +839,9 @@ func parseSetDatatype(magic uint32) (SetDatatype, error) {
 }
 
 const (
-	newElemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSETELEM)
-	delElemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSETELEM)
+	newElemHeaderType     = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSETELEM)
+	delElemHeaderType     = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSETELEM)
+	destroyElemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | NFT_MSG_DESTROYSETELEM)
 )
 
 func elementsFromMsg(fam byte, msg netlink.Message) ([]SetElement, error) {
