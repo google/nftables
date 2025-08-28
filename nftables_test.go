@@ -144,7 +144,7 @@ func TestTableCreateDestroy(t *testing.T) {
 		t.Fatalf("on Flush: %q", err.Error())
 	}
 
-	LookupMyTable := func() bool {
+	lookupMyTable := func() bool {
 		ts, err := c.ListTables()
 		if err != nil {
 			t.Fatalf("on ListTables: %q", err.Error())
@@ -153,7 +153,7 @@ func TestTableCreateDestroy(t *testing.T) {
 			return t.Name == filter.Name && t.Family == filter.Family
 		})
 	}
-	if !LookupMyTable() {
+	if !lookupMyTable() {
 		t.Fatal("AddTable doesn't create my table!")
 	}
 
@@ -162,7 +162,7 @@ func TestTableCreateDestroy(t *testing.T) {
 		t.Fatalf("on Flush: %q", err.Error())
 	}
 
-	if LookupMyTable() {
+	if lookupMyTable() {
 		t.Fatal("DestroyTable doesn't delete my table!")
 	}
 
