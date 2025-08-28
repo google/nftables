@@ -137,7 +137,7 @@ func TestTableCreateDestroy(t *testing.T) {
 		Family: nftables.TableFamilyIPv4,
 		Name:   "filter",
 	}
-	c.DelTable(filter, true)
+	c.DestroyTable(filter)
 	c.AddTable(filter)
 	err := c.Flush()
 	if err != nil {
@@ -157,17 +157,16 @@ func TestTableCreateDestroy(t *testing.T) {
 		t.Fatal("AddTable doesn't create my table!")
 	}
 
-	c.DelTable(filter)
-	err = c.Flush()
-	if err != nil {
+	c.DestroyTable(filter)
+	if err = c.Flush(); err != nil {
 		t.Fatalf("on Flush: %q", err.Error())
 	}
 
 	if LookupMyTable() {
-		t.Fatal("DelTable doesn't delete my table!")
+		t.Fatal("DestroyTable doesn't delete my table!")
 	}
 
-	c.DelTable(filter, true) // just for test that 'force' ignore error 'not found'
+	c.DestroyTable(filter) // just for test that 'destroy' ignore error 'not found'
 }
 
 func TestRuleOperations(t *testing.T) {

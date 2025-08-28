@@ -16,7 +16,6 @@ package nftables
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
@@ -55,7 +54,16 @@ type Table struct {
 }
 
 // DelTable deletes a specific table, along with all chains/rules it contains.
-func (cc *Conn) DelTable(t *Table, force ...bool) {
+func (cc *Conn) DelTable(t *Table) {
+	cc.delTable(t, delTableHeaderType)
+}
+
+// DestroyTable is like DelTable, but not an error if table doesn't exists
+func (cc *Conn) DestroyTable(t *Table) {
+	cc.delTable(t, destroyTableHeaderType)
+}
+
+func (cc *Conn) delTable(t *Table, hdrType netlink.HeaderType) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
@@ -63,12 +71,6 @@ func (cc *Conn) DelTable(t *Table, force ...bool) {
 		{Type: unix.NFTA_TABLE_FLAGS, Data: []byte{0, 0, 0, 0}},
 	})
 
-	var hdrType netlink.HeaderType
-	if slices.Contains(force, true) {
-		hdrType = destroyTableHeaderType
-	} else {
-		hdrType = delTableHeaderType
-	}
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  hdrType,
