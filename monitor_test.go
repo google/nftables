@@ -71,7 +71,7 @@ func TestMonitor(t *testing.T) {
 				return
 			}
 
-			genMsg := event.GeneratedBy.Data.(*nftables.GenMsg)
+			genMsg := event.GeneratedBy.Data.(*nftables.Gen)
 			fileName := filepath.Base(os.Args[0])
 
 			if genMsg.ProcComm != fileName {
