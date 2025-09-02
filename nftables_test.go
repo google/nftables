@@ -128,6 +128,47 @@ func ifname(n string) []byte {
 	return b
 }
 
+func TestTableCreateDestroy(t *testing.T) {
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer c.FlushRuleset()
+
+	filter := &nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "filter",
+	}
+	c.DestroyTable(filter)
+	c.AddTable(filter)
+	err := c.Flush()
+	if err != nil {
+		t.Fatalf("on Flush: %q", err.Error())
+	}
+
+	lookupMyTable := func() bool {
+		ts, err := c.ListTables()
+		if err != nil {
+			t.Fatalf("on ListTables: %q", err.Error())
+		}
+		return slices.ContainsFunc(ts, func(t *nftables.Table) bool {
+			return t.Name == filter.Name && t.Family == filter.Family
+		})
+	}
+	if !lookupMyTable() {
+		t.Fatal("AddTable doesn't create my table!")
+	}
+
+	c.DestroyTable(filter)
+	if err = c.Flush(); err != nil {
+		t.Fatalf("on Flush: %q", err.Error())
+	}
+
+	if lookupMyTable() {
+		t.Fatal("DestroyTable doesn't delete my table!")
+	}
+
+	c.DestroyTable(filter) // just for test that 'destroy' ignore error 'not found'
+}
+
 func TestRuleOperations(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
@@ -3777,7 +3818,7 @@ func TestDeleteElementNamedSet(t *testing.T) {
 		Name:    "test",
 		KeyType: nftables.TypeInetService,
 	}
-	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}}); err != nil {
+	if err := c.AddSet(portSet, []nftables.SetElement{{Key: []byte{0, 22}}, {Key: []byte{0, 23}}, {Key: []byte{0, 24}}}); err != nil {
 		t.Errorf("c.AddSet(portSet) failed: %v", err)
 	}
 	if err := c.Flush(); err != nil {
@@ -3791,6 +3832,22 @@ func TestDeleteElementNamedSet(t *testing.T) {
 	}
 
 	elems, err := c.GetSetElements(portSet)
+	if err != nil {
+		t.Errorf("c.GetSets() failed: %v", err)
+	}
+	if len(elems) != 2 {
+		t.Fatalf("len(elems) = %d, want 2", len(elems))
+	}
+
+	c.SetDestroyElements(portSet, []nftables.SetElement{{Key: []byte{0, 24}}})
+	c.SetDestroyElements(portSet, []nftables.SetElement{{Key: []byte{0, 24}}})
+	c.SetDestroyElements(portSet, []nftables.SetElement{{Key: []byte{0, 99}}})
+
+	if err := c.Flush(); err != nil {
+		t.Errorf("Third c.Flush() failed: %v", err)
+	}
+
+	elems, err = c.GetSetElements(portSet)
 	if err != nil {
 		t.Errorf("c.GetSets() failed: %v", err)
 	}

@@ -24,6 +24,10 @@ import (
 const (
 	newTableHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWTABLE)
 	delTableHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE)
+
+	// FIXME: in sys@v0.34.0 no unix.NFT_MSG_DESTROYTABLE const yet.
+	// See nf_tables_msg_types enum in https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h
+	destroyTableHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | 0x1a)
 )
 
 // TableFamily specifies the address family for this table.
@@ -51,15 +55,25 @@ type Table struct {
 
 // DelTable deletes a specific table, along with all chains/rules it contains.
 func (cc *Conn) DelTable(t *Table) {
+	cc.delTable(t, delTableHeaderType)
+}
+
+// DestroyTable is like DelTable, but not an error if table doesn't exists
+func (cc *Conn) DestroyTable(t *Table) {
+	cc.delTable(t, destroyTableHeaderType)
+}
+
+func (cc *Conn) delTable(t *Table, hdrType netlink.HeaderType) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
 		{Type: unix.NFTA_TABLE_NAME, Data: []byte(t.Name + "\x00")},
 		{Type: unix.NFTA_TABLE_FLAGS, Data: []byte{0, 0, 0, 0}},
 	})
+
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
+			Type:  hdrType,
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
