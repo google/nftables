@@ -71,31 +71,98 @@ type Rule struct {
 
 // GetRule returns the rules in the specified table and chain.
 //
-// Deprecated: use GetRules instead.
+// Deprecated: use GetRuleByHandle instead.
 func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 	return cc.GetRules(t, c)
 }
 
+// GetRuleByHandle returns the rule in the specified table and chain by its
+// handle.
+// https://docs.kernel.org/networking/netlink_spec/nftables.html#getrule
+func (cc *Conn) GetRuleByHandle(t *Table, c *Chain, handle uint64) (*Rule, error) {
+	rules, err := cc.getRules(t, c, unix.NFT_MSG_GETRULE, handle)
+	if err != nil {
+		return nil, err
+	}
+
+	if got, want := len(rules), 1; got != want {
+		return nil, fmt.Errorf("expected rule count %d, got %d", want, got)
+	}
+
+	return rules[0], nil
+}
+
 // GetRules returns the rules in the specified table and chain.
 func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
+	return cc.getRules(t, c, unix.NFT_MSG_GETRULE, 0)
+}
+
+// ResetRule resets the stateful expressions (e.g., counters) of the given
+// rule. The reset is applied immediately (no Flush is required). The returned
+// rule reflects its state prior to the reset. The provided rule must have a
+// valid Handle.
+// https://docs.kernel.org/networking/netlink_spec/nftables.html#getrule-reset
+func (cc *Conn) ResetRule(t *Table, c *Chain, handle uint64) (*Rule, error) {
+	if handle == 0 {
+		return nil, fmt.Errorf("rule must have a valid handle")
+	}
+
+	rules, err := cc.getRules(t, c, unix.NFT_MSG_GETRULE_RESET, handle)
+	if err != nil {
+		return nil, err
+	}
+
+	if got, want := len(rules), 1; got != want {
+		return nil, fmt.Errorf("expected rule count %d, got %d", want, got)
+	}
+
+	return rules[0], nil
+}
+
+// ResetRules resets the stateful expressions (e.g., counters) of all rules
+// in the given table and chain. The reset is applied immediately (no Flush
+// is required). The returned rules reflect their state prior to the reset.
+// state.
+// https://docs.kernel.org/networking/netlink_spec/nftables.html#getrule-reset
+func (cc *Conn) ResetRules(t *Table, c *Chain) ([]*Rule, error) {
+	return cc.getRules(t, c, unix.NFT_MSG_GETRULE_RESET, 0)
+}
+
+// getRules retrieves rules from the given table and chain, using the provided
+// msgType (either unix.NFT_MSG_GETRULE or unix.NFT_MSG_GETRULE_RESET). If the
+// handle is non-zero, the operation applies only to the rule with that handle.
+func (cc *Conn) getRules(t *Table, c *Chain, msgType int, handle uint64) ([]*Rule, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = closer() }()
 
-	data, err := netlink.MarshalAttributes([]netlink.Attribute{
+	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_RULE_TABLE, Data: []byte(t.Name + "\x00")},
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(c.Name + "\x00")},
-	})
+	}
+
+	var flags netlink.HeaderFlags = netlink.Request | netlink.Acknowledge | netlink.Dump
+
+	if handle != 0 {
+		attrs = append(attrs, netlink.Attribute{
+			Type: unix.NFTA_RULE_HANDLE,
+			Data: binaryutil.BigEndian.PutUint64(handle),
+		})
+
+		flags = netlink.Request | netlink.Acknowledge
+	}
+
+	data, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
 		return nil, err
 	}
 
 	message := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETRULE),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
+			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | msgType),
+			Flags: flags,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
