@@ -7560,3 +7560,229 @@ func TestFlushWithGenID(t *testing.T) {
 		t.Errorf("expected table to not exist, got: %v", table)
 	}
 }
+
+func TestGetRuleByHandle(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Name:   "test-table",
+		Family: nftables.TableFamilyIPv4,
+	})
+
+	chain := conn.AddChain(&nftables.Chain{
+		Name:  "test-chain",
+		Table: table,
+	})
+
+	for i := range 3 {
+		conn.AddRule(&nftables.Rule{
+			Table:    table,
+			Chain:    chain,
+			UserData: fmt.Appendf([]byte{}, "rule-%d", i+1),
+			Exprs: []expr.Any{
+				&expr.Verdict{
+					Kind: expr.VerdictAccept,
+				},
+			},
+		})
+	}
+
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("failed to flush: %v", err)
+	}
+
+	rules, err := conn.GetRules(table, chain)
+	if err != nil {
+		t.Fatalf("GetRules failed: %v", err)
+	}
+
+	want := rules[1]
+
+	got, err := conn.GetRuleByHandle(table, chain, want.Handle)
+	if err != nil {
+		t.Fatalf("GetRuleByHandle failed: %v", err)
+	}
+	if !bytes.Equal(got.UserData, want.UserData) {
+		t.Fatalf("expected userdata %q, got %q", got.UserData, want.UserData)
+	}
+}
+
+func TestResetRule(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Name:   "test-table",
+		Family: nftables.TableFamilyIPv4,
+	})
+
+	chain := conn.AddChain(&nftables.Chain{
+		Name:  "test-chain",
+		Table: table,
+	})
+
+	tests := [...]struct {
+		Bytes   uint64
+		Packets uint64
+		Reset   bool
+	}{
+		{
+			Bytes:   1024,
+			Packets: 1,
+			Reset:   false,
+		},
+		{
+			Bytes:   2048,
+			Packets: 2,
+			Reset:   true,
+		},
+		{
+			Bytes:   4096,
+			Packets: 4,
+			Reset:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		conn.AddRule(&nftables.Rule{
+			Table: table,
+			Chain: chain,
+			Exprs: []expr.Any{
+				&expr.Counter{
+					Bytes:   tt.Bytes,
+					Packets: tt.Packets,
+				},
+				&expr.Verdict{
+					Kind: expr.VerdictAccept,
+				},
+			},
+		})
+	}
+
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("flush failed: %v", err)
+	}
+
+	rules, err := conn.GetRules(table, chain)
+	if err != nil {
+		t.Fatalf("GetRules failed: %v", err)
+	}
+
+	if len(rules) != len(tests) {
+		t.Fatalf("expected %d rules, got %d", len(tests), len(rules))
+	}
+
+	for i, r := range rules {
+		if !tests[i].Reset {
+			continue
+		}
+		_, err := conn.ResetRule(table, chain, r.Handle)
+		if err != nil {
+			t.Fatalf("ResetRule failed: %v", err)
+		}
+	}
+
+	rules, err = conn.GetRules(table, chain)
+	if err != nil {
+		t.Fatalf("GetRules failed: %v", err)
+	}
+
+	for i, r := range rules {
+		counter, ok := r.Exprs[0].(*expr.Counter)
+		if !ok {
+			t.Errorf("expected first expr to be Counter, got %T", r.Exprs[0])
+		}
+
+		if tests[i].Reset {
+			if counter.Bytes != 0 || counter.Packets != 0 {
+				t.Errorf(
+					"expected counter values to be reset to zero, got Bytes=%d, Packets=%d",
+					counter.Bytes,
+					counter.Packets,
+				)
+			}
+		} else {
+			// Making sure that only the selected rules were reset
+			if counter.Bytes != tests[i].Bytes || counter.Packets != tests[i].Packets {
+				t.Errorf(
+					"unexpected counter values: got Bytes=%d, Packets=%d, want Bytes=%d, Packets=%d",
+					counter.Bytes,
+					counter.Packets,
+					tests[i].Bytes,
+					tests[i].Packets)
+			}
+		}
+	}
+}
+
+func TestResetRules(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Name:   "test-table",
+		Family: nftables.TableFamilyIPv4,
+	})
+
+	chain := conn.AddChain(&nftables.Chain{
+		Name:  "test-chain",
+		Table: table,
+	})
+
+	for range 3 {
+		conn.AddRule(&nftables.Rule{
+			Table: table,
+			Chain: chain,
+			Exprs: []expr.Any{
+				&expr.Counter{
+					Bytes:   1,
+					Packets: 1,
+				},
+				&expr.Verdict{
+					Kind: expr.VerdictAccept,
+				},
+			},
+		})
+	}
+
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("flush failed: %v", err)
+	}
+
+	rules, err := conn.GetRules(table, chain)
+	if err != nil {
+		t.Fatalf("GetRules failed: %v", err)
+	}
+
+	if len(rules) != 3 {
+		t.Fatalf("expected %d rules, got %d", 3, len(rules))
+	}
+
+	if _, err := conn.ResetRules(table, chain); err != nil {
+		t.Fatalf("ResetRules failed: %v", err)
+	}
+
+	rules, err = conn.GetRules(table, chain)
+	if err != nil {
+		t.Fatalf("GetRules failed: %v", err)
+	}
+
+	for _, r := range rules {
+		counter, ok := r.Exprs[0].(*expr.Counter)
+		if !ok {
+			t.Errorf("expected first expr to be Counter, got %T", r.Exprs[0])
+		}
+
+		if counter.Bytes != 0 || counter.Packets != 0 {
+			t.Errorf(
+				"expected counter values to be reset to zero, got Bytes=%d, Packets=%d",
+				counter.Bytes,
+				counter.Packets,
+			)
+		}
+	}
+}
