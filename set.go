@@ -247,16 +247,17 @@ func ConcatSetTypeElements(t SetDatatype) []SetDatatype {
 // Set represents an nftables set. Anonymous sets are only valid within the
 // context of a single batch.
 type Set struct {
-	Table      *Table
-	ID         uint32
-	Name       string
-	Anonymous  bool
-	Constant   bool
-	Interval   bool
-	AutoMerge  bool
-	IsMap      bool
-	HasTimeout bool
-	Counter    bool
+	Table        *Table
+	ID           uint32
+	Name         string
+	Anonymous    bool
+	Constant     bool
+	Interval     bool
+	DataInterval bool
+	AutoMerge    bool
+	IsMap        bool
+	HasTimeout   bool
+	Counter      bool
 	// Can be updated per evaluation path, per `nft list ruleset`
 	// indicates that set contains "flags dynamic"
 	// https://git.netfilter.org/libnftnl/tree/include/linux/netfilter/nf_tables.h?id=84d12cfacf8ddd857a09435f3d982ab6250d250c#n298
@@ -674,6 +675,10 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_MERGE_ELEMENTS, 1)
 	}
 
+	if s.DataInterval {
+		userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_DATA_INTERVAL, 1)
+	}
+
 	if len(s.Comment) != 0 {
 		userData = userdata.AppendString(userData, userdata.NFTNL_UDATA_SET_COMMENT, s.Comment)
 	}
@@ -797,8 +802,16 @@ func setsFromMsg(msg netlink.Message) (*Set, error) {
 			set.DataType.Bytes = binary.BigEndian.Uint32(ad.Bytes())
 		case unix.NFTA_SET_USERDATA:
 			data := ad.Bytes()
-			value, ok := userdata.GetUint32(data, userdata.NFTNL_UDATA_SET_MERGE_ELEMENTS)
-			set.AutoMerge = ok && value == 1
+			if val, ok := userdata.GetString(data, userdata.NFTNL_UDATA_SET_COMMENT); ok {
+				set.Comment = val
+			}
+			if val, ok := userdata.GetUint32(data, userdata.NFTNL_UDATA_SET_MERGE_ELEMENTS); ok {
+				set.AutoMerge = val == 1
+			}
+			if val, ok := userdata.GetUint32(data, userdata.NFTNL_UDATA_SET_DATA_INTERVAL); ok {
+				set.DataInterval = val == 1
+			}
+
 		case unix.NFTA_SET_DESC:
 			nestedAD, err := netlink.NewAttributeDecoder(ad.Bytes())
 			if err != nil {
