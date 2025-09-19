@@ -257,11 +257,24 @@ func TestMarshalSet(t *testing.T) {
 			name: "Vedict map",
 			set: Set{
 				Name:     "test-map",
-				ID:       uint32(3),
+				ID:       uint32(4),
 				Table:    tbl,
 				KeyType:  TypeIPAddr,
 				DataType: TypeVerdict,
 				IsMap:    true,
+			},
+		},
+		{
+			name: "Map ip-ip", // generic case
+			set: Set{
+				Name:         "test-map",
+				ID:           uint32(5),
+				Table:        tbl,
+				KeyType:      TypeIPAddr,
+				DataType:     TypeIPAddr,
+				DataInterval: true,
+				IsMap:        true,
+				Comment:      "test-comment",
 			},
 		},
 	}
