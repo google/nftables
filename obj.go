@@ -111,7 +111,7 @@ func (cc *Conn) AddObj(o Obj) Obj {
 	defer cc.mu.Unlock()
 	data, err := expr.MarshalExprData(byte(o.family()), o.data())
 	if err != nil {
-		cc.setErr(err)
+		cc.appendErr(err)
 		return nil
 	}
 
