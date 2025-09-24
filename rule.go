@@ -219,7 +219,7 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	})...)
 
 	if compatPolicy, err := getCompatPolicy(r.Exprs); err != nil {
-		cc.setErr(err)
+		cc.appendErr(err)
 	} else if compatPolicy != nil {
 		data = append(data, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_COMPAT, Data: cc.marshalAttr([]netlink.Attribute{
@@ -339,7 +339,9 @@ func (cc *Conn) DelRule(r *Rule) error {
 			{Type: unix.NFTA_RULE_ID, Data: binaryutil.BigEndian.PutUint32(r.ID)},
 		})...)
 	} else {
-		return fmt.Errorf("rule must have a handle or ID")
+		err := fmt.Errorf("rule must have a handle or ID")
+		cc.appendErr(err)
+		return err
 	}
 	flags := netlink.Request | netlink.Acknowledge
 

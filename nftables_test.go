@@ -7786,3 +7786,76 @@ func TestResetRules(t *testing.T) {
 		}
 	}
 }
+
+func TestAccumulatedErrors(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Name:   "test-table",
+		Family: nftables.TableFamilyIPv4,
+	})
+
+	// Anonymous sets have to be constant. Adding this set should return an error.
+	set := &nftables.Set{
+		KeyType:   nftables.TypeInetService,
+		Table:     table,
+		Anonymous: true,
+		Constant:  false,
+	}
+
+	addErr := conn.AddSet(set, []nftables.SetElement{
+		{Key: binaryutil.BigEndian.PutUint16(80)},
+		{Key: binaryutil.BigEndian.PutUint16(443)},
+	})
+	if addErr == nil {
+		t.Fatal("expected error when adding a non-constant anonymous set, got nil")
+	}
+
+	chain := conn.AddChain(&nftables.Chain{
+		Name:  "test-chain",
+		Table: table,
+	})
+
+	conn.AddRule(&nftables.Rule{
+		Table: table,
+		Chain: chain,
+		Exprs: []expr.Any{
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{unix.IPPROTO_TCP},
+			},
+			&expr.Payload{
+				DestRegister: 1,
+				Base:         expr.PayloadBaseTransportHeader,
+				Offset:       2,
+				Len:          2,
+			},
+			&expr.Lookup{
+				SourceRegister: 1,
+				SetID:          set.ID,
+			},
+		},
+	})
+
+	if err := conn.Flush(); err == nil {
+		t.Error("expected error when adding a non-constant anonymous set, got nil")
+	} else {
+		var errno syscall.Errno
+		if errors.As(err, &errno) {
+			t.Errorf("expected error to be not syscall.Errno, got %v", errno)
+		}
+
+		if !errors.Is(err, addErr) {
+			t.Errorf("expected error to be %v, got %v", addErr, err)
+		}
+	}
+
+	table, err := conn.ListTable("test-table")
+	if table != nil || !errors.Is(err, syscall.ENOENT) {
+		t.Error("expected table to not exist")
+	}
+}
