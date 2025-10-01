@@ -382,12 +382,12 @@ func (cc *Conn) SetAddElements(s *Set, vals []SetElement) error {
 
 	if s.Anonymous {
 		err := errors.New("anonymous sets cannot be updated")
-		cc.appendErr(err)
+		cc.setErr(err)
 		return err
 	}
 	err := cc.appendElemList(s, vals, unix.NFT_MSG_NEWSETELEM)
 	if err != nil {
-		cc.appendErr(err)
+		cc.setErr(err)
 		return err
 	}
 
@@ -400,11 +400,11 @@ func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
 	defer cc.mu.Unlock()
 	if s.Anonymous {
 		err := errors.New("anonymous sets cannot be updated")
-		cc.appendErr(err)
+		cc.setErr(err)
 		return err
 	}
 	if err := cc.appendElemList(s, vals, unix.NFT_MSG_DELSETELEM); err != nil {
-		cc.appendErr(err)
+		cc.setErr(err)
 		return err
 	}
 
@@ -417,7 +417,7 @@ func (cc *Conn) SetDestroyElements(s *Set, vals []SetElement) error {
 	defer cc.mu.Unlock()
 	if s.Anonymous {
 		err := errors.New("anonymous sets cannot be updated")
-		cc.appendErr(err)
+		cc.setErr(err)
 		return err
 	}
 	return cc.appendElemList(s, vals, NFT_MSG_DESTROYSETELEM)
@@ -559,7 +559,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 
 	if s.Anonymous && !s.Constant {
 		err := errors.New("anonymous structs must be constant")
-		cc.appendErr(err)
+		cc.setErr(err)
 		return err
 	}
 
@@ -626,7 +626,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		})
 		if err != nil {
 			err = fmt.Errorf("fail to marshal number of elements %d: %v", len(vals), err)
-			cc.appendErr(err)
+			cc.setErr(err)
 			return err
 		}
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_SET_DESC, Data: numberOfElements})
@@ -641,7 +641,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		})
 		if err != nil {
 			err = fmt.Errorf("fail to marshal set size description: %w", err)
-			cc.appendErr(err)
+			cc.setErr(err)
 			return err
 		}
 
@@ -659,7 +659,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 			})
 			if err != nil {
 				err = fmt.Errorf("fail to marshal element key size %d: %v", i, err)
-				cc.appendErr(err)
+				cc.setErr(err)
 				return err
 			}
 			// Marshal base type size description
@@ -668,7 +668,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 			})
 			if err != nil {
 				err = fmt.Errorf("fail to marshal base type size description: %w", err)
-				cc.appendErr(err)
+				cc.setErr(err)
 				return err
 			}
 			concatDefinition = append(concatDefinition, descSize...)
@@ -677,7 +677,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 		concatBytes, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NLA_F_NESTED | NFTA_SET_DESC_CONCAT, Data: concatDefinition}})
 		if err != nil {
 			err = fmt.Errorf("fail to marshal concat definition %v", err)
-			cc.appendErr(err)
+			cc.setErr(err)
 			return err
 		}
 
@@ -723,7 +723,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 			{Type: unix.NFTA_SET_ELEM_PAD | unix.NFTA_SET_ELEM_DATA, Data: []byte{}},
 		})
 		if err != nil {
-			cc.appendErr(err)
+			cc.setErr(err)
 			return err
 		}
 		tableInfo = append(tableInfo, netlink.Attribute{Type: unix.NLA_F_NESTED | NFTA_SET_ELEM_EXPRESSIONS, Data: data})
@@ -739,7 +739,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 
 	// Set the values of the set if initial values were provided.
 	if err := cc.appendElemList(s, vals, unix.NFT_MSG_NEWSETELEM); err != nil {
-		cc.appendErr(err)
+		cc.setErr(err)
 		return err
 	}
 

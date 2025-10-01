@@ -7787,7 +7787,7 @@ func TestResetRules(t *testing.T) {
 	}
 }
 
-func TestAccumulatedErrors(t *testing.T) {
+func TestPreservedFirstError(t *testing.T) {
 	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
 	defer nftest.CleanupSystemConn(t, newNS)
 	defer conn.FlushRuleset()

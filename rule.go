@@ -219,7 +219,7 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	})...)
 
 	if compatPolicy, err := getCompatPolicy(r.Exprs); err != nil {
-		cc.appendErr(err)
+		cc.setErr(err)
 	} else if compatPolicy != nil {
 		data = append(data, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NLA_F_NESTED | unix.NFTA_RULE_COMPAT, Data: cc.marshalAttr([]netlink.Attribute{
@@ -340,7 +340,7 @@ func (cc *Conn) DelRule(r *Rule) error {
 		})...)
 	} else {
 		err := fmt.Errorf("rule must have a handle or ID")
-		cc.appendErr(err)
+		cc.setErr(err)
 		return err
 	}
 	flags := netlink.Request | netlink.Acknowledge
