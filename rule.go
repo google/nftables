@@ -339,7 +339,9 @@ func (cc *Conn) DelRule(r *Rule) error {
 			{Type: unix.NFTA_RULE_ID, Data: binaryutil.BigEndian.PutUint32(r.ID)},
 		})...)
 	} else {
-		return fmt.Errorf("rule must have a handle or ID")
+		err := fmt.Errorf("rule must have a handle or ID")
+		cc.setErr(err)
+		return err
 	}
 	flags := netlink.Request | netlink.Acknowledge
 

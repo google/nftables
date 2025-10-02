@@ -250,6 +250,7 @@ func (cc *Conn) flush(genID uint32) error {
 	defer func() {
 		cc.messages = nil
 		cc.allocatedIDs = 0
+		cc.err = nil
 		cc.mu.Unlock()
 	}()
 	if len(cc.messages) == 0 {
@@ -257,7 +258,7 @@ func (cc *Conn) flush(genID uint32) error {
 		return nil
 	}
 	if cc.err != nil {
-		return cc.err // serialization error
+		return cc.err
 	}
 	conn, closer, err := cc.netlinkConnUnderLock()
 	if err != nil {
