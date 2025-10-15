@@ -34,6 +34,7 @@ import (
 	"github.com/google/nftables/internal/nftest"
 	"github.com/google/nftables/xt"
 	"github.com/mdlayher/netlink"
+	"github.com/vishvananda/netns"
 	"golang.org/x/sys/unix"
 )
 
@@ -7945,5 +7946,84 @@ func TestGetPortID(t *testing.T) {
 
 	if pid == 0 {
 		t.Fatalf("conn.GetPortID() returned invalid port ID: %d", pid)
+	}
+}
+
+func TestSocketDrainingOnErrors(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupError    func(conn *nftables.Conn, ns netns.NsHandle) error
+		expectedError error
+		description   string
+	}{
+		{
+			name: "short_circuited_error",
+			setupError: func(conn *nftables.Conn, ns netns.NsHandle) error {
+				// Add multiple tables but trigger EPERM before kernel processes all
+				conn.AddTable(&nftables.Table{Name: "table1", Family: nftables.TableFamilyIPv4})
+				conn.AddTable(&nftables.Table{Name: "table2", Family: nftables.TableFamilyIPv4})
+				conn.AddTable(&nftables.Table{Name: "table3", Family: nftables.TableFamilyIPv4})
+
+				// Drop privileges to trigger immediate EPERM (short-circuit)
+				return nftest.AsUnprivileged(conn.Flush)
+			},
+			expectedError: syscall.EPERM,
+			description:   "kernel returns EPERM immediately without processing all messages",
+		},
+		{
+			name: "non_short_circuited_error",
+			setupError: func(conn *nftables.Conn, ns netns.NsHandle) error {
+				// Use new connection to create an owned table
+				newConn, err := nftables.New(nftables.WithNetNSFd(int(ns)), nftables.AsLasting())
+				if err != nil {
+					return err
+				}
+				defer newConn.CloseLasting()
+
+				ownedTable := &nftables.Table{
+					Name:   "owned-table",
+					Family: nftables.TableFamilyIPv4,
+					Flags:  nftables.TableFlagOwner | nftables.TableFlagPersist,
+				}
+				newConn.AddTable(ownedTable)
+				if err := newConn.Flush(); err != nil {
+					return err
+				}
+
+				// Use old connection to try deleting owned table (will fail)
+				conn.DelTable(ownedTable)
+				conn.AddTable(&nftables.Table{Name: "table2", Family: nftables.TableFamilyIPv4})
+				conn.AddTable(&nftables.Table{Name: "table3", Family: nftables.TableFamilyIPv4})
+
+				return conn.Flush()
+			},
+			expectedError: syscall.EPERM,
+			description:   "kernel processes all messages but returns EPERM for owned table deletion",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+			conn, err := nftables.New(nftables.WithNetNSFd(int(newNS)), nftables.AsLasting())
+			if err != nil {
+				t.Fatalf("nftables.New() failed: %v", err)
+			}
+			defer nftest.CleanupSystemConn(t, newNS)
+			defer conn.FlushRuleset()
+			defer conn.CloseLasting()
+
+			err = tt.setupError(conn, newNS)
+
+			if err == nil || !errors.Is(err, tt.expectedError) {
+				t.Fatalf("expected %v error, got %v", tt.expectedError, err)
+			}
+
+			// Verify socket is properly drained. If not, this will fail as
+			// there will be leftover messages in the socket buffer.
+			if _, err := conn.ListTables(); err != nil {
+				t.Fatalf("ListTables failed after error - socket not properly drained: %v", err)
+			}
+		})
 	}
 }
