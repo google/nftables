@@ -1088,6 +1088,10 @@ func TestGetRules(t *testing.T) {
 				}
 				want = want[1:]
 			}
+
+			if len(reply) == 0 {
+				return nil, nil
+			}
 			rep := reply[0]
 			reply = reply[1:]
 			return rep, nil
@@ -2394,6 +2398,9 @@ func TestGetObjReset(t *testing.T) {
 					t.Errorf("message %d: %s", idx, linediff(nfdump(got), nfdump(want)))
 				}
 				want = want[1:]
+			}
+			if len(reply) == 0 {
+				return nil, nil
 			}
 			rep := reply[0]
 			reply = reply[1:]

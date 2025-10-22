@@ -955,9 +955,9 @@ func (cc *Conn) GetSets(t *Table) ([]*Set, error) {
 		return nil, fmt.Errorf("SendMessages: %v", err)
 	}
 
-	reply, err := receiveAckAware(conn, message.Header.Flags)
+	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receiveAckAware: %v", err)
+		return nil, fmt.Errorf("receive: %v", err)
 	}
 	var sets []*Set
 	for _, msg := range reply {
@@ -1000,13 +1000,13 @@ func (cc *Conn) GetSetByName(t *Table, name string) (*Set, error) {
 		return nil, fmt.Errorf("SendMessages: %w", err)
 	}
 
-	reply, err := receiveAckAware(conn, message.Header.Flags)
+	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receiveAckAware: %w", err)
+		return nil, fmt.Errorf("receive: %w", err)
 	}
 
 	if len(reply) != 1 {
-		return nil, fmt.Errorf("receiveAckAware: expected to receive 1 message but got %d", len(reply))
+		return nil, fmt.Errorf("receive: expected to receive 1 message but got %d", len(reply))
 	}
 	rs, err := setsFromMsg(reply[0])
 	if err != nil {
@@ -1045,9 +1045,9 @@ func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
 		return nil, fmt.Errorf("SendMessages: %v", err)
 	}
 
-	reply, err := receiveAckAware(conn, message.Header.Flags)
+	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receiveAckAware: %v", err)
+		return nil, fmt.Errorf("receive: %v", err)
 	}
 	var elems []SetElement
 	for _, msg := range reply {
