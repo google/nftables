@@ -15,8 +15,10 @@
 package nftables
 
 import (
+	"encoding/binary"
 	"fmt"
 
+	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -44,12 +46,41 @@ const (
 	TableFamilyBridge      TableFamily = unix.NFPROTO_BRIDGE
 )
 
+const (
+	// https://github.com/torvalds/linux/blob/cbd2257dc96e3e46217540fcb095a757ffa20d96/include/uapi/linux/netfilter/nf_tables.h#L211
+	nftaTableOwner = 0x07
+
+	// https://github.com/torvalds/linux/blob/cbd2257dc96e3e46217540fcb095a757ffa20d96/include/uapi/linux/netfilter/nf_tables.h#L185
+	nftTableFDormant = 0x1
+	nftTableFOwner   = 0x2
+	nftTableFPersist = 0x4
+)
+
+type TableFlags uint32
+
+const (
+	// Use TableFlagDormant to create the table in dormant state. A dormant
+	// table does not process packets until it is explicitly activated.
+	TableFlagDormant TableFlags = nftTableFDormant
+	// Use TableFlagOwner to set the owner of the table to the
+	// port ID of the creating connection. The table lifetime will
+	// then be bound to the lifetime of that connection unless the
+	// TableFlagPersist flag is also set. Should be used with lasting
+	// connections.
+	TableFlagOwner TableFlags = nftTableFOwner
+	// Use TableFlagPersist to make the table persistent, when used
+	// together with TableFlagOwner. A persistent table is not
+	// automatically removed when the creating connection is closed.
+	TableFlagPersist TableFlags = nftTableFPersist
+)
+
 // A Table contains Chains. See also
 // https://wiki.nftables.org/wiki-nftables/index.php/Configuring_tables
 type Table struct {
-	Name   string // NFTA_TABLE_NAME
-	Use    uint32 // NFTA_TABLE_USE (Number of chains in table)
-	Flags  uint32 // NFTA_TABLE_FLAGS
+	Name   string     // NFTA_TABLE_NAME
+	Use    uint32     // NFTA_TABLE_USE (Number of chains in table)
+	Flags  TableFlags // NFTA_TABLE_FLAGS
+	Owner  uint32     // NFTA_TABLE_OWNER
 	Family TableFamily
 }
 
@@ -83,10 +114,21 @@ func (cc *Conn) delTable(t *Table, hdrType netlink.HeaderType) {
 func (cc *Conn) addTable(t *Table, flag netlink.HeaderFlags) *Table {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
-	data := cc.marshalAttr([]netlink.Attribute{
+	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_TABLE_NAME, Data: []byte(t.Name + "\x00")},
-		{Type: unix.NFTA_TABLE_FLAGS, Data: []byte{0, 0, 0, 0}},
-	})
+	}
+	if t.Flags&TableFlagOwner == TableFlagOwner {
+		pid, err := cc.getPortIDUnderLock()
+		if err != nil {
+			cc.setErr(fmt.Errorf("failed to get port ID: %v", err))
+		}
+
+		attrs = append(attrs, netlink.Attribute{Type: nftaTableOwner, Data: binaryutil.BigEndian.PutUint32(pid)})
+	}
+
+	attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_TABLE_FLAGS, Data: binaryutil.BigEndian.PutUint32(uint32(t.Flags))})
+	data := cc.marshalAttr(attrs)
+
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWTABLE),
@@ -211,6 +253,8 @@ func tableFromMsg(msg netlink.Message) (*Table, error) {
 		return nil, err
 	}
 
+	ad.ByteOrder = binary.BigEndian
+
 	for ad.Next() {
 		switch ad.Type() {
 		case unix.NFTA_TABLE_NAME:
@@ -218,7 +262,9 @@ func tableFromMsg(msg netlink.Message) (*Table, error) {
 		case unix.NFTA_TABLE_USE:
 			t.Use = ad.Uint32()
 		case unix.NFTA_TABLE_FLAGS:
-			t.Flags = ad.Uint32()
+			t.Flags = TableFlags(ad.Uint32())
+		case nftaTableOwner:
+			t.Owner = ad.Uint32()
 		}
 	}
 

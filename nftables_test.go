@@ -7859,3 +7859,91 @@ func TestPreservedFirstError(t *testing.T) {
 		t.Error("expected table to not exist")
 	}
 }
+
+func TestTableOwnership(t *testing.T) {
+	tests := []struct {
+		name        string
+		flags       nftables.TableFlags
+		wantListErr error
+	}{
+		{
+			name:        "owned persistent table",
+			flags:       nftables.TableFlagOwner | nftables.TableFlagPersist,
+			wantListErr: nil,
+		},
+		{
+			name:        "owned non-persistent table",
+			flags:       nftables.TableFlagOwner,
+			wantListErr: syscall.ENOENT,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+			conn, err := nftables.New(nftables.WithNetNSFd(int(newNS)), nftables.AsLasting())
+			if err != nil {
+				t.Fatalf("nftables.New() failed: %v", err)
+			}
+			defer nftest.CleanupSystemConn(t, newNS)
+			defer conn.FlushRuleset()
+
+			table := &nftables.Table{
+				Name:   "test-table",
+				Family: nftables.TableFamilyIPv4,
+				Flags:  tt.flags,
+			}
+			conn.AddTable(table)
+			if err := conn.Flush(); err != nil {
+				t.Fatalf("conn.Flush() failed: %v", err)
+			}
+			gotTable, err := conn.ListTable("test-table")
+			if err != nil {
+				t.Fatalf("conn.ListTable() failed: %v", err)
+			}
+
+			portId, err := conn.GetPortID()
+			if err != nil {
+				t.Fatalf("conn.GetPortID() failed: %v", err)
+			}
+
+			if gotTable.Owner != portId {
+				t.Fatalf("expected table owner to be %d, got %d", portId, gotTable.Owner)
+			}
+
+			if err := conn.CloseLasting(); err != nil {
+				t.Fatalf("conn.CloseLasting() failed: %v", err)
+			}
+
+			newConn, err := nftables.New(nftables.WithNetNSFd(int(newNS)))
+			if err != nil {
+				t.Fatalf("nftables.New() failed: %v", err)
+			}
+			defer newConn.FlushRuleset()
+
+			gotTable, err = newConn.ListTable("test-table")
+			if !errors.Is(err, tt.wantListErr) {
+				t.Fatalf("expected ListTable error to be %v, got %v", tt.wantListErr, err)
+			}
+
+			if tt.wantListErr == nil && gotTable.Owner != 0 {
+				t.Fatalf("expected table owner to be reset after closing connection, got %d", gotTable.Owner)
+			}
+		})
+	}
+}
+
+func TestGetPortID(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	pid, err := conn.GetPortID()
+	if err != nil {
+		t.Fatalf("conn.GetPortID() failed: %v", err)
+	}
+
+	if pid == 0 {
+		t.Fatalf("conn.GetPortID() returned invalid port ID: %d", pid)
+	}
+}

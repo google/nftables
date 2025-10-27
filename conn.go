@@ -568,3 +568,23 @@ func (cc *Conn) enlargeReadBuffer(conn *netlink.Conn) error {
 	}
 	return nil
 }
+
+// getPortIDUnderLock returns the netlink port ID associated with this
+// connection. It must be called while holding the Conn.mu lock.
+func (cc *Conn) getPortIDUnderLock() (uint32, error) {
+	conn, closer, err := cc.netlinkConnUnderLock()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = closer() }()
+
+	return conn.PID(), nil
+}
+
+// GetPortID returns the netlink port ID associated with this connection.
+func (cc *Conn) GetPortID() (uint32, error) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	pid, err := cc.getPortIDUnderLock()
+	return pid, err
+}
