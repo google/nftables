@@ -180,24 +180,8 @@ func receiveAckAware(nlconn *netlink.Conn, sentMsgFlags netlink.HeaderFlags) ([]
 	}
 
 	// Now we expect an ack
-	ack, err := nlconn.Receive()
-	if err != nil {
+	if _, err = nlconn.Receive(); err != nil {
 		return nil, err
-	}
-
-	if len(ack) == 0 {
-		return nil, errors.New("received an empty ack")
-	}
-
-	msg := ack[0]
-	if msg.Header.Type != netlink.Error {
-		// acks should be delivered as NLMSG_ERROR
-		return nil, fmt.Errorf("expected header %v, but got %v", netlink.Error, msg.Header.Type)
-	}
-
-	if binaryutil.BigEndian.Uint32(msg.Data[:4]) != 0 {
-		// if errno field is not set to 0 (success), this is an error
-		return nil, fmt.Errorf("error delivered in message: %v", msg.Data)
 	}
 
 	return reply, nil
