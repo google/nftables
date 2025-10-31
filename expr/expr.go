@@ -211,6 +211,8 @@ func exprFromName(name string) Any {
 		e = &Fib{}
 	case "numgen":
 		e = &Numgen{}
+	case "socket":
+		e = &Socket{}
 	}
 	return e
 }
