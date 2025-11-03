@@ -20,7 +20,6 @@ import (
 	"math"
 	"os"
 	"sync"
-	"syscall"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
@@ -262,69 +261,98 @@ func (cc *Conn) flush(genID uint32) error {
 		return err
 	}
 
-	messages, err := conn.SendMessages(batch)
+	sentMsgs, err := conn.SendMessages(batch)
 	if err != nil {
 		return fmt.Errorf("SendMessages: %w", err)
 	}
 
 	var errs error
 
-	// Fetch replies. Each message with the Echo flag triggers a reply of the same
-	// type. Additionally, if the first message of the batch has the Echo flag, we
-	// get a reply of type NFT_MSG_NEWGEN, which we ignore.
-	replyIndex := 0
-	for replyIndex < len(cc.messages) && cc.messages[replyIndex].Header.Flags&netlink.Echo == 0 {
-		replyIndex++
-	}
-	replies, err := conn.Receive()
-	for err == nil && len(replies) != 0 {
-		reply := replies[0]
-		if reply.Header.Type == netlink.Error && reply.Header.Sequence == messages[1].Header.Sequence {
-			// The next message is the acknowledgement for the first message in the
-			// batch; stop looking for replies.
-			break
-		} else if replyIndex < len(cc.messages) {
-			msg := messages[replyIndex+1]
-			if msg.Header.Sequence == reply.Header.Sequence && msg.Header.Type == reply.Header.Type {
-				// The only messages which set the echo flag are rule create messages.
-				err := cc.messages[replyIndex].rule.handleCreateReply(reply)
-				if err != nil {
-					errs = errors.Join(errs, err)
-				}
-				replyIndex++
-				for replyIndex < len(cc.messages) && cc.messages[replyIndex].Header.Flags&netlink.Echo == 0 {
-					replyIndex++
-				}
-			}
-		}
-		replies = replies[1:]
-		if len(replies) == 0 {
-			replies, err = conn.Receive()
-		}
-	}
+	seqToMsgMap := cc.getSeqToMsgMap(sentMsgs)
 
-	// Fetch the requested acknowledgement for each message we sent.
-	for i := range cc.messages {
-		if i != 0 {
-			_, err = conn.Receive()
-		}
+	for {
+		ready, err := cc.isReadReady(conn)
 		if err != nil {
-			if errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.ENOBUFS) || errors.Is(err, syscall.ENOMEM) {
-				// Kernel will only send one error to user space.
-				return err
+			return err
+		}
+
+		// Since SendMessages is blocking and netlink communication is synchronous,
+		// the kernel has already processed the request and queued any responses by
+		// the time SendMessages returns. Therefore, if isReadReady returns false on
+		// the first call, it means there are no messages coming at all and we can
+		// safely exit.
+		if !ready {
+			break
+		}
+
+		replies, err := conn.Receive()
+		if err != nil {
+			errs = errors.Join(errs, fmt.Errorf("receive: %w", err))
+		}
+
+		if len(replies) == 0 && cc.TestDial != nil {
+			// When using a test dial function, we don't always get a reply for each
+			// sent message. Additionally, there is no buffer to poll for more data,
+			// so we stop here.
+			break
+		}
+
+		for _, reply := range replies {
+			if err := cc.handleEchoReply(seqToMsgMap, reply); err != nil {
+				errs = errors.Join(errs, err)
 			}
-			errs = errors.Join(errs, err)
 		}
 	}
 
 	if errs != nil {
-		return fmt.Errorf("conn.Receive: %w", errs)
-	}
-	if replyIndex < len(cc.messages) {
-		return fmt.Errorf("missing reply for message %d in batch", replyIndex)
+		return errs
 	}
 
 	return nil
+}
+
+// getSeqToMsgMap returns a map of the cc.messages that were sent, indexed by
+// their sequence number as included in the sent netlink messages. The returned
+// map will not include the batch begin and end messages.
+func (cc *Conn) getSeqToMsgMap(sentMsgs []netlink.Message) map[uint32]netlinkMessage {
+	seqToMsgMap := make(map[uint32]netlinkMessage)
+	for i, msg := range sentMsgs {
+		if i == 0 || i == len(sentMsgs)-1 {
+			// Skip batch begin and end messages.
+			continue
+		}
+		if i-1 >= len(cc.messages) {
+			// Should not happen, but be defensive.
+			break
+		}
+		// Update the header in the original message, as the sequence number
+		// and possibly other fields have been updated by the the underlying
+		// netlink library.
+		cc.messages[i-1].Header = msg.Header
+		seqToMsgMap[msg.Header.Sequence] = cc.messages[i-1]
+	}
+
+	return seqToMsgMap
+}
+
+func (cc *Conn) handleEchoReply(seqToMsgMap map[uint32]netlinkMessage, reply netlink.Message) error {
+	sentMsg, ok := seqToMsgMap[reply.Header.Sequence]
+	if !ok {
+		// We don't have a record of sending this message, ignore.
+		return nil
+	}
+
+	if sentMsg.Header.Flags&netlink.Echo == 0 {
+		return nil
+	}
+
+	switch reply.Header.Type {
+	case newRuleHeaderType:
+		// The only messages which set the echo flag are rule create messages.
+		return sentMsg.rule.handleCreateReply(reply)
+	default:
+		return nil
+	}
 }
 
 // FlushRuleset flushes the entire ruleset. See also
