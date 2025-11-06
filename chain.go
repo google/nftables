@@ -142,7 +142,7 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 	}
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWCHAIN),
+			Type:  nftMsgNewChain.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(c.Table.Family), 0), data...),
@@ -163,7 +163,7 @@ func (cc *Conn) DelChain(c *Chain) {
 
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELCHAIN),
+			Type:  nftMsgDelChain.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(uint8(c.Table.Family), 0), data...),
@@ -181,7 +181,7 @@ func (cc *Conn) FlushChain(c *Chain) {
 	})
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE),
+			Type:  nftMsgDelRule.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(uint8(c.Table.Family), 0), data...),
@@ -207,7 +207,7 @@ func (cc *Conn) ListChain(table *Table, chain string) (*Chain, error) {
 	}
 	msg := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETCHAIN),
+			Type:  nftMsgGetChain.HeaderType(),
 			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(table.Family), 0), cc.marshalAttr(attrs)...),
@@ -242,7 +242,7 @@ func (cc *Conn) ListChainsOfTableFamily(family TableFamily) ([]*Chain, error) {
 
 	msg := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETCHAIN),
+			Type:  nftMsgGetChain.HeaderType(),
 			Flags: netlink.Request | netlink.Dump,
 		},
 		Data: extraHeader(uint8(family), 0),
@@ -267,8 +267,8 @@ func (cc *Conn) ListChainsOfTableFamily(family TableFamily) ([]*Chain, error) {
 }
 
 func chainFromMsg(msg netlink.Message) (*Chain, error) {
-	newChainHeaderType := netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWCHAIN)
-	delChainHeaderType := netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELCHAIN)
+	newChainHeaderType := nftMsgNewChain.HeaderType()
+	delChainHeaderType := nftMsgDelChain.HeaderType()
 	if got, want1, want2 := msg.Header.Type, newChainHeaderType, delChainHeaderType; got != want1 && got != want2 {
 		return nil, fmt.Errorf("unexpected header type: got %v, want %v or %v", got, want1, want2)
 	}

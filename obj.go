@@ -25,9 +25,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const (
-	newObjHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ)
-	delObjHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELOBJ)
+var (
+	newObjHeaderType = nftMsgNewObj.HeaderType()
+	delObjHeaderType = nftMsgDelObj.HeaderType()
 )
 
 type ObjType uint32
@@ -126,7 +126,7 @@ func (cc *Conn) AddObj(o Obj) Obj {
 
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWOBJ),
+			Type:  nftMsgNewObj.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(o.family()), 0), cc.marshalAttr(attrs)...),
@@ -148,7 +148,7 @@ func (cc *Conn) DeleteObject(o Obj) {
 
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELOBJ),
+			Type:  nftMsgDelObj.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(uint8(o.family()), 0), data...),
@@ -161,7 +161,7 @@ func (cc *Conn) DeleteObject(o Obj) {
 // e.g. QuotaObj, CounterObj or NamedObj. Prefer using the more
 // generic NamedObj over the legacy QuotaObj and CounterObj types.
 func (cc *Conn) GetObj(o Obj) ([]Obj, error) {
-	return cc.getObjWithLegacyType(nil, o.table(), unix.NFT_MSG_GETOBJ, cc.useLegacyObjType(o))
+	return cc.getObjWithLegacyType(nil, o.table(), nftMsgGetObj, cc.useLegacyObjType(o))
 }
 
 // GetObjReset is a legacy method that reset all Obj that belongs
@@ -170,7 +170,7 @@ func (cc *Conn) GetObj(o Obj) ([]Obj, error) {
 // e.g. QuotaObj, CounterObj or NamedObj. Prefer using the more
 // generic NamedObj over the legacy QuotaObj and CounterObj types.
 func (cc *Conn) GetObjReset(o Obj) ([]Obj, error) {
-	return cc.getObjWithLegacyType(nil, o.table(), unix.NFT_MSG_GETOBJ_RESET, cc.useLegacyObjType(o))
+	return cc.getObjWithLegacyType(nil, o.table(), nftMsgGetObjReset, cc.useLegacyObjType(o))
 }
 
 // GetObject gets the specified Object
@@ -178,7 +178,7 @@ func (cc *Conn) GetObjReset(o Obj) ([]Obj, error) {
 // e.g. QuotaObj, CounterObj or NamedObj. Prefer using the more
 // generic NamedObj over the legacy QuotaObj and CounterObj types.
 func (cc *Conn) GetObject(o Obj) (Obj, error) {
-	objs, err := cc.getObj(o, o.table(), unix.NFT_MSG_GETOBJ)
+	objs, err := cc.getObj(o, o.table(), nftMsgGetObj)
 
 	if len(objs) == 0 {
 		return nil, err
@@ -191,13 +191,13 @@ func (cc *Conn) GetObject(o Obj) (Obj, error) {
 // This function will always return legacy QuotaObj/CounterObj
 // types for backwards compatibility
 func (cc *Conn) GetObjects(t *Table) ([]Obj, error) {
-	return cc.getObj(nil, t, unix.NFT_MSG_GETOBJ)
+	return cc.getObj(nil, t, nftMsgGetObj)
 }
 
 // GetNamedObjects get all the Obj that belongs to the given table
 // This function always return NamedObj types
 func (cc *Conn) GetNamedObjects(t *Table) ([]Obj, error) {
-	return cc.getObjWithLegacyType(nil, t, unix.NFT_MSG_GETOBJ, false)
+	return cc.getObjWithLegacyType(nil, t, nftMsgGetObj, false)
 }
 
 // ResetObject reset the given Obj
@@ -205,7 +205,7 @@ func (cc *Conn) GetNamedObjects(t *Table) ([]Obj, error) {
 // e.g. QuotaObj, CounterObj or NamedObj. Prefer using the more
 // generic NamedObj over the legacy QuotaObj and CounterObj types.
 func (cc *Conn) ResetObject(o Obj) (Obj, error) {
-	objs, err := cc.getObj(o, o.table(), unix.NFT_MSG_GETOBJ_RESET)
+	objs, err := cc.getObj(o, o.table(), nftMsgGetObjReset)
 
 	if len(objs) == 0 {
 		return nil, err
@@ -218,13 +218,13 @@ func (cc *Conn) ResetObject(o Obj) (Obj, error) {
 // This function will always return legacy QuotaObj/CounterObj
 // types for backwards compatibility
 func (cc *Conn) ResetObjects(t *Table) ([]Obj, error) {
-	return cc.getObj(nil, t, unix.NFT_MSG_GETOBJ_RESET)
+	return cc.getObj(nil, t, nftMsgGetObjReset)
 }
 
 // ResetNamedObjects reset all the Obj that belongs to the given table
 // This function always return NamedObj types
 func (cc *Conn) ResetNamedObjects(t *Table) ([]Obj, error) {
-	return cc.getObjWithLegacyType(nil, t, unix.NFT_MSG_GETOBJ_RESET, false)
+	return cc.getObjWithLegacyType(nil, t, nftMsgGetObjReset, false)
 }
 
 func objFromMsg(msg netlink.Message, returnLegacyType bool) (Obj, error) {
@@ -321,11 +321,11 @@ func objDataFromMsgLegacy(ad *netlink.AttributeDecoder, table *Table, name strin
 	return nil, fmt.Errorf("malformed stateful object")
 }
 
-func (cc *Conn) getObj(o Obj, t *Table, msgType uint16) ([]Obj, error) {
+func (cc *Conn) getObj(o Obj, t *Table, msgType nftMsgType) ([]Obj, error) {
 	return cc.getObjWithLegacyType(o, t, msgType, cc.useLegacyObjType(o))
 }
 
-func (cc *Conn) getObjWithLegacyType(o Obj, t *Table, msgType uint16, returnLegacyObjType bool) ([]Obj, error) {
+func (cc *Conn) getObjWithLegacyType(o Obj, t *Table, msgType nftMsgType, returnLegacyObjType bool) ([]Obj, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
@@ -354,7 +354,7 @@ func (cc *Conn) getObjWithLegacyType(o Obj, t *Table, msgType uint16, returnLega
 
 	message := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | msgType),
+			Type:  msgType.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge | flags,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
