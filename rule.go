@@ -171,9 +171,9 @@ func (cc *Conn) getRules(t *Table, c *Chain, msgType int, handle uint64) ([]*Rul
 		return nil, fmt.Errorf("SendMessages: %v", err)
 	}
 
-	reply, err := receiveAckAware(conn, message.Header.Flags)
+	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receiveAckAware: %v", err)
+		return nil, fmt.Errorf("receive: %v", err)
 	}
 	var rules []*Rule
 	for _, msg := range reply {

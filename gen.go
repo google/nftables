@@ -77,12 +77,12 @@ func (cc *Conn) GetGen() (*Gen, error) {
 		return nil, fmt.Errorf("SendMessages: %v", err)
 	}
 
-	reply, err := receiveAckAware(conn, message.Header.Flags)
+	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receiveAckAware: %v", err)
+		return nil, fmt.Errorf("receive: %v", err)
 	}
 	if len(reply) == 0 {
-		return nil, fmt.Errorf("receiveAckAware: no reply")
+		return nil, fmt.Errorf("receive: no reply")
 	}
 	return genFromMsg(reply[0])
 }

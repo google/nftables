@@ -364,9 +364,9 @@ func (cc *Conn) getObjWithLegacyType(o Obj, t *Table, msgType uint16, returnLega
 		return nil, fmt.Errorf("SendMessages: %v", err)
 	}
 
-	reply, err := receiveAckAware(conn, message.Header.Flags)
+	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receiveAckAware: %v", err)
+		return nil, fmt.Errorf("receive: %v", err)
 	}
 	var objs []Obj
 	for _, msg := range reply {

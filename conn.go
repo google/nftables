@@ -17,6 +17,7 @@ package nftables
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"math"
 	"os"
 	"sync"
@@ -156,34 +157,86 @@ func (cc *Conn) netlinkConnUnderLock() (*netlink.Conn, netlinkCloser, error) {
 	return nlconn, func() error { return nlconn.Close() }, nil
 }
 
-func receiveAckAware(nlconn *netlink.Conn, sentMsgFlags netlink.HeaderFlags) ([]netlink.Message, error) {
-	if nlconn == nil {
-		return nil, errors.New("netlink conn is not initialized")
+// receiveSeq returns an iterator of messages to be read from the provided
+// netlink connection filtering out non-nftables messages. It will stop
+// iterating when the buffer is drained or in the case of a fatal error.
+// Non-fatal errors encountered while receiving messages are yielded along with
+// a zero-value message.
+func (cc *Conn) receiveSeq(conn *netlink.Conn) iter.Seq2[netlink.Message, error] {
+	return func(yield func(netlink.Message, error) bool) {
+		if conn == nil {
+			yield(netlink.Message{}, errors.New("netlink conn is not initialized"))
+			return
+		}
+
+		for {
+			ready, err := cc.isReadReady(conn)
+			if err != nil {
+				yield(netlink.Message{}, err)
+				return
+			}
+
+			// Since SendMessages is blocking and netlink communication is
+			// synchronous, the kernel has already processed the request and queued
+			// any responses by the time SendMessages returns. Therefore, if
+			// isReadReady returns false on the first call, it means there are no
+			// messages coming at all and we can safely exit.
+			if !ready {
+				break
+			}
+
+			replies, err := conn.Receive()
+			if err != nil {
+				// Yield the error but continue iterating
+				if !yield(netlink.Message{}, err) {
+					return
+				}
+				continue
+			}
+
+			if len(replies) == 0 && cc.TestDial != nil {
+				// When using a test dial function, we don't always get a reply for each
+				// sent message. Additionally, there is no buffer to poll for more data,
+				// so we stop here.
+				return
+			}
+
+			for _, msg := range replies {
+				// Filter out non-nftables messages.
+				// In practice, this would only be netlink.Error messages.
+				// Those are handled by the netlink library itself and should be
+				// reported as errors by conn.Receive().
+				subsystem := msg.Header.Type >> 8
+				if subsystem != unix.NFNL_SUBSYS_NFTABLES {
+					continue
+				}
+
+				// Stop iteration if yield returns false
+				if !yield(msg, nil) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// receive will drain the receive buffer of the provided netlink connection
+// and return all received messages, along with the first error encountered,
+// if any.
+func (cc *Conn) receive(conn *netlink.Conn) ([]netlink.Message, error) {
+	var allReplies []netlink.Message
+	var firstErr error
+
+	for msg, err := range cc.receiveSeq(conn) {
+		if err != nil && firstErr == nil {
+			firstErr = err
+			continue
+		}
+
+		allReplies = append(allReplies, msg)
 	}
 
-	// first receive will be the message that we expect
-	reply, err := nlconn.Receive()
-	if err != nil {
-		return nil, err
-	}
-
-	if (sentMsgFlags & netlink.Acknowledge) == 0 {
-		// we did not request an ack
-		return reply, nil
-	}
-
-	if (sentMsgFlags & netlink.Dump) == netlink.Dump {
-		// sent message has Dump flag set, there will be no acks
-		// https://github.com/torvalds/linux/blob/7e062cda7d90543ac8c7700fc7c5527d0c0f22ad/net/netlink/af_netlink.c#L2387-L2390
-		return reply, nil
-	}
-
-	// Now we expect an ack
-	if _, err = nlconn.Receive(); err != nil {
-		return nil, err
-	}
-
-	return reply, nil
+	return allReplies, firstErr
 }
 
 // CloseLasting closes the lasting netlink connection that has been opened using
@@ -266,49 +319,25 @@ func (cc *Conn) flush(genID uint32) error {
 		return fmt.Errorf("SendMessages: %w", err)
 	}
 
-	var errs error
+	var firstErr error
 
 	seqToMsgMap := cc.getSeqToMsgMap(sentMsgs)
 
-	for {
-		ready, err := cc.isReadReady(conn)
+	for reply, err := range cc.receiveSeq(conn) {
 		if err != nil {
-			return err
-		}
-
-		// Since SendMessages is blocking and netlink communication is synchronous,
-		// the kernel has already processed the request and queued any responses by
-		// the time SendMessages returns. Therefore, if isReadReady returns false on
-		// the first call, it means there are no messages coming at all and we can
-		// safely exit.
-		if !ready {
-			break
-		}
-
-		replies, err := conn.Receive()
-		if err != nil {
-			errs = errors.Join(errs, fmt.Errorf("receive: %w", err))
-		}
-
-		if len(replies) == 0 && cc.TestDial != nil {
-			// When using a test dial function, we don't always get a reply for each
-			// sent message. Additionally, there is no buffer to poll for more data,
-			// so we stop here.
-			break
-		}
-
-		for _, reply := range replies {
-			if err := cc.handleEchoReply(seqToMsgMap, reply); err != nil {
-				errs = errors.Join(errs, err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("receive: %w", err)
 			}
+			// Continue receiving further messages even after an error.
+			continue
+		}
+
+		if err := cc.handleEchoReply(seqToMsgMap, reply); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
 
-	if errs != nil {
-		return errs
-	}
-
-	return nil
+	return firstErr
 }
 
 // getSeqToMsgMap returns a map of the cc.messages that were sent, indexed by
