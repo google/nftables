@@ -437,79 +437,7 @@ func (cc *Conn) appendElemList(s *Set, vals []SetElement, hdrType uint16) error 
 	var batches [][]netlink.Attribute
 
 	for i, v := range vals {
-		item := make([]netlink.Attribute, 0)
-		var flags uint32
-		if v.IntervalEnd {
-			flags |= unix.NFT_SET_ELEM_INTERVAL_END
-			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_FLAGS | unix.NLA_F_NESTED, Data: binaryutil.BigEndian.PutUint32(flags)})
-		}
-
-		encodedKey, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.Key}})
-		if err != nil {
-			return fmt.Errorf("marshal key %d: %v", i, err)
-		}
-
-		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey})
-		if len(v.KeyEnd) > 0 {
-			encodedKeyEnd, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.KeyEnd}})
-			if err != nil {
-				return fmt.Errorf("marshal key end %d: %v", i, err)
-			}
-			item = append(item, netlink.Attribute{Type: NFTA_SET_ELEM_KEY_END | unix.NLA_F_NESTED, Data: encodedKeyEnd})
-		}
-		if s.HasTimeout && v.Timeout != 0 {
-			// Set has Timeout flag set, which means an individual element can specify its own timeout.
-			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_TIMEOUT, Data: binaryutil.BigEndian.PutUint64(uint64(v.Timeout.Milliseconds()))})
-		}
-		// The following switch statement deal with 3 different types of elements.
-		// 1. v is an element of vmap
-		// 2. v is an element of a regular map
-		// 3. v is an element of a regular set (default)
-		switch {
-		case v.VerdictData != nil:
-			// Since VerdictData is not nil, v is vmap element, need to add to the attributes
-			encodedVal := []byte{}
-			encodedKind, err := netlink.MarshalAttributes([]netlink.Attribute{
-				{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(uint32(v.VerdictData.Kind))},
-			})
-			if err != nil {
-				return fmt.Errorf("marshal item %d: %v", i, err)
-			}
-			encodedVal = append(encodedVal, encodedKind...)
-			if len(v.VerdictData.Chain) != 0 {
-				encodedChain, err := netlink.MarshalAttributes([]netlink.Attribute{
-					{Type: unix.NFTA_SET_ELEM_DATA, Data: []byte(v.VerdictData.Chain + "\x00")},
-				})
-				if err != nil {
-					return fmt.Errorf("marshal item %d: %v", i, err)
-				}
-				encodedVal = append(encodedVal, encodedChain...)
-			}
-			encodedVerdict, err := netlink.MarshalAttributes([]netlink.Attribute{
-				{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVal}})
-			if err != nil {
-				return fmt.Errorf("marshal item %d: %v", i, err)
-			}
-			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVerdict})
-		case len(v.Val) > 0:
-			// Since v.Val's length is not 0 then, v is a regular map element, need to add to the attributes
-			encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: v.Val}})
-			if err != nil {
-				return fmt.Errorf("marshal item %d: %v", i, err)
-			}
-
-			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVal})
-		default:
-			// If niether of previous cases matche, it means 'e' is an element of a regular Set, no need to add to the attributes
-		}
-
-		// Add comment to userdata if present
-		if len(v.Comment) > 0 {
-			userData := userdata.AppendString(nil, userdata.NFTNL_UDATA_SET_ELEM_COMMENT, v.Comment)
-			item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_USERDATA, Data: userData})
-		}
-
-		encodedItem, err := netlink.MarshalAttributes(item)
+		encodedItem, err := cc.marshalSetElement(s, &v)
 		if err != nil {
 			return fmt.Errorf("marshal item %d: %v", i, err)
 		}
@@ -547,6 +475,86 @@ func (cc *Conn) appendElemList(s *Set, vals []SetElement, hdrType uint16) error 
 		})
 	}
 	return nil
+}
+
+func (cc *Conn) marshalSetElement(s *Set, e *SetElement) ([]byte, error) {
+	item := make([]netlink.Attribute, 0)
+	var flags uint32
+	if e.IntervalEnd {
+		flags |= unix.NFT_SET_ELEM_INTERVAL_END
+		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_FLAGS | unix.NLA_F_NESTED, Data: binaryutil.BigEndian.PutUint32(flags)})
+	}
+
+	encodedKey, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: e.Key}})
+	if err != nil {
+		return nil, err
+	}
+
+	item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_KEY | unix.NLA_F_NESTED, Data: encodedKey})
+	if len(e.KeyEnd) > 0 {
+		encodedKeyEnd, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: e.KeyEnd}})
+		if err != nil {
+			return nil, err
+		}
+		item = append(item, netlink.Attribute{Type: NFTA_SET_ELEM_KEY_END | unix.NLA_F_NESTED, Data: encodedKeyEnd})
+	}
+	if s.HasTimeout && e.Timeout != 0 {
+		// Set has Timeout flag set, which means an individual element can specify its own timeout.
+		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_TIMEOUT, Data: binaryutil.BigEndian.PutUint64(uint64(e.Timeout.Milliseconds()))})
+	}
+	// The following switch statement deal with 3 different types of elements.
+	// 1. v is an element of vmap
+	// 2. v is an element of a regular map
+	// 3. v is an element of a regular set (default)
+	switch {
+	case e.VerdictData != nil:
+		// Since VerdictData is not nil, v is vmap element, need to add to the attributes
+		encodedVal := []byte{}
+		encodedKind, err := netlink.MarshalAttributes([]netlink.Attribute{
+			{Type: unix.NFTA_DATA_VALUE, Data: binaryutil.BigEndian.PutUint32(uint32(e.VerdictData.Kind))},
+		})
+		if err != nil {
+			return nil, err
+		}
+		encodedVal = append(encodedVal, encodedKind...)
+		if len(e.VerdictData.Chain) != 0 {
+			encodedChain, err := netlink.MarshalAttributes([]netlink.Attribute{
+				{Type: unix.NFTA_SET_ELEM_DATA, Data: []byte(e.VerdictData.Chain + "\x00")},
+			})
+			if err != nil {
+				return nil, err
+			}
+			encodedVal = append(encodedVal, encodedChain...)
+		}
+		encodedVerdict, err := netlink.MarshalAttributes([]netlink.Attribute{
+			{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVal}})
+		if err != nil {
+			return nil, err
+		}
+		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVerdict})
+	case len(e.Val) > 0:
+		// Since v.Val's length is not 0 then, v is a regular map element, need to add to the attributes
+		encodedVal, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: unix.NFTA_DATA_VALUE, Data: e.Val}})
+		if err != nil {
+			return nil, err
+		}
+
+		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_DATA | unix.NLA_F_NESTED, Data: encodedVal})
+	default:
+		// If niether of previous cases matche, it means 'e' is an element of a regular Set, no need to add to the attributes
+	}
+
+	// Add comment to userdata if present
+	if len(e.Comment) > 0 {
+		userData := userdata.AppendString(nil, userdata.NFTNL_UDATA_SET_ELEM_COMMENT, e.Comment)
+		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_USERDATA, Data: userData})
+	}
+
+	encodedItem, err := netlink.MarshalAttributes(item)
+	if err != nil {
+		return nil, err
+	}
+	return encodedItem, nil
 }
 
 // AddSet adds the specified Set.
