@@ -102,7 +102,7 @@ func (cc *Conn) delTable(t *Table, hdrType netlink.HeaderType) {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  hdrType,
-			Flags: netlink.Request | netlink.Acknowledge,
+			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	})
@@ -129,7 +129,7 @@ func (cc *Conn) addTable(t *Table, flag netlink.HeaderFlags) *Table {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgNewTable.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge | flag,
+			Flags: netlink.Request | flag,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	})
@@ -159,7 +159,7 @@ func (cc *Conn) FlushTable(t *Table) {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgDelRule.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge,
+			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	})

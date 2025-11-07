@@ -143,7 +143,7 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgNewChain.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
+			Flags: netlink.Request | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(c.Table.Family), 0), data...),
 	})
@@ -164,7 +164,7 @@ func (cc *Conn) DelChain(c *Chain) {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgDelChain.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge,
+			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(c.Table.Family), 0), data...),
 	})
@@ -182,7 +182,7 @@ func (cc *Conn) FlushChain(c *Chain) {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgDelRule.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge,
+			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(c.Table.Family), 0), data...),
 	})

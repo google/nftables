@@ -127,7 +127,7 @@ func (cc *Conn) AddObj(o Obj) Obj {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgNewObj.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
+			Flags: netlink.Request | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(o.family()), 0), cc.marshalAttr(attrs)...),
 	})
@@ -149,7 +149,7 @@ func (cc *Conn) DeleteObject(o Obj) {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgDelObj.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge,
+			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(o.family()), 0), data...),
 	})
@@ -355,7 +355,7 @@ func (cc *Conn) getObjWithLegacyType(o Obj, t *Table, msgType nftMsgType, return
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  msgType.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge | flags,
+			Flags: netlink.Request | flags,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
