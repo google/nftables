@@ -87,3 +87,42 @@ func NetFirstAndLastIP(networkCIDR string) (first, last net.IP, err error) {
 
 	return first, last, nil
 }
+
+// nextIp returns the next IP address after the given one.
+// If the next address overflows, the sentinel values 0.0.0.0 (IPv4)
+// or :: (IPv6) are returned.
+func nextIP(ip net.IP) net.IP {
+	if ip == nil {
+		return nil
+	}
+
+	next := make(net.IP, len(ip))
+	copy(next, ip)
+
+	for i := len(next) - 1; i >= 0; i-- {
+		next[i]++
+		if next[i] != 0 {
+			return next
+		}
+	}
+
+	// All bytes overflowed to 0
+	return next
+}
+
+// NetInterval returns the half-open ([start, end)) interval of a CIDR string.
+// This is the range that nftables uses for interval matching with set elements.
+// Unlike NetFirstAndLastIP, the end value is one past the last IP in the
+// network. If the last IP is overflowed, the end value will be a zero IP.
+//
+// For example, for the CIDR "10.0.0.0/24", NetInterval returns
+// first=10.0.0.0 and last=10.0.1.0. Note that last is one more than the
+// broadcast address of the CIDR.
+func NetInterval(cidr string) (net.IP, net.IP, error) {
+	first, last, err := NetFirstAndLastIP(cidr)
+	if err != nil {
+		return first, last, err
+	}
+
+	return first, nextIP(last), nil
+}
