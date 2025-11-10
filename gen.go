@@ -17,7 +17,7 @@ type Gen struct {
 // Deprecated: GenMsg is an inconsistent old name for Gen. Prefer using Gen.
 type GenMsg = Gen
 
-const genHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWGEN)
+var genHeaderType = nftMsgNewGen.HeaderType()
 
 func genFromMsg(msg netlink.Message) (*Gen, error) {
 	if got, want := msg.Header.Type, genHeaderType; got != want {
@@ -67,7 +67,7 @@ func (cc *Conn) GetGen() (*Gen, error) {
 
 	message := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETGEN),
+			Type:  nftMsgGetGen.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(0, 0), data...),

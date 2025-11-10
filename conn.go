@@ -326,7 +326,7 @@ func (cc *Conn) flush(genID uint32) error {
 	for reply, err := range cc.receiveSeq(conn) {
 		if err != nil {
 			if firstErr == nil {
-				firstErr = fmt.Errorf("receive: %w", err)
+				firstErr = cc.handleReceiveError(seqToMsgMap, err)
 			}
 			// Continue receiving further messages even after an error.
 			continue
@@ -338,6 +338,45 @@ func (cc *Conn) flush(genID uint32) error {
 	}
 
 	return firstErr
+}
+
+// withOpError inspects err to see if it is a *netlink.OpError. If it is, it
+// calls fn with the *netlink.OpError and returns the result. If it is not, it
+// simply returns the err.
+func (cc *Conn) withOpError(err error, fn func(*netlink.OpError) error) error {
+	if err == nil {
+		return nil
+	}
+
+	var opErr *netlink.OpError
+	if errors.As(err, &opErr) {
+		return fn(opErr)
+	}
+
+	return err
+}
+
+// handleReceiveError inspects err to see if it is a *netlink.OpError. If it is,
+// it finds the original sent message using the sequence number from the error,
+// parses its nftMsgType, and returns a new error that includes the nftMsgType
+// string representation. If err is not a *netlink.OpError, it is simply
+// returned as-is.
+func (cc *Conn) handleReceiveError(msgs map[uint32]netlinkMessage, err error) error {
+	if err := cc.withOpError(err, func(opErr *netlink.OpError) error {
+		msg, ok := msgs[opErr.Sequence]
+		if !ok {
+			return opErr
+		}
+		nftMsgType, parseErr := parseNftMsgType(msg.Header.Type)
+		if parseErr != nil {
+			return opErr
+		}
+		return fmt.Errorf("%s: %w", nftMsgType.String(), opErr)
+	}); err != nil {
+		return fmt.Errorf("receive: %w", err)
+	}
+
+	return nil
 }
 
 // getSeqToMsgMap returns a map of the cc.messages that were sent, indexed by

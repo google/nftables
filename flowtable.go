@@ -25,14 +25,6 @@ import (
 
 const (
 	// not in ztypes_linux.go, added here
-	// https://cs.opensource.google/go/x/sys/+/c6bc011c:unix/ztypes_linux.go;l=1870-1892
-	NFT_MSG_NEWFLOWTABLE = 0x16
-	NFT_MSG_GETFLOWTABLE = 0x17
-	NFT_MSG_DELFLOWTABLE = 0x18
-)
-
-const (
-	// not in ztypes_linux.go, added here
 	// https://git.netfilter.org/libnftnl/tree/include/linux/netfilter/nf_tables.h?id=84d12cfacf8ddd857a09435f3d982ab6250d250c#n1634
 	_ = iota
 	NFTA_FLOWTABLE_TABLE
@@ -144,7 +136,7 @@ func (cc *Conn) AddFlowtable(f *Flowtable) *Flowtable {
 
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | NFT_MSG_NEWFLOWTABLE),
+			Type:  nftMsgNewFlowtable.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(f.Table.Family), 0), data...),
@@ -164,7 +156,7 @@ func (cc *Conn) DelFlowtable(f *Flowtable) {
 
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | NFT_MSG_DELFLOWTABLE),
+			Type:  nftMsgDelFlowtable.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(uint8(f.Table.Family), 0), data...),
@@ -207,7 +199,7 @@ func (cc *Conn) getFlowtables(t *Table) ([]netlink.Message, error) {
 
 	message := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | NFT_MSG_GETFLOWTABLE),
+			Type:  nftMsgGetFlowtable.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
@@ -226,7 +218,7 @@ func (cc *Conn) getFlowtables(t *Table) ([]netlink.Message, error) {
 }
 
 func ftsFromMsg(msg netlink.Message) (*Flowtable, error) {
-	flowHeaderType := netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | NFT_MSG_NEWFLOWTABLE)
+	flowHeaderType := nftMsgNewFlowtable.HeaderType()
 	if got, want := msg.Header.Type, flowHeaderType; got != want {
 		return nil, fmt.Errorf("unexpected header type: got %v, want %v", got, want)
 	}

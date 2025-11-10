@@ -23,13 +23,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const (
-	newTableHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWTABLE)
-	delTableHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE)
-
-	// FIXME: in sys@v0.34.0 no unix.NFT_MSG_DESTROYTABLE const yet.
-	// See nf_tables_msg_types enum in https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h
-	destroyTableHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | 0x1a)
+var (
+	newTableHeaderType     = nftMsgNewTable.HeaderType()
+	delTableHeaderType     = nftMsgDelTable.HeaderType()
+	destroyTableHeaderType = nftMsgDestroyTable.HeaderType()
 )
 
 // TableFamily specifies the address family for this table.
@@ -131,7 +128,7 @@ func (cc *Conn) addTable(t *Table, flag netlink.HeaderFlags) *Table {
 
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWTABLE),
+			Type:  nftMsgNewTable.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge | flag,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
@@ -161,7 +158,7 @@ func (cc *Conn) FlushTable(t *Table) {
 	})
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE),
+			Type:  nftMsgDelRule.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
@@ -216,7 +213,7 @@ func (cc *Conn) listTablesOfNameAndFamily(name string, family TableFamily) ([]*T
 
 	msg := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETTABLE),
+			Type:  nftMsgGetTable.HeaderType(),
 			Flags: flags,
 		},
 		Data: data,

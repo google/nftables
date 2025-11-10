@@ -25,9 +25,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const (
-	newRuleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWRULE)
-	delRuleHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELRULE)
+var (
+	newRuleHeaderType = nftMsgNewRule.HeaderType()
+	delRuleHeaderType = nftMsgDelRule.HeaderType()
 )
 
 // This constant is missing at unix.NFTA_RULE_POSITION_ID.
@@ -80,7 +80,7 @@ func (cc *Conn) GetRule(t *Table, c *Chain) ([]*Rule, error) {
 // handle.
 // https://docs.kernel.org/networking/netlink_spec/nftables.html#getrule
 func (cc *Conn) GetRuleByHandle(t *Table, c *Chain, handle uint64) (*Rule, error) {
-	rules, err := cc.getRules(t, c, unix.NFT_MSG_GETRULE, handle)
+	rules, err := cc.getRules(t, c, nftMsgGetRule, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (cc *Conn) GetRuleByHandle(t *Table, c *Chain, handle uint64) (*Rule, error
 
 // GetRules returns the rules in the specified table and chain.
 func (cc *Conn) GetRules(t *Table, c *Chain) ([]*Rule, error) {
-	return cc.getRules(t, c, unix.NFT_MSG_GETRULE, 0)
+	return cc.getRules(t, c, nftMsgGetRule, 0)
 }
 
 // ResetRule resets the stateful expressions (e.g., counters) of the given
@@ -107,7 +107,7 @@ func (cc *Conn) ResetRule(t *Table, c *Chain, handle uint64) (*Rule, error) {
 		return nil, fmt.Errorf("rule must have a valid handle")
 	}
 
-	rules, err := cc.getRules(t, c, unix.NFT_MSG_GETRULE_RESET, handle)
+	rules, err := cc.getRules(t, c, nftMsgGetRuleReset, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -125,13 +125,13 @@ func (cc *Conn) ResetRule(t *Table, c *Chain, handle uint64) (*Rule, error) {
 // state.
 // https://docs.kernel.org/networking/netlink_spec/nftables.html#getrule-reset
 func (cc *Conn) ResetRules(t *Table, c *Chain) ([]*Rule, error) {
-	return cc.getRules(t, c, unix.NFT_MSG_GETRULE_RESET, 0)
+	return cc.getRules(t, c, nftMsgGetRuleReset, 0)
 }
 
 // getRules retrieves rules from the given table and chain, using the provided
-// msgType (either unix.NFT_MSG_GETRULE or unix.NFT_MSG_GETRULE_RESET). If the
+// msgType (either NFT_MSG_GETRULE or NFT_MSG_GETRULE_RESET). If the
 // handle is non-zero, the operation applies only to the rule with that handle.
-func (cc *Conn) getRules(t *Table, c *Chain, msgType int, handle uint64) ([]*Rule, error) {
+func (cc *Conn) getRules(t *Table, c *Chain, msgType nftMsgType, handle uint64) ([]*Rule, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
@@ -161,7 +161,7 @@ func (cc *Conn) getRules(t *Table, c *Chain, msgType int, handle uint64) ([]*Rul
 
 	message := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | msgType),
+			Type:  msgType.HeaderType(),
 			Flags: flags,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),

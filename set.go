@@ -44,9 +44,6 @@ const (
 	NFTA_SET_ELEM_KEY_END = 10
 	// https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h?id=d1289bff58e1878c3162f574c603da993e29b113#n429
 	NFTA_SET_ELEM_EXPRESSIONS = 0x11
-	// FIXME: in sys@v0.34.0 no unix.NFT_MSG_DESTROYSETELEM const yet.
-	// See nf_tables_msg_types enum in https://git.netfilter.org/nftables/tree/include/linux/netfilter/nf_tables.h
-	NFT_MSG_DESTROYSETELEM = 0x1e
 )
 
 // SetDatatype represents a datatype declared by nft.
@@ -385,7 +382,7 @@ func (cc *Conn) SetAddElements(s *Set, vals []SetElement) error {
 		cc.setErr(err)
 		return err
 	}
-	err := cc.appendElemList(s, vals, unix.NFT_MSG_NEWSETELEM)
+	err := cc.appendElemList(s, vals, nftMsgNewSetElem)
 	if err != nil {
 		cc.setErr(err)
 		return err
@@ -403,7 +400,7 @@ func (cc *Conn) SetDeleteElements(s *Set, vals []SetElement) error {
 		cc.setErr(err)
 		return err
 	}
-	if err := cc.appendElemList(s, vals, unix.NFT_MSG_DELSETELEM); err != nil {
+	if err := cc.appendElemList(s, vals, nftMsgDelSetElem); err != nil {
 		cc.setErr(err)
 		return err
 	}
@@ -420,7 +417,7 @@ func (cc *Conn) SetDestroyElements(s *Set, vals []SetElement) error {
 		cc.setErr(err)
 		return err
 	}
-	return cc.appendElemList(s, vals, NFT_MSG_DESTROYSETELEM)
+	return cc.appendElemList(s, vals, nftMsgDestroySetElem)
 }
 
 // maxElemBatchSize is the maximum size in bytes of encoded set elements which
@@ -428,7 +425,7 @@ func (cc *Conn) SetDestroyElements(s *Set, vals []SetElement) error {
 // uint16, and 1024 bytes is more than enough for the per-message headers.
 const maxElemBatchSize = math.MaxUint16 - 1024
 
-func (cc *Conn) appendElemList(s *Set, vals []SetElement, hdrType uint16) error {
+func (cc *Conn) appendElemList(s *Set, vals []SetElement, msgType nftMsgType) error {
 	if len(vals) == 0 {
 		return nil
 	}
@@ -540,7 +537,7 @@ func (cc *Conn) appendElemList(s *Set, vals []SetElement, hdrType uint16) error 
 
 		cc.messages = append(cc.messages, netlinkMessage{
 			Header: netlink.Header{
-				Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | hdrType),
+				Type:  msgType.HeaderType(),
 				Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 			},
 			Data: append(extraHeader(uint8(s.Table.Family), 0), cc.marshalAttr(message)...),
@@ -731,14 +728,14 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSET),
+			Type:  nftMsgNewSet.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(s.Table.Family), 0), cc.marshalAttr(tableInfo)...),
 	})
 
 	// Set the values of the set if initial values were provided.
-	if err := cc.appendElemList(s, vals, unix.NFT_MSG_NEWSETELEM); err != nil {
+	if err := cc.appendElemList(s, vals, nftMsgNewSetElem); err != nil {
 		cc.setErr(err)
 		return err
 	}
@@ -756,7 +753,7 @@ func (cc *Conn) DelSet(s *Set) {
 	})
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSET),
+			Type:  nftMsgDelSet.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(uint8(s.Table.Family), 0), data...),
@@ -773,16 +770,16 @@ func (cc *Conn) FlushSet(s *Set) {
 	})
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSETELEM),
+			Type:  nftMsgDelSetElem.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(uint8(s.Table.Family), 0), data...),
 	})
 }
 
-const (
-	newSetHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSET)
-	delSetHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSET)
+var (
+	newSetHeaderType = nftMsgNewSet.HeaderType()
+	delSetHeaderType = nftMsgDelSet.HeaderType()
 )
 
 func setsFromMsg(msg netlink.Message) (*Set, error) {
@@ -887,10 +884,9 @@ func parseSetDatatype(magic uint32) (SetDatatype, error) {
 	return dt, nil
 }
 
-const (
-	newElemHeaderType     = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_NEWSETELEM)
-	delElemHeaderType     = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELSETELEM)
-	destroyElemHeaderType = netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | NFT_MSG_DESTROYSETELEM)
+var (
+	newElemHeaderType = nftMsgNewSetElem.HeaderType()
+	delElemHeaderType = nftMsgDelSetElem.HeaderType()
 )
 
 func elementsFromMsg(fam byte, msg netlink.Message) ([]SetElement, error) {
@@ -945,7 +941,7 @@ func (cc *Conn) GetSets(t *Table) ([]*Set, error) {
 
 	message := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETSET),
+			Type:  nftMsgGetSet.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
@@ -990,7 +986,7 @@ func (cc *Conn) GetSetByName(t *Table, name string) (*Set, error) {
 
 	message := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETSET),
+			Type:  nftMsgGetSet.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
@@ -1035,7 +1031,7 @@ func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
 
 	message := netlink.Message{
 		Header: netlink.Header{
-			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_GETSETELEM),
+			Type:  nftMsgGetSetElem.HeaderType(),
 			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(s.Table.Family), 0), data...),

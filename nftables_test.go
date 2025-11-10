@@ -8034,3 +8034,45 @@ func TestSocketDrainingOnErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestErrorMessageTracing(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	conn.AddTable(&nftables.Table{
+		Name:   "test-table",
+		Family: nftables.TableFamilyIPv4,
+	})
+	nonExistentTable := &nftables.Table{
+		Name:   "non-existent-table",
+		Family: nftables.TableFamilyIPv4,
+	}
+	chain := conn.AddChain(&nftables.Chain{
+		Name:  "test-chain",
+		Table: nonExistentTable,
+	})
+	conn.AddRule(&nftables.Rule{
+		Table: nonExistentTable,
+		Chain: chain,
+		Exprs: []expr.Any{
+			&expr.Verdict{
+				Kind: expr.VerdictAccept,
+			},
+		},
+	})
+
+	if err := conn.Flush(); err != nil {
+		wantErrMsg := "receive: NFT_MSG_NEWCHAIN: netlink receive: no such file or directory"
+		if err.Error() != wantErrMsg {
+			t.Fatalf("expected error message %q, got %q", wantErrMsg, err.Error())
+		}
+
+		var errno syscall.Errno
+		if !errors.As(err, &errno) || errno != syscall.ENOENT {
+			t.Fatalf("expected tracked error to be ENOENT, got %v", err)
+		}
+	} else {
+		t.Fatal("expected error when adding rule to non-existent table, got nil")
+	}
+}
