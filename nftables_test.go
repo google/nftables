@@ -8076,3 +8076,193 @@ func TestErrorMessageTracing(t *testing.T) {
 		t.Fatal("expected error when adding rule to non-existent table, got nil")
 	}
 }
+
+func TestFindSetElements(t *testing.T) {
+	var tests = []struct {
+		name           string
+		table          *nftables.Table
+		set            *nftables.Set
+		elements       []nftables.SetElement
+		searchElements []nftables.SetElement
+		wantElements   []nftables.SetElement
+		wantErr        error
+	}{
+		{
+			name: "non_existent",
+			table: &nftables.Table{
+				Name:   "test-table",
+				Family: nftables.TableFamilyIPv4,
+			},
+			set: &nftables.Set{
+				Name:    "test-set",
+				KeyType: nftables.TypeIPAddr,
+			},
+			elements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.1").To4()},
+			},
+			searchElements: []nftables.SetElement{
+				{Key: net.ParseIP("192.168.0.1").To4()},
+			},
+			wantElements: nil,
+			wantErr:      syscall.ENOENT,
+		},
+		{
+			name: "single_result",
+			table: &nftables.Table{
+				Name:   "test-table",
+				Family: nftables.TableFamilyIPv4,
+			},
+			set: &nftables.Set{
+				Name:    "test-set",
+				KeyType: nftables.TypeIPAddr,
+			},
+			elements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.0").To4()},
+				{Key: net.ParseIP("10.0.0.1").To4()},
+				{Key: net.ParseIP("10.0.0.2").To4()},
+				{Key: net.ParseIP("10.0.0.3").To4()},
+			},
+			searchElements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.1").To4()},
+			},
+			wantElements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.1").To4()},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "multi_result",
+			table: &nftables.Table{
+				Name:   "test-table",
+				Family: nftables.TableFamilyIPv4,
+			},
+			set: &nftables.Set{
+				Name:    "test-set",
+				KeyType: nftables.TypeIPAddr,
+			},
+			elements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.0").To4()},
+				{Key: net.ParseIP("10.0.0.1").To4()},
+				{Key: net.ParseIP("10.0.0.2").To4()},
+				{Key: net.ParseIP("10.0.0.3").To4()},
+			},
+			searchElements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.1").To4()},
+				{Key: net.ParseIP("10.0.0.2").To4()},
+			},
+			wantElements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.1").To4()},
+				{Key: net.ParseIP("10.0.0.2").To4()},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "interval_single_result",
+			table: &nftables.Table{
+				Name:   "test-table",
+				Family: nftables.TableFamilyIPv4,
+			},
+			set: &nftables.Set{
+				Name:     "test-set",
+				KeyType:  nftables.TypeIPAddr,
+				Interval: true,
+			},
+			elements: []nftables.SetElement{
+				// 10.0.0.0/24
+				{Key: net.ParseIP("10.0.0.0").To4()},
+				{Key: net.ParseIP("10.0.1.0").To4(), IntervalEnd: true},
+				// 192.168.0.0/24
+				{Key: net.ParseIP("192.168.0.0").To4()},
+				{Key: net.ParseIP("192.168.1.0").To4(), IntervalEnd: true},
+			},
+			searchElements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.1").To4()},
+			},
+			wantElements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.0").To4()},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "interval_multi_result",
+			table: &nftables.Table{
+				Name:   "test-table",
+				Family: nftables.TableFamilyIPv4,
+			},
+			set: &nftables.Set{
+				Name:     "test-set",
+				KeyType:  nftables.TypeIPAddr,
+				Interval: true,
+			},
+			elements: []nftables.SetElement{
+				// 10.0.0.0/24
+				{Key: net.ParseIP("10.0.0.0").To4()},
+				{Key: net.ParseIP("10.0.1.0").To4(), IntervalEnd: true},
+				// 192.168.0.0/24
+				{Key: net.ParseIP("192.168.0.0").To4()},
+				{Key: net.ParseIP("192.168.1.0").To4(), IntervalEnd: true},
+			},
+			searchElements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.0").To4()},
+				{Key: net.ParseIP("10.0.1.0").To4(), IntervalEnd: true},
+			},
+			wantElements: []nftables.SetElement{
+				{Key: net.ParseIP("10.0.0.0").To4()},
+				{Key: net.ParseIP("10.0.1.0").To4(), IntervalEnd: true},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "concat_single_result",
+			table: &nftables.Table{
+				Name:   "test-table",
+				Family: nftables.TableFamilyIPv4,
+			},
+			set: &nftables.Set{
+				Name:          "test-set",
+				KeyType:       nftables.MustConcatSetType(nftables.TypeIPAddr, nftables.TypeInetService),
+				Concatenation: true,
+			},
+			elements: []nftables.SetElement{
+				// Key data must be aligned to 4 bytes
+				// 10.0.0.1 . 80
+				{Key: append(net.ParseIP("10.0.0.1").To4(), 0x00, 0x50, 0x00, 0x00)},
+				// 10.0.0.2 . 80
+				{Key: append(net.ParseIP("10.0.0.2").To4(), 0x00, 0x50, 0x00, 0x00)},
+			},
+			searchElements: []nftables.SetElement{
+				{Key: append(net.ParseIP("10.0.0.1").To4(), 0x00, 0x50, 0x00, 0x00)},
+			},
+			wantElements: []nftables.SetElement{
+				{Key: append(net.ParseIP("10.0.0.1").To4(), 0x00, 0x50, 0x00, 0x00)},
+			},
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+			defer nftest.CleanupSystemConn(t, newNS)
+			defer conn.FlushRuleset()
+
+			table := conn.AddTable(tt.table)
+			tt.set.Table = table
+			if err := conn.AddSet(tt.set, tt.elements); err != nil {
+				t.Fatalf("failed to add set: %v", err)
+			}
+			if err := conn.Flush(); err != nil {
+				t.Fatalf("failed to flush: %v", err)
+			}
+
+			gotElements, err := conn.FindSetElements(tt.set, tt.searchElements)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("failed to get set elements: got error %v, want %v", err, tt.wantErr)
+			}
+
+			if !reflect.DeepEqual(gotElements, tt.wantElements) {
+				t.Errorf("got elements %v, want %v", gotElements, tt.wantElements)
+			}
+		})
+	}
+}
