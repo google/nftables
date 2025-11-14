@@ -547,6 +547,14 @@ func (cc *Conn) marshalSetElement(s *Set, e *SetElement) ([]byte, error) {
 		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_USERDATA, Data: userData})
 	}
 
+	if e.Counter != nil {
+		counter, err := expr.Marshal(byte(s.Table.Family), e.Counter)
+		if err != nil {
+			return nil, err
+		}
+		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_EXPR | unix.NLA_F_NESTED, Data: counter})
+	}
+
 	encodedItem, err := netlink.MarshalAttributes(item)
 	if err != nil {
 		return nil, err

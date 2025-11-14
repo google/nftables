@@ -8266,3 +8266,54 @@ func TestFindSetElements(t *testing.T) {
 		})
 	}
 }
+
+func TestSetElementCounter(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	counter := &expr.Counter{
+		Bytes:   1,
+		Packets: 1,
+	}
+
+	table := conn.AddTable(&nftables.Table{
+		Name:   "test-table",
+		Family: nftables.TableFamilyIPv4,
+	})
+
+	set := &nftables.Set{
+		Name:    "test-set",
+		Table:   table,
+		KeyType: nftables.TypeIPAddr,
+	}
+
+	elements := []nftables.SetElement{
+		{
+			Key:     net.ParseIP("10.0.0.1").To4(),
+			Counter: counter,
+		},
+	}
+
+	if err := conn.AddSet(set, elements); err != nil {
+		t.Fatalf("failed to add set: %v", err)
+	}
+
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("failed to flush: %v", err)
+	}
+
+	gotElements, err := conn.GetSetElements(set)
+	if err != nil {
+		t.Fatalf("failed to get set elements: %v", err)
+	}
+
+	if len(gotElements) != len(elements) {
+		t.Fatalf("got %d elements, want %d", len(gotElements), len(elements))
+	}
+
+	gotCounter := gotElements[0].Counter
+	if !reflect.DeepEqual(gotCounter, counter) {
+		t.Fatalf("got counter %v, want %v", gotCounter, counter)
+	}
+}
