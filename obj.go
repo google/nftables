@@ -366,7 +366,7 @@ func (cc *Conn) getObjWithLegacyType(o Obj, t *Table, msgType nftMsgType, return
 
 	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receive: %v", err)
+		return nil, fmt.Errorf("receive: %w", err)
 	}
 	var objs []Obj
 	for _, msg := range reply {

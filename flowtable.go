@@ -211,7 +211,7 @@ func (cc *Conn) getFlowtables(t *Table) ([]netlink.Message, error) {
 
 	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receive: %v", err)
+		return nil, fmt.Errorf("receive: %w", err)
 	}
 
 	return reply, nil
