@@ -961,7 +961,7 @@ func (cc *Conn) GetSets(t *Table) ([]*Set, error) {
 
 	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receive: %v", err)
+		return nil, fmt.Errorf("receive: %w", err)
 	}
 	var sets []*Set
 	for _, msg := range reply {
@@ -1051,7 +1051,7 @@ func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
 
 	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receive: %v", err)
+		return nil, fmt.Errorf("receive: %w", err)
 	}
 	var elems []SetElement
 	for _, msg := range reply {

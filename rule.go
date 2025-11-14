@@ -173,7 +173,7 @@ func (cc *Conn) getRules(t *Table, c *Chain, msgType nftMsgType, handle uint64) 
 
 	reply, err := cc.receive(conn)
 	if err != nil {
-		return nil, fmt.Errorf("receive: %v", err)
+		return nil, fmt.Errorf("receive: %w", err)
 	}
 	var rules []*Rule
 	for _, msg := range reply {
