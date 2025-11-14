@@ -143,7 +143,7 @@ func (cc *Conn) getRules(t *Table, c *Chain, msgType nftMsgType, handle uint64) 
 		{Type: unix.NFTA_RULE_CHAIN, Data: []byte(c.Name + "\x00")},
 	}
 
-	var flags netlink.HeaderFlags = netlink.Request | netlink.Acknowledge | netlink.Dump
+	var flags netlink.HeaderFlags = netlink.Request | netlink.Dump
 
 	if handle != 0 {
 		attrs = append(attrs, netlink.Attribute{
@@ -151,7 +151,7 @@ func (cc *Conn) getRules(t *Table, c *Chain, msgType nftMsgType, handle uint64) 
 			Data: binaryutil.BigEndian.PutUint64(handle),
 		})
 
-		flags = netlink.Request | netlink.Acknowledge
+		flags = netlink.Request
 	}
 
 	data, err := netlink.MarshalAttributes(attrs)
@@ -242,13 +242,13 @@ func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
 	var ruleRef *Rule
 	switch op {
 	case operationAdd:
-		flags = netlink.Request | netlink.Acknowledge | netlink.Create | netlink.Echo | netlink.Append
+		flags = netlink.Request | netlink.Create | netlink.Echo | netlink.Append
 		ruleRef = r
 	case operationInsert:
-		flags = netlink.Request | netlink.Acknowledge | netlink.Create | netlink.Echo
+		flags = netlink.Request | netlink.Create | netlink.Echo
 		ruleRef = r
 	case operationReplace:
-		flags = netlink.Request | netlink.Acknowledge | netlink.Replace
+		flags = netlink.Request | netlink.Replace
 	}
 
 	if r.Position != 0 {
@@ -343,7 +343,7 @@ func (cc *Conn) DelRule(r *Rule) error {
 		cc.setErr(err)
 		return err
 	}
-	flags := netlink.Request | netlink.Acknowledge
+	flags := netlink.Request
 
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{

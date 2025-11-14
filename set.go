@@ -466,7 +466,7 @@ func (cc *Conn) appendElemList(s *Set, vals []SetElement, msgType nftMsgType) er
 		cc.messages = append(cc.messages, netlinkMessage{
 			Header: netlink.Header{
 				Type:  msgType.HeaderType(),
-				Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
+				Flags: netlink.Request | netlink.Create,
 			},
 			Data: append(extraHeader(uint8(s.Table.Family), 0), cc.marshalAttr(message)...),
 		})
@@ -737,7 +737,7 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgNewSet.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
+			Flags: netlink.Request | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(s.Table.Family), 0), cc.marshalAttr(tableInfo)...),
 	})
@@ -762,7 +762,7 @@ func (cc *Conn) DelSet(s *Set) {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgDelSet.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge,
+			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(s.Table.Family), 0), data...),
 	})
@@ -779,7 +779,7 @@ func (cc *Conn) FlushSet(s *Set) {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgDelSetElem.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge,
+			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(s.Table.Family), 0), data...),
 	})
@@ -950,7 +950,7 @@ func (cc *Conn) GetSets(t *Table) ([]*Set, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  nftMsgGetSet.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
+			Flags: netlink.Request | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
@@ -995,7 +995,7 @@ func (cc *Conn) GetSetByName(t *Table, name string) (*Set, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  nftMsgGetSet.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge,
+			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}
@@ -1040,7 +1040,7 @@ func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  nftMsgGetSetElem.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
+			Flags: netlink.Request | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(s.Table.Family), 0), data...),
 	}

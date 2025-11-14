@@ -137,7 +137,7 @@ func (cc *Conn) AddFlowtable(f *Flowtable) *Flowtable {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgNewFlowtable.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
+			Flags: netlink.Request | netlink.Create,
 		},
 		Data: append(extraHeader(uint8(f.Table.Family), 0), data...),
 	})
@@ -157,7 +157,7 @@ func (cc *Conn) DelFlowtable(f *Flowtable) {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  nftMsgDelFlowtable.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge,
+			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(f.Table.Family), 0), data...),
 	})
@@ -200,7 +200,7 @@ func (cc *Conn) getFlowtables(t *Table) ([]netlink.Message, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  nftMsgGetFlowtable.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Dump,
+			Flags: netlink.Request | netlink.Dump,
 		},
 		Data: append(extraHeader(uint8(t.Family), 0), data...),
 	}

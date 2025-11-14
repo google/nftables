@@ -68,7 +68,7 @@ func (cc *Conn) GetGen() (*Gen, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  nftMsgGetGen.HeaderType(),
-			Flags: netlink.Request | netlink.Acknowledge,
+			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(0, 0), data...),
 	}

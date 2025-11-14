@@ -431,7 +431,7 @@ func (cc *Conn) FlushRuleset() {
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
 			Type:  netlink.HeaderType((unix.NFNL_SUBSYS_NFTABLES << 8) | unix.NFT_MSG_DELTABLE),
-			Flags: netlink.Request | netlink.Acknowledge | netlink.Create,
+			Flags: netlink.Request | netlink.Create,
 		},
 		Data: extraHeader(0, 0),
 	})
