@@ -1021,18 +1021,48 @@ func (cc *Conn) GetSetByName(t *Table, name string) (*Set, error) {
 	return rs, nil
 }
 
-// GetSetElements returns the elements in the specified set.
-func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
+// getSetElements retrieves elements from a set.
+// If e is empty, all elements are retrieved. Otherwise, only the specified
+// elements are retrieved if they exist in the set.
+func (cc *Conn) getSetElements(s *Set, e []SetElement) ([]SetElement, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = closer() }()
 
-	data, err := netlink.MarshalAttributes([]netlink.Attribute{
+	flags := netlink.Request
+	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_SET_ELEM_LIST_TABLE, Data: []byte(s.Table.Name + "\x00")},
 		{Type: unix.NFTA_SET_ELEM_LIST_SET, Data: []byte(s.Name + "\x00")},
-	})
+	}
+
+	if s.Name != "" {
+		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_SET_ELEM_LIST_SET, Data: []byte(s.Name + "\x00")})
+	} else {
+		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_SET_ELEM_LIST_SET_ID, Data: binaryutil.BigEndian.PutUint32(s.ID)})
+	}
+
+	if len(e) > 0 {
+		var listAttrs []netlink.Attribute
+		for i, elem := range e {
+			encodedElem, err := cc.marshalSetElement(s, &elem)
+			if err != nil {
+				return nil, err
+			}
+			listAttrs = append(listAttrs, netlink.Attribute{Type: uint16(i) | unix.NLA_F_NESTED, Data: encodedElem})
+		}
+
+		list, err := netlink.MarshalAttributes(listAttrs)
+		if err != nil {
+			return nil, err
+		}
+		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_SET_ELEM_LIST_ELEMENTS | unix.NLA_F_NESTED, Data: list})
+	} else {
+		flags |= netlink.Dump
+	}
+
+	data, err := netlink.MarshalAttributes(attrs)
 	if err != nil {
 		return nil, err
 	}
@@ -1040,7 +1070,7 @@ func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
 	message := netlink.Message{
 		Header: netlink.Header{
 			Type:  nftMsgGetSetElem.HeaderType(),
-			Flags: netlink.Request | netlink.Dump,
+			Flags: flags,
 		},
 		Data: append(extraHeader(uint8(s.Table.Family), 0), data...),
 	}
@@ -1063,4 +1093,14 @@ func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
 	}
 
 	return elems, nil
+}
+
+// GetSetElements returns the elements in the specified set.
+func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
+	return cc.getSetElements(s, nil)
+}
+
+// FindSetElements returns the specified elements in the set.
+func (cc *Conn) FindSetElements(s *Set, e []SetElement) ([]SetElement, error) {
+	return cc.getSetElements(s, e)
 }
