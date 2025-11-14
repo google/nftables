@@ -2362,6 +2362,62 @@ func TestDelChain(t *testing.T) {
 	}
 }
 
+func TestDestroyChain(t *testing.T) {
+	var tests = []struct {
+		name        string
+		chainName   string
+		createChain bool
+	}{
+		{
+			name:        "non_existent",
+			chainName:   "non-existent-chain",
+			createChain: false,
+		},
+		{
+			name:        "existent",
+			chainName:   "existent-chain",
+			createChain: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+			defer nftest.CleanupSystemConn(t, newNS)
+			defer conn.FlushRuleset()
+
+			table := &nftables.Table{
+				Name:   "test-table",
+				Family: nftables.TableFamilyIPv4,
+			}
+			conn.AddTable(table)
+			chain := &nftables.Chain{
+				Name:  tt.chainName,
+				Table: table,
+			}
+			if tt.createChain {
+				conn.AddChain(chain)
+			}
+			if err := conn.Flush(); err != nil {
+				t.Fatalf("conn.Flush() failed: %v", err)
+			}
+
+			conn.DestroyChain(chain)
+			if err := conn.Flush(); err != nil {
+				t.Fatalf("conn.Flush() failed: %v", err)
+			}
+
+			got, err := conn.ListChain(table, chain.Name)
+			if !errors.Is(err, syscall.ENOENT) {
+				t.Fatalf("expected ENOENT error for listing chain %q, got: %v", chain.Name, err)
+			}
+			if got != nil {
+				t.Fatalf("expected nil chain for %q, got: %v", chain.Name, got)
+			}
+		})
+	}
+}
+
 func TestGetObjReset(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft list chain ip filter forward
