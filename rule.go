@@ -27,7 +27,6 @@ import (
 
 var (
 	newRuleHeaderType = nftMsgNewRule.HeaderType()
-	delRuleHeaderType = nftMsgDelRule.HeaderType()
 )
 
 // This constant is missing at unix.NFTA_RULE_POSITION_ID.
@@ -321,9 +320,9 @@ func (cc *Conn) InsertRule(r *Rule) *Rule {
 	return cc.newRule(r, operationInsert)
 }
 
-// DelRule deletes the specified Rule. Either the Handle or ID of the
-// rule must be set.
-func (cc *Conn) DelRule(r *Rule) error {
+// delRule deletes the specified Rule. If the destroy flag is set, then the
+// message type used is NFT_MSG_DESTROYRULE instead of NFT_MSG_DELRULE.
+func (cc *Conn) delRule(r *Rule, destroy bool) error {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
@@ -345,9 +344,14 @@ func (cc *Conn) DelRule(r *Rule) error {
 	}
 	flags := netlink.Request
 
+	msgType := nftMsgDelRule
+	if destroy {
+		msgType = nftMsgDestroyRule
+	}
+
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  delRuleHeaderType,
+			Type:  msgType.HeaderType(),
 			Flags: flags,
 		},
 		Data: append(extraHeader(uint8(r.Table.Family), 0), data...),
@@ -356,9 +360,26 @@ func (cc *Conn) DelRule(r *Rule) error {
 	return nil
 }
 
+// DelRule deletes the specified Rule. Either the Handle or ID of the
+// rule must be set.
+func (cc *Conn) DelRule(r *Rule) error {
+	return cc.delRule(r, false)
+}
+
+// DestroyRule deletes the specified rule but unlike DelRule, it will not
+// return an error upon Flush if the rule does not exist. Either the Handle
+// or ID of the rule must be set.
+// Requires a kernel version >= 6.3.
+func (cc *Conn) DestroyRule(r *Rule) error {
+	return cc.delRule(r, true)
+}
+
 func ruleFromMsg(fam TableFamily, msg netlink.Message) (*Rule, error) {
-	if got, want1, want2 := msg.Header.Type, newRuleHeaderType, delRuleHeaderType; got != want1 && got != want2 {
-		return nil, fmt.Errorf("unexpected header type: got %v, want %v or %v", msg.Header.Type, want1, want2)
+	switch msg.Header.Type {
+	case nftMsgNewRule.HeaderType(), nftMsgDelRule.HeaderType(), nftMsgDestroyRule.HeaderType():
+		// Valid message type, continue processing
+	default:
+		return nil, fmt.Errorf("unexpected header type: %v", msg.Header.Type)
 	}
 	ad, err := netlink.NewAttributeDecoder(msg.Data[4:])
 	if err != nil {

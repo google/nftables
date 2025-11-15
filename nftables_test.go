@@ -1245,6 +1245,69 @@ func TestDelRule(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestDestroyRule(t *testing.T) {
+	var tests = []struct {
+		name       string
+		createRule bool
+	}{
+		{
+			name:       "non_existent",
+			createRule: false,
+		},
+		{
+			name:       "existent",
+			createRule: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+			defer nftest.CleanupSystemConn(t, newNS)
+			defer conn.FlushRuleset()
+
+			table := &nftables.Table{
+				Name:   "test-table",
+				Family: nftables.TableFamilyIPv4,
+			}
+			conn.AddTable(table)
+			chain := &nftables.Chain{
+				Name:  "test-chain",
+				Table: table,
+			}
+			conn.AddChain(chain)
+			rule := &nftables.Rule{
+				Table: table,
+				Chain: chain,
+				Exprs: []expr.Any{
+					&expr.Verdict{Kind: expr.VerdictAccept},
+				},
+			}
+			if tt.createRule {
+				conn.AddRule(rule)
+			} else {
+				// Assign a handle that does not exist
+				rule.Handle = 1234
+			}
+			if err := conn.Flush(); err != nil {
+				t.Fatalf("conn.Flush() failed: %v", err)
+			}
+
+			conn.DestroyRule(rule)
+			if err := conn.Flush(); err != nil {
+				t.Fatalf("conn.Flush() failed: %v", err)
+			}
+
+			rules, err := conn.GetRules(table, chain)
+			if err != nil {
+				t.Fatalf("conn.GetRules() failed: %v", err)
+			}
+			if len(rules) != 0 {
+				t.Errorf("expected 0 rules after destroying rule, got %d", len(rules))
+			}
+		})
+	}
+}
 
 func TestLog(t *testing.T) {
 	want := [][]byte{
