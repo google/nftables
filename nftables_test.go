@@ -7462,6 +7462,61 @@ func TestSetElementComment(t *testing.T) {
 	}
 }
 
+func TestSetElementIntervalOpen(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	table := &nftables.Table{
+		Family: nftables.TableFamilyIPv4,
+		Name:   "test-table",
+	}
+	conn.AddTable(table)
+	set := &nftables.Set{
+		Name:     "test-set",
+		Table:    table,
+		KeyType:  nftables.TypeIPAddr,
+		Interval: true,
+	}
+	elements := []nftables.SetElement{
+		// 10.0.0.0/24
+		{
+			Key: net.ParseIP("10.0.0.0").To4(),
+		},
+		{
+			Key:         net.ParseIP("10.0.1.0").To4(),
+			IntervalEnd: true,
+		},
+		// 255.255.255.254/31 (open interval)
+		{
+			Key:          net.ParseIP("255.255.255.254").To4(),
+			IntervalOpen: true,
+		},
+	}
+	if err := conn.AddSet(set, elements); err != nil {
+		t.Fatalf("failed to add set: %v", err)
+	}
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("failed to flush: %v", err)
+	}
+
+	gotElements, err := conn.GetSetElements(set)
+	if err != nil {
+		t.Fatalf("failed to get set elements: %v", err)
+	}
+	if got, want := len(gotElements), len(elements); got != want {
+		t.Fatalf("got %d elements, want %d", got, want)
+	}
+
+	// Reverse the gotElements slice to match the order of elements
+	slices.Reverse(gotElements)
+
+	if !reflect.DeepEqual(gotElements, elements) {
+		t.Errorf("got elements %+v, want %+v", gotElements, elements)
+	}
+}
+
 func TestAutoBufferSize(t *testing.T) {
 	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
 	defer nftest.CleanupSystemConn(t, newNS)

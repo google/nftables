@@ -293,6 +293,8 @@ type SetElement struct {
 
 	Counter *expr.Counter
 	Comment string
+	// Indicates an unbounded interval [start, ∞) with no end element.
+	IntervalOpen bool
 }
 
 func (s *SetElement) decode(fam byte) func(b []byte) error {
@@ -332,6 +334,9 @@ func (s *SetElement) decode(fam byte) func(b []byte) error {
 				// Try to extract comment from userdata if present
 				if comment, ok := userdata.GetString(userData, userdata.NFTNL_UDATA_SET_ELEM_COMMENT); ok {
 					s.Comment = comment
+				}
+				if userDataFlags, ok := userdata.GetUint32(userData, userdata.NFTNL_UDATA_SET_ELEM_FLAGS); ok {
+					s.IntervalOpen = (userDataFlags & userdata.NFTNL_UDATA_SET_ELEM_F_INTERVAL_OPEN) != 0
 				}
 			case unix.NFTA_SET_ELEM_EXPR:
 				elems, err := parseexprfunc.ParseExprBytesFunc(fam, ad)
@@ -541,9 +546,15 @@ func (cc *Conn) marshalSetElement(s *Set, e *SetElement) ([]byte, error) {
 		// If niether of previous cases matche, it means 'e' is an element of a regular Set, no need to add to the attributes
 	}
 
+	userData := []byte{}
 	// Add comment to userdata if present
 	if len(e.Comment) > 0 {
-		userData := userdata.AppendString(nil, userdata.NFTNL_UDATA_SET_ELEM_COMMENT, e.Comment)
+		userData = userdata.AppendString(userData, userdata.NFTNL_UDATA_SET_ELEM_COMMENT, e.Comment)
+	}
+	if e.IntervalOpen {
+		userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_ELEM_FLAGS, userdata.NFTNL_UDATA_SET_ELEM_F_INTERVAL_OPEN)
+	}
+	if len(userData) > 0 {
 		item = append(item, netlink.Attribute{Type: unix.NFTA_SET_ELEM_USERDATA, Data: userData})
 	}
 

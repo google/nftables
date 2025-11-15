@@ -52,6 +52,12 @@ const (
 	NFTNL_UDATA_SET_ELEM_FLAGS
 )
 
+// Set element userdata flags
+// https://git.netfilter.org/libnftnl/tree/include/libnftnl/udata.h?id=d36691a4ac486857fd437d3a9aa3701a073a9539#n71
+const (
+	NFTNL_UDATA_SET_ELEM_F_INTERVAL_OPEN uint32 = 0x01
+)
+
 func Append(udata []byte, typ Type, data []byte) []byte {
 	udata = append(udata, byte(typ), byte(len(data)))
 	udata = append(udata, data...)
