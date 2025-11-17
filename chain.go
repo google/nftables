@@ -151,9 +151,7 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 	return c
 }
 
-// DelChain deletes the specified Chain. See also
-// https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains#Deleting_chains
-func (cc *Conn) DelChain(c *Chain) {
+func (cc *Conn) delChain(c *Chain, destroy bool) {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 	data := cc.marshalAttr([]netlink.Attribute{
@@ -161,13 +159,31 @@ func (cc *Conn) DelChain(c *Chain) {
 		{Type: unix.NFTA_CHAIN_NAME, Data: []byte(c.Name + "\x00")},
 	})
 
+	msgType := nftMsgDelChain
+	if destroy {
+		msgType = nftMsgDestroyChain
+	}
+
 	cc.messages = append(cc.messages, netlinkMessage{
 		Header: netlink.Header{
-			Type:  nftMsgDelChain.HeaderType(),
+			Type:  msgType.HeaderType(),
 			Flags: netlink.Request,
 		},
 		Data: append(extraHeader(uint8(c.Table.Family), 0), data...),
 	})
+}
+
+// DelChain deletes the specified Chain. See also
+// https://wiki.nftables.org/wiki-nftables/index.php/Configuring_chains#Deleting_chains
+func (cc *Conn) DelChain(c *Chain) {
+	cc.delChain(c, false)
+}
+
+// DestroyChain deletes the specified chain but unlike DelChain, it will not
+// return an error upon Flush if the chain does not exist.
+// Requires a kernel version >= 6.3.
+func (cc *Conn) DestroyChain(c *Chain) {
+	cc.delChain(c, true)
 }
 
 // FlushChain removes all rules within the specified Chain. See also
