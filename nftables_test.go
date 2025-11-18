@@ -8491,3 +8491,73 @@ func TestSetElementCounter(t *testing.T) {
 		t.Fatalf("got counter %v, want %v", gotCounter, counter)
 	}
 }
+
+func TestResetSetElements(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	defer conn.FlushRuleset()
+
+	table := conn.AddTable(&nftables.Table{
+		Name:   "test-table",
+		Family: nftables.TableFamilyIPv4,
+	})
+	set := &nftables.Set{
+		Name:    "test-set",
+		Table:   table,
+		KeyType: nftables.TypeInetService,
+	}
+	elements := []nftables.SetElement{
+		{
+			Key: binaryutil.BigEndian.PutUint16(80),
+			Counter: &expr.Counter{
+				Bytes:   1024,
+				Packets: 10,
+			},
+		},
+		{
+			Key: binaryutil.BigEndian.PutUint16(443),
+			Counter: &expr.Counter{
+				Bytes:   2048,
+				Packets: 20,
+			},
+		},
+	}
+	if err := conn.AddSet(set, elements); err != nil {
+		t.Fatalf("failed to add set: %v", err)
+	}
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("failed to flush: %v", err)
+	}
+
+	got, err := conn.ResetSetElements(set)
+	if err != nil {
+		t.Fatalf("failed to reset set elements: %v", err)
+	}
+	if len(got) != len(elements) {
+		t.Fatalf("got %d elements, want %d", len(got), len(elements))
+	}
+
+	for i, ge := range got {
+		want := elements[i]
+		if !bytes.Equal(ge.Key, want.Key) {
+			t.Errorf("element %d: got key %v, want %v", i, ge.Key, want.Key)
+		}
+		if !reflect.DeepEqual(ge.Counter, want.Counter) {
+			t.Errorf("element %d: got counter %v, want %v", i, ge.Counter, want.Counter)
+		}
+	}
+
+	resetEls, err := conn.GetSetElements(set)
+	if err != nil {
+		t.Fatalf("failed to get set elements after reset: %v", err)
+	}
+	for i, re := range resetEls {
+		want := elements[i]
+		if !bytes.Equal(re.Key, want.Key) {
+			t.Errorf("element %d: got key %v, want %v", i, re.Key, want.Key)
+		}
+		if re.Counter.Bytes != 0 || re.Counter.Packets != 0 {
+			t.Errorf("element %d: got counter %v, want zeroed counter", i, re.Counter)
+		}
+	}
+}

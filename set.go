@@ -1043,7 +1043,9 @@ func (cc *Conn) GetSetByName(t *Table, name string) (*Set, error) {
 // getSetElements retrieves elements from a set.
 // If e is empty, all elements are retrieved. Otherwise, only the specified
 // elements are retrieved if they exist in the set.
-func (cc *Conn) getSetElements(s *Set, e []SetElement) ([]SetElement, error) {
+// If reset is true, the stateful expressions (e.g., counters) of the elements
+// being retrieved are reset.
+func (cc *Conn) getSetElements(s *Set, e []SetElement, reset bool) ([]SetElement, error) {
 	conn, closer, err := cc.netlinkConn()
 	if err != nil {
 		return nil, err
@@ -1053,13 +1055,14 @@ func (cc *Conn) getSetElements(s *Set, e []SetElement) ([]SetElement, error) {
 	flags := netlink.Request
 	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_SET_ELEM_LIST_TABLE, Data: []byte(s.Table.Name + "\x00")},
-		{Type: unix.NFTA_SET_ELEM_LIST_SET, Data: []byte(s.Name + "\x00")},
 	}
 
 	if s.Name != "" {
 		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_SET_ELEM_LIST_SET, Data: []byte(s.Name + "\x00")})
-	} else {
+	} else if s.ID > 0 {
 		attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_SET_ELEM_LIST_SET_ID, Data: binaryutil.BigEndian.PutUint32(s.ID)})
+	} else {
+		return nil, fmt.Errorf("set must either have a valid name or ID")
 	}
 
 	if len(e) > 0 {
@@ -1086,9 +1089,14 @@ func (cc *Conn) getSetElements(s *Set, e []SetElement) ([]SetElement, error) {
 		return nil, err
 	}
 
+	msgType := nftMsgGetSetElem
+	if reset {
+		msgType = nftMsgGetSetElemReset
+	}
+
 	message := netlink.Message{
 		Header: netlink.Header{
-			Type:  nftMsgGetSetElem.HeaderType(),
+			Type:  msgType.HeaderType(),
 			Flags: flags,
 		},
 		Data: append(extraHeader(uint8(s.Table.Family), 0), data...),
@@ -1116,10 +1124,18 @@ func (cc *Conn) getSetElements(s *Set, e []SetElement) ([]SetElement, error) {
 
 // GetSetElements returns the elements in the specified set.
 func (cc *Conn) GetSetElements(s *Set) ([]SetElement, error) {
-	return cc.getSetElements(s, nil)
+	return cc.getSetElements(s, nil, false)
 }
 
 // FindSetElements returns the specified elements in the set.
 func (cc *Conn) FindSetElements(s *Set, e []SetElement) ([]SetElement, error) {
-	return cc.getSetElements(s, e)
+	return cc.getSetElements(s, e, false)
+}
+
+// ResetSetElements resets the stateful expressions (e.g., counters) of all
+// elements in the specified set. The reset is applied immediately
+// (no Flush is required). The returned elements reflect their state prior to
+// the reset. Requires a kernel version >= 6.3.
+func (cc *Conn) ResetSetElements(s *Set) ([]SetElement, error) {
+	return cc.getSetElements(s, nil, true)
 }
