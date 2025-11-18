@@ -29,11 +29,20 @@ func (cc *Conn) isReadReady(conn *netlink.Conn) (bool, error) {
 		readfds.Set(int(fd))
 
 		ts := &unix.Timespec{} // zero timeout: immediate return
-		n, opErr = unix.Pselect(int(fd)+1, &readfds, nil, nil, ts, nil)
+		for {
+			n, opErr = unix.Pselect(int(fd)+1, &readfds, nil, nil, ts, nil)
+			if opErr != unix.EINTR {
+				break
+			}
+		}
 	})
 	if err != nil {
 		return false, err
 	}
 
-	return n > 0, opErr
+	if opErr != nil {
+		return false, fmt.Errorf("pselect6: %w", opErr)
+	}
+
+	return n > 0, nil
 }
