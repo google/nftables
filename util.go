@@ -16,10 +16,17 @@ package nftables
 
 import (
 	"encoding/binary"
+	"errors"
 	"net"
+	"net/netip"
 
 	"github.com/google/nftables/binaryutil"
 	"golang.org/x/sys/unix"
+)
+
+var (
+	MaxIPv4 = net.IP{255, 255, 255, 255}
+	MaxIPv6 = net.IP{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 )
 
 func extraHeader(family uint8, resID uint16) []byte {
@@ -125,4 +132,84 @@ func NetInterval(cidr string) (net.IP, net.IP, error) {
 	}
 
 	return first, nextIP(last), nil
+}
+
+// endIp returns the last address in a given network.
+func endIp(netIp net.IP, mask net.IPMask) net.IP {
+	ip := make(net.IP, len(netIp))
+	copy(ip, netIp)
+
+	for i := 0; i < len(mask); i++ {
+		ipIdx := len(ip) - i - 1
+		ip[ipIdx] = netIp[ipIdx] | ^mask[len(mask)-i-1]
+	}
+
+	return ip
+}
+
+// NetFromRange returns a CIDR IP network given a start and end address.
+// If the network is an exact match, ok will be true.
+func NetFromRange(first net.IP, last net.IP) (*net.IPNet, bool, error) {
+	ip1 := net.IP(first)
+	ip2 := net.IP(last)
+
+	maxLen := 32
+	isIpv6 := ip1.To4() == nil
+
+	if isIpv6 && ip2.To4() != nil || !isIpv6 && ip2.To4() == nil {
+		return nil, false, errors.New("Cannot mix IPv4 and IPv6 or process empty IP.")
+	}
+
+	if isIpv6 {
+		maxLen = 128
+	}
+
+	var match *net.IPNet
+	for l := maxLen; l >= -1; l-- {
+		cidrmask := net.CIDRMask(l, maxLen)
+		ipmask := ip2.Mask(cidrmask)
+		ipnet := net.IPNet{
+			IP:   ipmask,
+			Mask: cidrmask,
+		}
+
+		if ipnet.Contains(ip1) {
+			match = &ipnet
+			break
+		}
+
+	}
+
+	matchFirst := match.IP.Equal(ip1)
+
+	// short-circuit if first address is not start of the network
+	if !matchFirst {
+		return match, matchFirst, nil
+	}
+
+	return match, endIp(match.IP, match.Mask).Equal(ip2), nil
+}
+
+// NetFromInterval returns a CIDR IP network given a start and end address as found in intervals.
+// This is similar to NetFromRange, but subtracts one address from the end of the range.
+// If the resulting network is an exact match, ok will be true.
+func NetFromInterval(first net.IP, last net.IP) (out *net.IPNet, ok bool, err error) {
+	var previous net.IP
+
+	if len(last) == 0 {
+		if first.To4() == nil {
+			previous = MaxIPv6
+		} else {
+			previous = MaxIPv4
+		}
+	} else {
+		ip2, ok := netip.AddrFromSlice(last)
+		if !ok {
+			return nil, false, errors.New("Failed to construct slice from network.")
+		}
+
+		previous = ip2.Prev().AsSlice()
+	}
+
+	return NetFromRange(first, previous)
 }
