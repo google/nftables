@@ -258,7 +258,7 @@ func TestNetFromRange(t *testing.T) {
 		{
 			first:   "0.0.0.1",
 			last:    "255.255.255.254",
-			wantNet: "0.0.0.0/0",
+			wantNet: "", // not exactly 0.0.0.0/0
 			wantOk:  false,
 			wantErr: false,
 		},
@@ -272,7 +272,7 @@ func TestNetFromRange(t *testing.T) {
 		{
 			first:   "192.0.2.16",
 			last:    "192.0.2.30",
-			wantNet: "192.0.2.16/28",
+			wantNet: "", // not exactly 192.0.2.16/28
 			wantOk:  false,
 			wantErr: false,
 		},
@@ -286,7 +286,7 @@ func TestNetFromRange(t *testing.T) {
 		{
 			first:   "2001:db8:100::100",
 			last:    "2001:db8:100:0:ffff:ffff:ffff:ffff",
-			wantNet: "2001:db8:100::/64",
+			wantNet: "", // not exactly 2001:db8:100::/64
 			wantOk:  false,
 			wantErr: false,
 		},
@@ -314,6 +314,10 @@ func TestNetFromRange(t *testing.T) {
 			}
 
 			if tt.wantNet == "" {
+				if gotNet != nil {
+					t.Errorf("NetFromInterval() gotNet = %v, wantNet = nil", gotNet)
+				}
+
 				return
 			}
 
@@ -373,7 +377,7 @@ func TestNetFromInterval(t *testing.T) {
 		{
 			first:   "2001:db8:100::100",
 			last:    "2001:db8:100:0:ffff:ffff:ffff:ffff",
-			wantNet: "2001:db8:100::/64",
+			wantNet: "", // not exactly 2001:db8:100::/64
 			wantOk:  false,
 			wantErr: false,
 		},
@@ -401,6 +405,10 @@ func TestNetFromInterval(t *testing.T) {
 			}
 
 			if tt.wantNet == "" {
+				if gotNet != nil {
+					t.Errorf("NetFromInterval() gotNet = %v, wantNet = nil", gotNet)
+				}
+
 				return
 			}
 

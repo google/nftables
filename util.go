@@ -148,7 +148,7 @@ func endIp(netIp net.IP, mask net.IPMask) net.IP {
 }
 
 // NetFromRange returns a CIDR IP network given a start and end address.
-// If the network is an exact match, ok will be true.
+// If an exact match is found, ok will be true. If not, no IPNet will be returned, and ok will be false.
 func NetFromRange(first net.IP, last net.IP) (*net.IPNet, bool, error) {
 	ip1 := net.IP(first)
 	ip2 := net.IP(last)
@@ -184,10 +184,16 @@ func NetFromRange(first net.IP, last net.IP) (*net.IPNet, bool, error) {
 
 	// short-circuit if first address is not start of the network
 	if !matchFirst {
-		return match, matchFirst, nil
+		return nil, matchFirst, nil
 	}
 
-	return match, endIp(match.IP, match.Mask).Equal(ip2), nil
+	matchSecond := endIp(match.IP, match.Mask).Equal(ip2)
+
+	if !matchSecond {
+		return nil, matchSecond, nil
+	}
+
+	return match, true, nil
 }
 
 // NetFromInterval returns a CIDR IP network given a start and end address as found in intervals.
