@@ -6495,6 +6495,206 @@ func TestVmap(t *testing.T) {
 	}
 }
 
+func TestSetByteOrder(t *testing.T) {
+	// Verify that KEYBYTEORDER and DATABYTEORDER userdata are emitted correctly
+	// for sets and maps with host-endian (NativeEndian) and big-endian types.
+	//
+	// Bug context: the library previously hard-coded KEYBYTEORDER=2 (big-endian)
+	// for all anonymous/constant/interval sets, ignoring the actual key type.
+	// Host-endian types like mark and ifname need KEYBYTEORDER=1 for correct
+	// display in nft list ruleset on little-endian systems.
+	// Additionally, DATABYTEORDER was never emitted for maps, causing map data
+	// values (like marks) to display byte-swapped.
+
+	tests := []struct {
+		name    string
+		set     nftables.Set
+		element []nftables.SetElement
+		// wantUserData is the expected NFTA_SET_USERDATA content (TLV encoded).
+		// NFTNL_UDATA_SET_KEYBYTEORDER (type=0): 1=host-endian, 2=big-endian
+		// NFTNL_UDATA_SET_DATABYTEORDER (type=1): 1=host-endian, 2=big-endian
+		wantUserData []byte
+	}{
+		{
+			name: "anonymous set with big-endian key (inet_service) emits KEYBYTEORDER=2",
+			set: nftables.Set{
+				Anonymous: true,
+				Constant:  true,
+				KeyType:   nftables.TypeInetService,
+			},
+			element: []nftables.SetElement{
+				{Key: binaryutil.BigEndian.PutUint16(80)},
+			},
+			// type=0 len=4 value=2 (KEYBYTEORDER=big-endian)
+			wantUserData: []byte{0x00, 0x04, 0x02, 0x00, 0x00, 0x00},
+		},
+		{
+			name: "anonymous set with host-endian key (mark) emits KEYBYTEORDER=1",
+			set: nftables.Set{
+				Anonymous:    true,
+				Constant:     true,
+				KeyType:      nftables.TypeMark,
+				KeyByteOrder: binaryutil.NativeEndian,
+			},
+			element: []nftables.SetElement{
+				{Key: binaryutil.NativeEndian.PutUint32(1)},
+			},
+			// type=0 len=4 value=1 (KEYBYTEORDER=host-endian)
+			wantUserData: []byte{0x00, 0x04, 0x01, 0x00, 0x00, 0x00},
+		},
+		{
+			name: "named set with host-endian key emits KEYBYTEORDER=1",
+			set: nftables.Set{
+				Name:         "test-marks",
+				KeyType:      nftables.TypeMark,
+				KeyByteOrder: binaryutil.NativeEndian,
+			},
+			element: []nftables.SetElement{
+				{Key: binaryutil.NativeEndian.PutUint32(1)},
+			},
+			// type=0 len=4 value=1 (KEYBYTEORDER=host-endian)
+			wantUserData: []byte{0x00, 0x04, 0x01, 0x00, 0x00, 0x00},
+		},
+		{
+			name: "map with host-endian key and data emits both KEYBYTEORDER=1 and DATABYTEORDER=1",
+			set: nftables.Set{
+				Name:          "test-map",
+				KeyType:       nftables.TypeMark,
+				DataType:      nftables.TypeMark,
+				KeyByteOrder:  binaryutil.NativeEndian,
+				DataByteOrder: binaryutil.NativeEndian,
+				IsMap:         true,
+			},
+			element: []nftables.SetElement{
+				{
+					Key: binaryutil.NativeEndian.PutUint32(1),
+					Val: binaryutil.NativeEndian.PutUint32(2),
+				},
+			},
+			// type=0 len=4 value=1 (KEYBYTEORDER=host), type=1 len=4 value=1 (DATABYTEORDER=host)
+			wantUserData: []byte{
+				0x00, 0x04, 0x01, 0x00, 0x00, 0x00,
+				0x01, 0x04, 0x01, 0x00, 0x00, 0x00,
+			},
+		},
+		{
+			name: "named map without explicit KeyByteOrder emits only DATABYTEORDER=1",
+			set: nftables.Set{
+				Name:          "test-map",
+				KeyType:       nftables.TypeInetService,
+				DataType:      nftables.TypeMark,
+				DataByteOrder: binaryutil.NativeEndian,
+				IsMap:         true,
+			},
+			element: []nftables.SetElement{
+				{
+					Key: binaryutil.BigEndian.PutUint16(22),
+					Val: binaryutil.NativeEndian.PutUint32(1),
+				},
+			},
+			// No KEYBYTEORDER (named, non-anonymous/interval, no explicit KeyByteOrder)
+			// type=1 len=4 value=1 (DATABYTEORDER=host)
+			wantUserData: []byte{
+				0x01, 0x04, 0x01, 0x00, 0x00, 0x00,
+			},
+		},
+		{
+			name: "anonymous map with big-endian key and host-endian data emits KEYBYTEORDER=2 and DATABYTEORDER=1",
+			set: nftables.Set{
+				Anonymous:     true,
+				Constant:      true,
+				KeyType:       nftables.TypeInetService,
+				DataType:      nftables.TypeMark,
+				DataByteOrder: binaryutil.NativeEndian,
+				IsMap:         true,
+			},
+			element: []nftables.SetElement{
+				{
+					Key: binaryutil.BigEndian.PutUint16(22),
+					Val: binaryutil.NativeEndian.PutUint32(1),
+				},
+			},
+			// type=0 len=4 value=2 (KEYBYTEORDER=big), type=1 len=4 value=1 (DATABYTEORDER=host)
+			wantUserData: []byte{
+				0x00, 0x04, 0x02, 0x00, 0x00, 0x00,
+				0x01, 0x04, 0x01, 0x00, 0x00, 0x00,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured []netlink.Message
+			c, err := nftables.New(nftables.WithTestDial(func(req []netlink.Message) ([]netlink.Message, error) {
+				captured = append(captured, req...)
+				return nil, nil
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			filter := c.AddTable(&nftables.Table{
+				Family: nftables.TableFamilyIPv4,
+				Name:   "filter",
+			})
+
+			tt.set.Table = filter
+			if err := c.AddSet(&tt.set, tt.element); err != nil {
+				t.Fatalf("c.AddSet() failed: %v", err)
+			}
+
+			if err := c.Flush(); err != nil {
+				t.Fatalf("c.Flush() failed: %v", err)
+			}
+
+			// Find the NFTA_SET_USERDATA attribute (type 0x0d) in captured messages.
+			// The attribute uses standard netlink TLV: 2-byte length, 2-byte type, then data.
+			const nftaSetUserData = 0x0d
+			var foundUserData []byte
+			for _, msg := range captured {
+				b, err := msg.MarshalBinary()
+				if err != nil {
+					continue
+				}
+				// Skip netlink header (16 bytes) and nfgenmsg (4 bytes)
+				if len(b) < 20 {
+					continue
+				}
+				attrs := b[20:]
+				// Walk netlink attributes looking for type 0x0d
+				for len(attrs) >= 4 {
+					aLen := int(attrs[0]) | int(attrs[1])<<8
+					aType := int(attrs[2]) | int(attrs[3])<<8
+					if aLen < 4 || aLen > len(attrs) {
+						break
+					}
+					if aType == nftaSetUserData {
+						foundUserData = attrs[4:aLen]
+						break
+					}
+					// Align to 4 bytes
+					aLen = (aLen + 3) &^ 3
+					if aLen > len(attrs) {
+						break
+					}
+					attrs = attrs[aLen:]
+				}
+				if foundUserData != nil {
+					break
+				}
+			}
+
+			if foundUserData == nil {
+				t.Fatal("NFTA_SET_USERDATA attribute not found in captured messages")
+			}
+
+			if !bytes.Equal(foundUserData, tt.wantUserData) {
+				t.Errorf("userdata mismatch:\n  got:  %x\n  want: %x", foundUserData, tt.wantUserData)
+			}
+		})
+	}
+}
+
 func TestJHash(t *testing.T) {
 	// The want byte sequences come from stracing nft(8), e.g.:
 	// strace -f -v -x -s 2048 -eraw=sendto nft add rule filter prerouting mark set jhash ip saddr mod 2

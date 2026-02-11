@@ -267,8 +267,9 @@ type Set struct {
 	DataType      SetDatatype
 	// Either host (binaryutil.NativeEndian) or big (binaryutil.BigEndian) endian as per
 	// https://git.netfilter.org/nftables/tree/include/datatype.h?id=d486c9e626405e829221b82d7355558005b26d8a#n109
-	KeyByteOrder binaryutil.ByteOrder
-	Comment      string
+	KeyByteOrder  binaryutil.ByteOrder
+	DataByteOrder binaryutil.ByteOrder
+	Comment       string
 	// Indicates that the set has "size" specifier
 	Size uint32
 }
@@ -716,12 +717,27 @@ func (cc *Conn) AddSet(s *Set, vals []SetElement) error {
 	// https://git.netfilter.org/libnftnl/tree/include/udata.h#n17
 	var userData []byte
 
-	if s.Anonymous || s.Constant || s.Interval || s.KeyByteOrder == binaryutil.BigEndian {
-		// Semantically useless - kept for binary compatability with nft
-		userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_KEYBYTEORDER, 2)
-	} else if s.KeyByteOrder == binaryutil.NativeEndian {
+	// Emit KEYBYTEORDER metadata matching nft C tool behavior (mnl.c:mnl_nft_set_add).
+	// Anonymous, constant, and interval sets always need byte order metadata.
+	// When KeyByteOrder is explicitly set, use it; otherwise default to big-endian
+	// for backward compatibility with prior library behavior.
+	if s.KeyByteOrder == binaryutil.NativeEndian {
 		// Per https://git.netfilter.org/nftables/tree/src/mnl.c?id=187c6d01d35722618c2711bbc49262c286472c8f#n1165
 		userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_KEYBYTEORDER, 1)
+	} else if s.Anonymous || s.Constant || s.Interval || s.KeyByteOrder == binaryutil.BigEndian {
+		userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_KEYBYTEORDER, 2)
+	}
+
+	// Emit DATABYTEORDER for maps, matching nft C tool behavior (mnl.c:mnl_nft_set_add).
+	// Without this, nft list ruleset cannot determine the data byte order and displays
+	// host-endian values (like marks) as byte-swapped on LE systems.
+	if s.IsMap {
+		switch s.DataByteOrder {
+		case binaryutil.NativeEndian:
+			userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_DATABYTEORDER, 1)
+		case binaryutil.BigEndian:
+			userData = userdata.AppendUint32(userData, userdata.NFTNL_UDATA_SET_DATABYTEORDER, 2)
+		}
 	}
 
 	if s.Interval && s.AutoMerge {
