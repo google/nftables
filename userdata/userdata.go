@@ -67,23 +67,25 @@ func Append(udata []byte, typ Type, data []byte) []byte {
 
 func Get(udata []byte, styp Type) []byte {
 	for {
+		// Ensure we have at least the Type and Length bytes
 		if len(udata) < 2 {
 			break
 		}
 
 		typ := Type(udata[0])
 		length := int(udata[1])
+
+		if len(udata) < 2+length {
+			break
+		}
+
 		data := udata[2 : 2+length]
 
 		if styp == typ {
 			return data
 		}
 
-		if len(udata) < 2+length {
-			break
-		} else {
-			udata = udata[2+length:]
-		}
+		udata = udata[2+length:]
 	}
 
 	return nil
