@@ -8,7 +8,7 @@ import (
 )
 
 // isReadReady reports whether the netlink connection is ready for reading.
-// It uses pselect6 with a zero timeout on the underlying raw connection.
+// It uses poll(2) with a zero timeout on the underlying raw connection.
 // This allows for an efficient check of socket readiness without blocking.
 // If the Conn was created with a TestDial function, it assumes readiness.
 func (cc *Conn) isReadReady(conn *netlink.Conn) (bool, error) {
@@ -24,13 +24,12 @@ func (cc *Conn) isReadReady(conn *netlink.Conn) (bool, error) {
 	var n int
 	var opErr error
 	err = rawConn.Control(func(fd uintptr) {
-		var readfds unix.FdSet
-		readfds.Zero()
-		readfds.Set(int(fd))
-
-		ts := &unix.Timespec{} // zero timeout: immediate return
+		fds := []unix.PollFd{{
+			Fd:     int32(fd),
+			Events: unix.POLLIN,
+		}}
 		for {
-			n, opErr = unix.Pselect(int(fd)+1, &readfds, nil, nil, ts, nil)
+			n, opErr = unix.Poll(fds, 0) // 0 timeout: immediate return
 			if opErr != unix.EINTR {
 				break
 			}
@@ -41,7 +40,7 @@ func (cc *Conn) isReadReady(conn *netlink.Conn) (bool, error) {
 	}
 
 	if opErr != nil {
-		return false, fmt.Errorf("pselect6: %w", opErr)
+		return false, fmt.Errorf("poll: %w", opErr)
 	}
 
 	return n > 0, nil
