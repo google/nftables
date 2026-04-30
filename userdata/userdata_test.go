@@ -70,3 +70,70 @@ func TestUint32(t *testing.T) {
 		t.Fatalf("id mismatch")
 	}
 }
+
+func TestGetOutOfBounds(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []byte
+		styp  userdata.Type
+	}{
+		{
+			name:  "TruncatedHeader",
+			input: []byte{byte(userdata.TypeComment)}, // Only 1 byte, needs 2 for T+L
+			styp:  userdata.TypeComment,
+		},
+		{
+			name:  "DeclaredLengthTooLong",
+			input: []byte{byte(userdata.TypeComment), 10, 'h', 'i'}, // Declares 10, only provides 2
+			styp:  userdata.TypeComment,
+		},
+		{
+			name:  "EmptyInput",
+			input: []byte{},
+			styp:  userdata.TypeComment,
+		},
+		{
+			name:  "ValidHeaderButMissingValue",
+			input: []byte{byte(userdata.TypeComment), 1}, // Declares 1 byte, but slice ends
+			styp:  userdata.TypeComment,
+		},
+		{
+			name: "MultipleElementsSecondTruncatedHeader",
+			input: []byte{
+				byte(userdata.TypeComment), 2, 'h', 'i', // Valid first element
+				byte(userdata.TypeEbtablesPolicy), // Truncated second element header
+			},
+			styp: userdata.TypeEbtablesPolicy,
+		},
+		{
+			name: "MultipleElementsSecondDeclaredLengthTooLong",
+			input: []byte{
+				byte(userdata.TypeComment), 2, 'h', 'i', // Valid first element
+				byte(userdata.TypeEbtablesPolicy), 10, 'b', 'a', // Invalid second element
+			},
+			styp: userdata.TypeEbtablesPolicy,
+		},
+		{
+			name:  "ExactLengthButIteratingFurther",
+			input: []byte{byte(userdata.TypeComment), 2, 'h', 'i'}, // Valid lengths
+			styp:  userdata.TypeEbtablesPolicy,                     // Search for something not there
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// This test ensures the code does not panic.
+			// The defer/recover block catches a panic if the fix isn't working.
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("Get() panicked on input %x: %v", tc.input, r)
+				}
+			}()
+
+			// Testing the wrapper which calls the underlying Get()
+			if _, ok := userdata.GetString(tc.input, tc.styp); ok {
+				t.Errorf("GetString() should have failed for malformed input %x", tc.input)
+			}
+		})
+	}
+}
