@@ -21,4 +21,12 @@ the data types/API will be identified as more functionality is added.
 
 Contributions are very welcome!
 
+### Testing Changes
 
+Run the following commands to test your changes:
+
+```bash
+go test ./...
+go test -c github.com/google/nftables
+sudo ./nftables.test -test.v -run_system_tests
+```
