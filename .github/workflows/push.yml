@@ -35,3 +35,42 @@ jobs:
         sudo ./nftables.test -test.v -run_system_tests
         go test -c github.com/google/nftables/integration
         (cd integration && sudo ../integration.test -test.v -run_system_tests)
+
+  apidiff:
+    runs-on: ubuntu-latest
+    # Run only on pull requests, and skip if the PR has the 'breaking change allowed' label.
+    if: ${{ github.base_ref && !contains(github.event.pull_request.labels.*.name, 'breaking change allowed') }}
+    steps:
+    - name: Install Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ^1.20
+    - name: Add GOBIN to PATH
+      run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+    - name: Install dependencies
+      run: go install golang.org/x/exp/cmd/apidiff@7ab1446f8b90c13150a856cfe6a0e8ab9af5a50d
+    # We checkout both the base branch (old) and the PR branch (new) to compare them.
+    - name: Checkout old code (base ref)
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ github.base_ref }}
+        path: "old"
+    - name: Checkout new code (PR head)
+      uses: actions/checkout@v3
+      with:
+        path: "new"
+    - name: APIDiff
+      run: |
+        # Generate baseline from old code (module level)
+        cd old
+        apidiff -m -w ../module.baseline .
+
+        # Compare with new code (module level), writing incompatible changes to diff.txt
+        cd ../new
+        apidiff -m -incompatible ../module.baseline . > ../diff.txt
+        cd ..
+
+        # Print the diff to the build log
+        cat diff.txt
+        # Fail the job if diff.txt is not empty (contains incompatible changes)
+        ! [ -s diff.txt ]
