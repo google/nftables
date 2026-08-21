@@ -622,12 +622,31 @@ func (cc *Conn) enlargeReadBuffer(conn *netlink.Conn) error {
 		return nil
 	}
 
-	var bufferSize int
+	bufferSize := cc.readBufferSize()
 
+	currSize, err := conn.ReadBuffer()
+	if err != nil {
+		return err
+	}
+	if currSize < bufferSize {
+		return conn.SetReadBuffer(bufferSize)
+	}
+	return nil
+}
+
+// readBufferSize returns the read buffer size required for the currently
+// buffered messages.
+//
+// If any of the buffered messages has the Echo flag set, the buffer size is
+// initialized to the default echo read buffer size, since the kernel will echo
+// back each created rule. Otherwise, 1024 bytes are allocated per message, just
+// like nftables.
+func (cc *Conn) readBufferSize() int {
 	// If there are any messages with the Echo flag, we initialize the buffer size
 	// to the default echo read buffer size.
+	var bufferSize int
 	for _, msg := range cc.messages {
-		if msg.Header.Flags&netlink.Echo == 0 {
+		if msg.Header.Flags&netlink.Echo != 0 {
 			bufferSize = cc.getDefaultEchoReadBuffer()
 			break
 		}
@@ -638,15 +657,7 @@ func (cc *Conn) enlargeReadBuffer(conn *netlink.Conn) error {
 	if bufferSize < requiredSize {
 		bufferSize = requiredSize
 	}
-
-	currSize, err := conn.ReadBuffer()
-	if err != nil {
-		return err
-	}
-	if currSize < bufferSize {
-		return conn.SetReadBuffer(bufferSize)
-	}
-	return nil
+	return bufferSize
 }
 
 // getPortIDUnderLock returns the netlink port ID associated with this
