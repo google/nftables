@@ -414,10 +414,10 @@ func (c *CtTimeout) unmarshal(fam byte, data []byte) error {
 			c.L4Proto = ad.Uint8()
 		case NFTA_CT_TIMEOUT_DATA:
 			decoder, err := netlink.NewAttributeDecoder(ad.Bytes())
-			decoder.ByteOrder = binary.BigEndian
 			if err != nil {
 				return err
 			}
+			decoder.ByteOrder = binary.BigEndian
 			for decoder.Next() {
 				switch c.L4Proto {
 				case unix.IPPROTO_UDP:
