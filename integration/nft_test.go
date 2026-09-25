@@ -86,6 +86,39 @@ func TestNFTables(t *testing.T) {
 			},
 		},
 		{
+			name:       "AddComments",
+			scriptPath: "testdata/add_comments.nft",
+			goCommands: func(t *testing.T, c *nftables.Conn) {
+				c.FlushRuleset()
+
+				table := c.AddTable(&nftables.Table{
+					Name:    "test-table",
+					Family:  nftables.TableFamilyINet,
+					Comment: "table comment",
+				})
+
+				c.AddChain(&nftables.Chain{
+					Name:     "base-chain",
+					Table:    table,
+					Hooknum:  nftables.ChainHookInput,
+					Priority: nftables.ChainPriorityFilter,
+					Type:     nftables.ChainTypeFilter,
+					Comment:  "base chain comment",
+				})
+
+				c.AddChain(&nftables.Chain{
+					Name:    "regular-chain",
+					Table:   table,
+					Comment: "regular chain comment",
+				})
+
+				err := c.Flush()
+				if err != nil {
+					t.Fatalf("Error creating table: %v", err)
+				}
+			},
+		},
+		{
 			name:       "AddFlowtables",
 			scriptPath: "testdata/add_flowtables.nft",
 			goCommands: func(t *testing.T, c *nftables.Conn) {
@@ -225,6 +258,47 @@ func TestNFTables(t *testing.T) {
 				t.Fatalf("Failed to flush nftables ruleset: %v", err)
 			}
 		})
+	}
+}
+
+// TestListCommentsFromNFT checks that the comments nft stores on tables and
+// chains are read back by the Go library. nft adds more userdata than the
+// comment, which the library has to skip.
+func TestListCommentsFromNFT(t *testing.T) {
+	c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+
+	if out, err := applyNFTRuleset("testdata/add_comments.nft"); err != nil {
+		t.Fatalf("Failed to apply nftables script: %v\noutput:%s", err, out)
+	}
+	defer func() {
+		if err := flushNFTRuleset(); err != nil {
+			t.Fatalf("Failed to flush nftables ruleset: %v", err)
+		}
+	}()
+
+	table, err := c.ListTableOfFamily("test-table", nftables.TableFamilyINet)
+	if err != nil {
+		t.Fatalf("ListTableOfFamily() failed: %v", err)
+	}
+	if got, want := table.Comment, "table comment"; got != want {
+		t.Errorf("table comment = %q, want %q", got, want)
+	}
+
+	chains, err := c.ListChainsOfTableFamily(nftables.TableFamilyINet)
+	if err != nil {
+		t.Fatalf("ListChainsOfTableFamily() failed: %v", err)
+	}
+	got := map[string]string{}
+	for _, chain := range chains {
+		got[chain.Name] = chain.Comment
+	}
+	want := map[string]string{
+		"base-chain":    "base chain comment",
+		"regular-chain": "regular chain comment",
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("chain comments mismatch (-want +got):\n%s", diff)
 	}
 }
 
