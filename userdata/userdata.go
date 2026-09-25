@@ -58,6 +58,18 @@ const (
 	NFTNL_UDATA_SET_ELEM_F_INTERVAL_OPEN uint32 = 0x01
 )
 
+// Table userdata types
+// https://git.netfilter.org/libnftnl/tree/include/libnftnl/udata.h
+const (
+	NFTNL_UDATA_TABLE_COMMENT Type = iota
+)
+
+// Chain userdata types
+// https://git.netfilter.org/libnftnl/tree/include/libnftnl/udata.h
+const (
+	NFTNL_UDATA_CHAIN_COMMENT Type = iota
+)
+
 func Append(udata []byte, typ Type, data []byte) []byte {
 	udata = append(udata, byte(typ), byte(len(data)))
 	udata = append(udata, data...)
