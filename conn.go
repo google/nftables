@@ -437,6 +437,16 @@ func (cc *Conn) FlushRuleset() {
 	})
 }
 
+// recvBufSize follows the buffer sizing used by the nft CLI for large messages
+// and error acknowledgements.
+func recvBufSize() int {
+	const nfgenmsgSize = 4
+	pageSize := os.Getpagesize()
+	nftNlmsgMaxsize := math.MaxUint16 + pageSize
+	nftMnlAckMaxsize := unix.SizeofNlMsghdr + nfgenmsgSize + (1 << 16) + min(pageSize, 8192)
+	return max(nftNlmsgMaxsize, nftMnlAckMaxsize)
+}
+
 func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
 	var (
 		conn *netlink.Conn
@@ -446,7 +456,10 @@ func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
 	if cc.TestDial != nil {
 		conn = nltest.Dial(cc.TestDial)
 	} else {
-		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, &netlink.Config{NetNS: cc.NetNS})
+		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, &netlink.Config{
+			NetNS:             cc.NetNS,
+			MessageBufferSize: recvBufSize(),
+		})
 	}
 
 	if err != nil {
