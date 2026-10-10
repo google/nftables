@@ -437,6 +437,28 @@ func (cc *Conn) FlushRuleset() {
 	})
 }
 
+// mnlSocketBufferSize mirrors libmnl's MNL_SOCKET_BUFFER_SIZE: the kernel's
+// typical netlink datagram size (NLMSG_GOODSIZE), not the netlink socket
+// buffer. Some datagrams are larger, so it is only a building block for nft's sizes.
+//
+// See https://git.netfilter.org/libmnl/tree/include/libmnl/libmnl.h?id=03da98bcd284d55212bc79e91dfb63da0ef7b937#n20
+func mnlSocketBufferSize(pageSize int) int {
+	return min(pageSize, 8192)
+}
+
+// recvBufSize returns the userspace receive buffer size for the netlink connection.
+// There are different restrictions for different messages in nft CLI:
+// NFT_NLMSG_MAXSIZE for dump: https://git.netfilter.org/nftables/tree/src/mnl.c?h=v1.1.6#n87
+// NFT_MNL_ACK_MAXSIZE for acknowledgements and errors: https://git.netfilter.org/nftables/tree/src/mnl.c?h=v1.1.6#n394
+// We use the larger size to accommodate both dumps and batch replies,
+// since dialNetlink does not distinguish between these operations.
+func recvBufSize(pageSize int) int {
+	const nfgenmsgSize = 4
+	nftNlmsgMaxsize := math.MaxUint16 + pageSize
+	nftMnlAckMaxsize := unix.SizeofNlMsghdr + nfgenmsgSize + (1 << 16) + mnlSocketBufferSize(pageSize)
+	return max(nftNlmsgMaxsize, nftMnlAckMaxsize)
+}
+
 func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
 	var (
 		conn *netlink.Conn
@@ -446,7 +468,10 @@ func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
 	if cc.TestDial != nil {
 		conn = nltest.Dial(cc.TestDial)
 	} else {
-		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, &netlink.Config{NetNS: cc.NetNS})
+		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, &netlink.Config{
+			NetNS:             cc.NetNS,
+			MessageBufferSize: recvBufSize(os.Getpagesize()),
+		})
 	}
 
 	if err != nil {
@@ -609,7 +634,7 @@ func (cc *Conn) enlargeWriteBuffer(conn *netlink.Conn) error {
 // and https://git.netfilter.org/nftables/tree/src/mnl.c?id=713592c6008a8c589a00d3d3d2e49709ff2de62c#n391
 func (cc *Conn) getDefaultEchoReadBuffer() int {
 	pageSize := os.Getpagesize()
-	return max(pageSize, 8192) * 1024
+	return mnlSocketBufferSize(pageSize) * 1024
 }
 
 // enlargeReadBuffer automatically sets the read buffer of the given connection
