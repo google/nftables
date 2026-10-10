@@ -2,36 +2,35 @@ name: Push
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-
   build:
     name: CI
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ^1.26
+        id: go
 
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v4
-      with:
-        # Run on the latest minor release of Go 1.20:
-        go-version: ^1.20
-      id: go
+      - name: Ensure all files were formatted as per gofmt
+        run: |
+          [ "$(gofmt -l $(find . -name '*.go') 2>&1)" = "" ]
 
-
-    - name: Ensure all files were formatted as per gofmt
-      run: |
-        [ "$(gofmt -l $(find . -name '*.go') 2>&1)" = "" ]
-
-    - name: Run tests
-      run: |
-        go vet .
-        go test ./...
-        go test -c github.com/google/nftables
-        sudo ./nftables.test -test.v -run_system_tests
-        go test -c github.com/google/nftables/integration
-        (cd integration && sudo ../integration.test -test.v -run_system_tests)
+      - name: Run tests
+        run: |
+          go vet .
+          go test ./...
+          go test -c github.com/google/nftables
+          sudo ./nftables.test -test.v -run_system_tests
+          go test -c github.com/google/nftables/integration
+          (cd integration && sudo ../integration.test -test.v -run_system_tests)
