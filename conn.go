@@ -47,6 +47,8 @@ type Conn struct {
 	sockOptions  []SockOption
 	lastID       uint32
 	allocatedIDs uint32
+
+	messageBufferSize int
 }
 
 type netlinkMessage struct {
@@ -63,7 +65,7 @@ type SockOption func(*netlink.Conn) error
 
 // New returns a netlink connection for querying and modifying nftables. Some
 // aspects of the new netlink connection can be configured using the options
-// WithNetNSFd, WithTestDial, and AsLasting.
+// WithNetNSFd, WithTestDial, WithMessageBufferSize, WithSockOptions, and AsLasting.
 //
 // A lasting netlink connection should be closed by calling CloseLasting() to
 // close the underlying lasting netlink connection, cancelling all pending
@@ -122,6 +124,15 @@ func WithTestDial(f nltest.Func) ConnOption {
 func WithSockOptions(opts ...SockOption) ConnOption {
 	return func(cc *Conn) {
 		cc.sockOptions = append(cc.sockOptions, opts...)
+	}
+}
+
+// WithMessageBufferSize sets the userspace buffer size, in bytes, used to
+// receive netlink messages. A positive size uses a fixed buffer; zero leaves
+// buffer sizing to netlink.
+func WithMessageBufferSize(size int) ConnOption {
+	return func(cc *Conn) {
+		cc.messageBufferSize = size
 	}
 }
 
@@ -446,7 +457,10 @@ func (cc *Conn) dialNetlink() (*netlink.Conn, error) {
 	if cc.TestDial != nil {
 		conn = nltest.Dial(cc.TestDial)
 	} else {
-		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, &netlink.Config{NetNS: cc.NetNS})
+		conn, err = netlink.Dial(unix.NETLINK_NETFILTER, &netlink.Config{
+			NetNS:             cc.NetNS,
+			MessageBufferSize: cc.messageBufferSize,
+		})
 	}
 
 	if err != nil {
