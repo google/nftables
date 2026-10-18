@@ -172,7 +172,7 @@ func (e *Ct) marshalData(fam byte) ([]byte, error) {
 	exprData = append(exprData, regData...)
 
 	switch e.Key {
-	case CtKeyPKTS, CtKeyBYTES, CtKeyAVGPKT, CtKeyL3PROTOCOL, CtKeyPROTOCOL:
+	case CtKeyPKTS, CtKeyBYTES, CtKeyAVGPKT, CtKeyL3PROTOCOL, CtKeyPROTOCOL, CtKeyZONE:
 		if !e.OptDirection {
 			break
 		}
@@ -217,7 +217,7 @@ func (e *Ct) unmarshal(fam byte, data []byte) error {
 	}
 
 	switch e.Key {
-	case CtKeyPKTS, CtKeyBYTES, CtKeyAVGPKT, CtKeyL3PROTOCOL, CtKeyPROTOCOL:
+	case CtKeyPKTS, CtKeyBYTES, CtKeyAVGPKT, CtKeyL3PROTOCOL, CtKeyPROTOCOL, CtKeyZONE:
 		e.OptDirection = hasDirection
 	}
 
