@@ -16,6 +16,7 @@ package expr
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/google/nftables/binaryutil"
 	"github.com/mdlayher/netlink"
@@ -109,6 +110,8 @@ func (e *Bitwise) marshalData(fam byte) ([]byte, error) {
 			// operand taken from an immediate value
 			attrs = append(attrs, dataAttr)
 		}
+	default:
+		return nil, fmt.Errorf("unsupported bitwise op %d", e.Op)
 	}
 
 	return netlink.MarshalAttributes(attrs)
