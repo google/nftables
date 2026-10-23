@@ -22,12 +22,34 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Not yet supported by unix package
+// https://cs.opensource.google/go/x/sys/+/c6bc011c:unix/ztypes_linux.go;l=1986-1991
+const (
+	NFTA_BITWISE_OP    = 0x6
+	NFTA_BITWISE_DATA  = 0x7
+	NFTA_BITWISE_SREG2 = 0x8
+)
+
+type BitwiseOp uint32
+
+const (
+	BitwiseOpMaskXor BitwiseOp = 0x0
+	BitwiseOpLshift  BitwiseOp = 0x1
+	BitwiseOpRshift  BitwiseOp = 0x2
+	BitwiseOpAnd     BitwiseOp = 0x3
+	BitwiseOpOr      BitwiseOp = 0x4
+	BitwiseOpXor     BitwiseOp = 0x5
+)
+
 type Bitwise struct {
-	SourceRegister uint32
-	DestRegister   uint32
-	Len            uint32
-	Mask           []byte
-	Xor            []byte
+	SourceRegister  uint32
+	SourceRegister2 uint32
+	DestRegister    uint32
+	Len             uint32
+	Mask            []byte
+	Xor             []byte
+	Data            []byte
+	Op              BitwiseOp
 }
 
 func (e *Bitwise) marshal(fam byte) ([]byte, error) {
@@ -54,14 +76,42 @@ func (e *Bitwise) marshalData(fam byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	data, err := netlink.MarshalAttributes([]netlink.Attribute{
+		{Type: unix.NFTA_DATA_VALUE, Data: e.Data},
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	return netlink.MarshalAttributes([]netlink.Attribute{
+	attrs := []netlink.Attribute{
 		{Type: unix.NFTA_BITWISE_SREG, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister)},
 		{Type: unix.NFTA_BITWISE_DREG, Data: binaryutil.BigEndian.PutUint32(e.DestRegister)},
 		{Type: unix.NFTA_BITWISE_LEN, Data: binaryutil.BigEndian.PutUint32(e.Len)},
-		{Type: unix.NLA_F_NESTED | unix.NFTA_BITWISE_MASK, Data: mask},
-		{Type: unix.NLA_F_NESTED | unix.NFTA_BITWISE_XOR, Data: xor},
-	})
+	}
+
+	maskAttr := netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_BITWISE_MASK, Data: mask}
+	xorAttr := netlink.Attribute{Type: unix.NLA_F_NESTED | unix.NFTA_BITWISE_XOR, Data: xor}
+	opAttr := netlink.Attribute{Type: NFTA_BITWISE_OP, Data: binaryutil.BigEndian.PutUint32(uint32(e.Op))}
+	dataAttr := netlink.Attribute{Type: unix.NLA_F_NESTED | NFTA_BITWISE_DATA, Data: data}
+	sreg2Attr := netlink.Attribute{Type: NFTA_BITWISE_SREG2, Data: binaryutil.BigEndian.PutUint32(e.SourceRegister2)}
+
+	switch e.Op {
+	case BitwiseOpMaskXor:
+		attrs = append(attrs, maskAttr, xorAttr)
+	case BitwiseOpLshift, BitwiseOpRshift:
+		attrs = append(attrs, opAttr, dataAttr)
+	case BitwiseOpAnd, BitwiseOpOr, BitwiseOpXor:
+		attrs = append(attrs, opAttr)
+		if e.SourceRegister2 != 0 {
+			// operand taken from a second register
+			attrs = append(attrs, sreg2Attr)
+		} else {
+			// operand taken from an immediate value
+			attrs = append(attrs, dataAttr)
+		}
+	}
+
+	return netlink.MarshalAttributes(attrs)
 }
 
 func (e *Bitwise) unmarshal(fam byte, data []byte) error {
@@ -100,6 +150,21 @@ func (e *Bitwise) unmarshal(fam byte, data []byte) error {
 				}
 				return nil
 			})
+		case NFTA_BITWISE_OP:
+			e.Op = BitwiseOp(ad.Uint32())
+		case NFTA_BITWISE_DATA:
+			// Since NFTA_BITWISE_DATA is nested, it requires additional decoding
+			ad.Nested(func(nad *netlink.AttributeDecoder) error {
+				for nad.Next() {
+					switch nad.Type() {
+					case unix.NFTA_DATA_VALUE:
+						e.Data = nad.Bytes()
+					}
+				}
+				return nil
+			})
+		case NFTA_BITWISE_SREG2:
+			e.SourceRegister2 = ad.Uint32()
 		}
 	}
 	return ad.Err()
