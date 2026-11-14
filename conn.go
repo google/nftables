@@ -535,7 +535,7 @@ func batch(messages []netlinkMessage, genID uint32) ([]netlink.Message, error) {
 // current transaction.
 func (cc *Conn) allocateTransactionID() uint32 {
 	if cc.allocatedIDs == math.MaxUint32 {
-		panic(fmt.Sprintf("trying to allocate more than %d IDs in a single nftables transaction", math.MaxUint32))
+		panic(fmt.Sprintf("trying to allocate more than %d IDs in a single nftables transaction", uint32(math.MaxUint32)))
 	}
 	// To make it more likely to catch when a transaction ID is erroneously used
 	// in a later transaction, cc.lastID is not reset after each transaction;
