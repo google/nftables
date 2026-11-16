@@ -230,8 +230,8 @@ func TestRuleOperations(t *testing.T) {
 		Chain: prerouting,
 		Exprs: []expr.Any{
 			&expr.Verdict{
-				// [ immediate reg 0 queue ]
-				Kind: expr.VerdictQueue,
+				// [ immediate reg 0 return ]
+				Kind: expr.VerdictReturn,
 			},
 		},
 	})
@@ -243,7 +243,7 @@ func TestRuleOperations(t *testing.T) {
 	rules, _ := c.GetRules(filter, prerouting)
 
 	want := []expr.VerdictKind{
-		expr.VerdictQueue,
+		expr.VerdictReturn,
 		expr.VerdictAccept,
 		expr.VerdictDrop,
 		expr.VerdictDrop,
@@ -287,8 +287,8 @@ func TestRuleOperations(t *testing.T) {
 		Position: rules[2].Handle,
 		Exprs: []expr.Any{
 			&expr.Verdict{
-				// [ immediate reg 0 queue ]
-				Kind: expr.VerdictQueue,
+				// [ immediate reg 0 return ]
+				Kind: expr.VerdictReturn,
 			},
 		},
 	})
@@ -300,9 +300,9 @@ func TestRuleOperations(t *testing.T) {
 	rules, _ = c.GetRules(filter, prerouting)
 
 	want = []expr.VerdictKind{
-		expr.VerdictQueue,
+		expr.VerdictReturn,
 		expr.VerdictAccept,
-		expr.VerdictQueue,
+		expr.VerdictReturn,
 		expr.VerdictAccept,
 		expr.VerdictDrop,
 		expr.VerdictDrop,
