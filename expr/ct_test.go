@@ -88,6 +88,33 @@ func TestCt(t *testing.T) {
 			},
 		},
 		{
+			name: "Unmarshal Ct zone direction original case",
+			ct: Ct{
+				Register:       1,
+				SourceRegister: true,
+				Key:            CtKeyZONE,
+				Direction:      CtDirOriginal,
+				OptDirection:   true,
+			},
+		},
+		{
+			name: "Unmarshal Ct zone direction reply case",
+			ct: Ct{
+				Register:     1,
+				Key:          CtKeyZONE,
+				Direction:    CtDirReply,
+				OptDirection: true,
+			},
+		},
+		{
+			name: "Unmarshal Ct zone without direction case",
+			ct: Ct{
+				Register:       1,
+				SourceRegister: true,
+				Key:            CtKeyZONE,
+			},
+		},
+		{
 			name: "Unmarshal Ct bytes without direction case",
 			ct: Ct{
 				Register: 1,
