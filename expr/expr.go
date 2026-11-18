@@ -363,26 +363,29 @@ func (e *Masq) marshal(fam byte) ([]byte, error) {
 
 func (e *Masq) marshalData(fam byte) ([]byte, error) {
 	msgData := []byte{}
-	if !e.ToPorts {
-		flags := uint32(0)
-		if e.Random {
-			flags |= NF_NAT_RANGE_PROTO_RANDOM
+	flags := uint32(0)
+	if e.Random {
+		flags |= NF_NAT_RANGE_PROTO_RANDOM
+	}
+	if e.FullyRandom {
+		flags |= NF_NAT_RANGE_PROTO_RANDOM_FULLY
+	}
+	if e.Persistent {
+		flags |= NF_NAT_RANGE_PERSISTENT
+	}
+	if e.ToPorts {
+		// The kernel only applies the ports if told they are specified.
+		flags |= NF_NAT_RANGE_PROTO_SPECIFIED
+	}
+	if flags != 0 {
+		flagsData, err := netlink.MarshalAttributes([]netlink.Attribute{
+			{Type: unix.NFTA_MASQ_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)}})
+		if err != nil {
+			return nil, err
 		}
-		if e.FullyRandom {
-			flags |= NF_NAT_RANGE_PROTO_RANDOM_FULLY
-		}
-		if e.Persistent {
-			flags |= NF_NAT_RANGE_PERSISTENT
-		}
-		if flags != 0 {
-			flagsData, err := netlink.MarshalAttributes([]netlink.Attribute{
-				{Type: unix.NFTA_MASQ_FLAGS, Data: binaryutil.BigEndian.PutUint32(flags)}})
-			if err != nil {
-				return nil, err
-			}
-			msgData = append(msgData, flagsData...)
-		}
-	} else {
+		msgData = append(msgData, flagsData...)
+	}
+	if e.ToPorts {
 		regsData, err := netlink.MarshalAttributes([]netlink.Attribute{
 			{Type: unix.NFTA_MASQ_REG_PROTO_MIN, Data: binaryutil.BigEndian.PutUint32(e.RegProtoMin)}})
 		if err != nil {
