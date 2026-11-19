@@ -230,7 +230,9 @@ func (monitor *Monitor) monitor() {
 				continue
 			}
 			msgType := msg.Header.Type & 0x00ff
-			if monitor.monitorFlags&1<<msgType == 0 {
+			// NFT_MSG_NEWGEN ends a batch and is what delivers the changes
+			// collected so far, so it must not be filtered out.
+			if msgType != unix.NFT_MSG_NEWGEN && monitor.monitorFlags&(1<<msgType) == 0 {
 				continue
 			}
 			switch msgType {
