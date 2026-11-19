@@ -6,9 +6,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
@@ -161,5 +163,97 @@ func TestMonitor(t *testing.T) {
 	}
 	if len(gotRule.Exprs) != len(rule.Exprs) {
 		t.Fatal("no want rule")
+	}
+}
+
+func TestMonitorFilter(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		opts []nftables.MonitorOption
+		want []nftables.MonitorEventType
+	}{
+		{
+			name: "rules",
+			opts: []nftables.MonitorOption{
+				nftables.WithMonitorObject(nftables.MonitorObjectRules),
+			},
+			want: []nftables.MonitorEventType{
+				nftables.MonitorEventTypeNewRule,
+			},
+		},
+		{
+			name: "new tables",
+			opts: []nftables.MonitorOption{
+				nftables.WithMonitorAction(nftables.MonitorActionNew),
+				nftables.WithMonitorObject(nftables.MonitorObjectTables),
+			},
+			want: []nftables.MonitorEventType{
+				nftables.MonitorEventTypeNewTable,
+			},
+		},
+		{
+			name: "ruleset",
+			opts: []nftables.MonitorOption{
+				nftables.WithMonitorObject(nftables.MonitorObjectRuleset),
+			},
+			want: []nftables.MonitorEventType{
+				nftables.MonitorEventTypeNewTable,
+				nftables.MonitorEventTypeNewChain,
+				nftables.MonitorEventTypeNewRule,
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+			defer nftest.CleanupSystemConn(t, newNS)
+			c.FlushRuleset()
+			defer c.FlushRuleset()
+
+			monitor := nftables.NewMonitor(tt.opts...)
+			events, err := c.AddGenerationalMonitor(monitor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer monitor.Close()
+
+			filter := c.AddTable(&nftables.Table{
+				Family: nftables.TableFamilyIPv4,
+				Name:   "filter",
+			})
+			input := c.AddChain(&nftables.Chain{
+				Name:     "input",
+				Hooknum:  nftables.ChainHookInput,
+				Priority: nftables.ChainPriorityFilter,
+				Table:    filter,
+				Type:     nftables.ChainTypeFilter,
+			})
+			c.AddRule(&nftables.Rule{
+				Table: filter,
+				Chain: input,
+				Exprs: []expr.Any{&expr.Verdict{Kind: expr.VerdictAccept}},
+			})
+			if err := c.Flush(); err != nil {
+				t.Fatal(err)
+			}
+
+			select {
+			case ev, ok := <-events:
+				if !ok {
+					t.Fatal("monitor closed")
+				}
+				var got []nftables.MonitorEventType
+				for _, change := range ev.Changes {
+					if change.Error != nil {
+						t.Fatal("monitor err", change.Error)
+					}
+					got = append(got, change.Type)
+				}
+				if !slices.Equal(got, tt.want) {
+					t.Fatalf("got events %v, want %v", got, tt.want)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("no events within 5s")
+			}
+		})
 	}
 }
