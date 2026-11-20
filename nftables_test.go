@@ -3742,6 +3742,144 @@ func TestCreateAutoMergeSet(t *testing.T) {
 	}
 }
 
+func TestSetByteOrderRoundTrip(t *testing.T) {
+	tests := []struct {
+		name          string
+		set           nftables.Set
+		elems         []nftables.SetElement
+		wantKeyOrder  binaryutil.ByteOrder
+		wantDataOrder binaryutil.ByteOrder
+	}{
+		{
+			name: "constant set defaults key byteorder to big-endian",
+			set: nftables.Set{
+				Constant: true,
+				KeyType:  nftables.TypeInetService,
+			},
+			elems: []nftables.SetElement{
+				{Key: binaryutil.BigEndian.PutUint16(80)},
+			},
+			wantKeyOrder: binaryutil.BigEndian,
+		},
+		{
+			name: "explicit host-endian key byteorder",
+			set: nftables.Set{
+				KeyType:      nftables.TypeMark,
+				KeyByteOrder: binaryutil.NativeEndian,
+			},
+			elems: []nftables.SetElement{
+				{Key: binaryutil.NativeEndian.PutUint32(1)},
+			},
+			wantKeyOrder: binaryutil.NativeEndian,
+		},
+		{
+			name: "interval set defaults key byteorder to big-endian",
+			set: nftables.Set{
+				Interval: true,
+				KeyType:  nftables.TypeInetService,
+			},
+			wantKeyOrder: binaryutil.BigEndian,
+		},
+		{
+			name: "interval set with explicit host-endian key byteorder",
+			set: nftables.Set{
+				Interval:     true,
+				KeyType:      nftables.TypeMark,
+				KeyByteOrder: binaryutil.NativeEndian,
+			},
+			elems: []nftables.SetElement{
+				{Key: binaryutil.NativeEndian.PutUint32(7)},
+			},
+			wantKeyOrder: binaryutil.NativeEndian,
+		},
+		{
+			name: "map with explicit host-endian key and data byteorder",
+			set: nftables.Set{
+				KeyType:       nftables.TypeMark,
+				DataType:      nftables.TypeMark,
+				KeyByteOrder:  binaryutil.NativeEndian,
+				DataByteOrder: binaryutil.NativeEndian,
+				IsMap:         true,
+			},
+			elems: []nftables.SetElement{
+				{
+					Key: binaryutil.NativeEndian.PutUint32(1),
+					Val: binaryutil.NativeEndian.PutUint32(2),
+				},
+			},
+			wantKeyOrder:  binaryutil.NativeEndian,
+			wantDataOrder: binaryutil.NativeEndian,
+		},
+		{
+			name: "map with explicit data byteorder only",
+			set: nftables.Set{
+				KeyType:       nftables.TypeInetService,
+				DataType:      nftables.TypeMark,
+				DataByteOrder: binaryutil.NativeEndian,
+				IsMap:         true,
+			},
+			elems: []nftables.SetElement{
+				{
+					Key: binaryutil.BigEndian.PutUint16(22),
+					Val: binaryutil.NativeEndian.PutUint32(1),
+				},
+			},
+			wantDataOrder: binaryutil.NativeEndian,
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+			defer nftest.CleanupSystemConn(t, newNS)
+			defer conn.FlushRuleset()
+
+			table := conn.AddTable(&nftables.Table{
+				Name:   fmt.Sprintf("byteorder-table-%d", i),
+				Family: nftables.TableFamilyIPv4,
+			})
+
+			set := tt.set
+			set.Table = table
+			set.Name = fmt.Sprintf("byteorder-set-%d", i)
+
+			if err := conn.AddSet(&set, tt.elems); err != nil {
+				t.Fatalf("failed to add set: %v", err)
+			}
+			if err := conn.Flush(); err != nil {
+				t.Fatalf("failed to flush: %v", err)
+			}
+
+			gotSet, err := conn.GetSetByName(table, set.Name)
+			if err != nil {
+				t.Fatalf("failed to find set %q: %v", set.Name, err)
+			}
+			if gotSet.KeyByteOrder != tt.wantKeyOrder {
+				t.Fatalf("set.KeyByteOrder = %v, want %v", gotSet.KeyByteOrder, tt.wantKeyOrder)
+			}
+			if gotSet.DataByteOrder != tt.wantDataOrder {
+				t.Fatalf("set.DataByteOrder = %v, want %v", gotSet.DataByteOrder, tt.wantDataOrder)
+			}
+
+			gotElems, err := conn.GetSetElements(gotSet)
+			if err != nil {
+				t.Fatalf("failed to get set elements: %v", err)
+			}
+			if got, want := len(gotElems), len(tt.elems); got != want {
+				t.Fatalf("got %d elements, want %d", got, want)
+			}
+			for i := range tt.elems {
+				if !bytes.Equal(gotElems[i].Key, tt.elems[i].Key) {
+					t.Fatalf("element[%d].Key = %x, want %x", i, gotElems[i].Key, tt.elems[i].Key)
+				}
+				if !bytes.Equal(gotElems[i].Val, tt.elems[i].Val) {
+					t.Fatalf("element[%d].Val = %x, want %x", i, gotElems[i].Val, tt.elems[i].Val)
+				}
+			}
+		})
+	}
+}
+
 func TestIP6SetAddElements(t *testing.T) {
 	// Create a new network namespace to test these operations,
 	// and tear down the namespace at test completion.
