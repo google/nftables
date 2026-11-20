@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/google/nftables/binaryutil"
+	"github.com/google/nftables/userdata"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
@@ -44,6 +45,8 @@ const (
 )
 
 const (
+	// https://github.com/torvalds/linux/blob/cbd2257dc96e3e46217540fcb095a757ffa20d96/include/uapi/linux/netfilter/nf_tables.h#L210
+	nftaTableUserdata = 0x06
 	// https://github.com/torvalds/linux/blob/cbd2257dc96e3e46217540fcb095a757ffa20d96/include/uapi/linux/netfilter/nf_tables.h#L211
 	nftaTableOwner = 0x07
 
@@ -79,6 +82,11 @@ type Table struct {
 	Flags  TableFlags // NFTA_TABLE_FLAGS
 	Owner  uint32     // NFTA_TABLE_OWNER
 	Family TableFamily
+	// Comment is stored in NFTA_TABLE_USERDATA in the format used by nft,
+	// so "nft list ruleset" shows it. It requires Linux 5.10 and is ignored
+	// by older kernels. The kernel does not update the comment of an
+	// existing table, changing it requires deleting the table.
+	Comment string
 }
 
 // DelTable deletes a specific table, along with all chains/rules it contains.
@@ -124,6 +132,10 @@ func (cc *Conn) addTable(t *Table, flag netlink.HeaderFlags) *Table {
 	}
 
 	attrs = append(attrs, netlink.Attribute{Type: unix.NFTA_TABLE_FLAGS, Data: binaryutil.BigEndian.PutUint32(uint32(t.Flags))})
+	if t.Comment != "" {
+		udata := userdata.AppendString(nil, userdata.NFTNL_UDATA_TABLE_COMMENT, t.Comment)
+		attrs = append(attrs, netlink.Attribute{Type: nftaTableUserdata, Data: udata})
+	}
 	data := cc.marshalAttr(attrs)
 
 	cc.messages = append(cc.messages, netlinkMessage{
@@ -262,6 +274,10 @@ func tableFromMsg(msg netlink.Message) (*Table, error) {
 			t.Flags = TableFlags(ad.Uint32())
 		case nftaTableOwner:
 			t.Owner = ad.Uint32()
+		case nftaTableUserdata:
+			if comment, ok := userdata.GetString(ad.Bytes(), userdata.NFTNL_UDATA_TABLE_COMMENT); ok {
+				t.Comment = comment
+			}
 		}
 	}
 

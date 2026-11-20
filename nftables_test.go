@@ -5852,6 +5852,183 @@ func TestSetComment(t *testing.T) {
 	}
 }
 
+func TestTableComment(t *testing.T) {
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// nft add table inet filter { comment "test comment" \; }
+		[]byte("\x01\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00\x13\x00\x06\x00\x00\x0d\x74\x65\x73\x74\x20\x63\x6f\x6d\x6d\x65\x6e\x74\x00\x00"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	c, err := nftables.New(expectMessages(t, want))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.AddTable(&nftables.Table{
+		Family:  nftables.TableFamilyINet,
+		Name:    "filter",
+		Comment: "test comment",
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestChainComment(t *testing.T) {
+	want := [][]byte{
+		// batch begin
+		[]byte("\x00\x00\x00\x0a"),
+		// nft add table inet filter
+		[]byte("\x01\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00"),
+		// nft add chain inet filter base-chain { type filter hook prerouting priority 0 \; comment "test comment" \; }
+		[]byte("\x01\x00\x00\x00\x0b\x00\x01\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x0f\x00\x03\x00\x62\x61\x73\x65\x2d\x63\x68\x61\x69\x6e\x00\x00\x14\x00\x04\x80\x08\x00\x01\x00\x00\x00\x00\x00\x08\x00\x02\x00\x00\x00\x00\x00\x0b\x00\x07\x00\x66\x69\x6c\x74\x65\x72\x00\x00\x13\x00\x0c\x00\x00\x0d\x74\x65\x73\x74\x20\x63\x6f\x6d\x6d\x65\x6e\x74\x00\x00"),
+		// batch end
+		[]byte("\x00\x00\x00\x0a"),
+	}
+
+	c, err := nftables.New(expectMessages(t, want))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	filter := c.AddTable(&nftables.Table{
+		Family: nftables.TableFamilyINet,
+		Name:   "filter",
+	})
+	c.AddChain(&nftables.Chain{
+		Name:     "base-chain",
+		Table:    filter,
+		Hooknum:  nftables.ChainHookPrerouting,
+		Priority: nftables.ChainPriorityRef(0),
+		Type:     nftables.ChainTypeFilter,
+		Comment:  "test comment",
+	})
+
+	if err := c.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestTableAndChainCommentRoundTrip checks that the comments of tables and
+// chains are stored by the kernel and read back by the list functions, and
+// that objects without a comment list an empty one.
+func TestTableAndChainCommentRoundTrip(t *testing.T) {
+	conn, newNS := nftest.OpenSystemConn(t, *enableSysTests)
+	defer nftest.CleanupSystemConn(t, newNS)
+	conn.FlushRuleset()
+	defer conn.FlushRuleset()
+
+	commented := conn.AddTable(&nftables.Table{
+		Name:    "commented",
+		Family:  nftables.TableFamilyINet,
+		Comment: "table comment",
+	})
+	plain := conn.AddTable(&nftables.Table{
+		Name:   "plain",
+		Family: nftables.TableFamilyINet,
+	})
+	conn.AddChain(&nftables.Chain{
+		Name:     "base",
+		Table:    commented,
+		Hooknum:  nftables.ChainHookInput,
+		Priority: nftables.ChainPriorityFilter,
+		Type:     nftables.ChainTypeFilter,
+		Comment:  "base chain comment",
+	})
+	conn.AddChain(&nftables.Chain{
+		Name:    "regular",
+		Table:   commented,
+		Comment: "regular chain comment",
+	})
+	conn.AddChain(&nftables.Chain{
+		Name:  "plain",
+		Table: plain,
+	})
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("conn.Flush() failed: %v", err)
+	}
+
+	tables, err := conn.ListTablesOfFamily(nftables.TableFamilyINet)
+	if err != nil {
+		t.Fatalf("conn.ListTablesOfFamily() failed: %v", err)
+	}
+	gotTables := map[string]string{}
+	for _, tb := range tables {
+		gotTables[tb.Name] = tb.Comment
+	}
+	wantTables := map[string]string{"commented": "table comment", "plain": ""}
+	if !reflect.DeepEqual(wantTables, gotTables) {
+		t.Errorf("table comments = %v, want %v", gotTables, wantTables)
+	}
+
+	tb, err := conn.ListTableOfFamily("commented", nftables.TableFamilyINet)
+	if err != nil {
+		t.Fatalf("conn.ListTableOfFamily() failed: %v", err)
+	}
+	if got, want := tb.Comment, "table comment"; got != want {
+		t.Errorf("ListTableOfFamily() comment = %q, want %q", got, want)
+	}
+
+	chains, err := conn.ListChainsOfTableFamily(nftables.TableFamilyINet)
+	if err != nil {
+		t.Fatalf("conn.ListChainsOfTableFamily() failed: %v", err)
+	}
+	gotChains := map[string]string{}
+	for _, ch := range chains {
+		gotChains[ch.Table.Name+"/"+ch.Name] = ch.Comment
+	}
+	wantChains := map[string]string{
+		"commented/base":    "base chain comment",
+		"commented/regular": "regular chain comment",
+		"plain/plain":       "",
+	}
+	if !reflect.DeepEqual(wantChains, gotChains) {
+		t.Errorf("chain comments = %v, want %v", gotChains, wantChains)
+	}
+
+	ch, err := conn.ListChain(commented, "base")
+	if err != nil {
+		t.Fatalf("conn.ListChain() failed: %v", err)
+	}
+	if got, want := ch.Comment, "base chain comment"; got != want {
+		t.Errorf("ListChain() comment = %q, want %q", got, want)
+	}
+
+	// Adding an existing table or chain again with another comment succeeds
+	// but the kernel keeps the original comment.
+	conn.AddTable(&nftables.Table{
+		Name:    "commented",
+		Family:  nftables.TableFamilyINet,
+		Comment: "changed",
+	})
+	conn.AddChain(&nftables.Chain{
+		Name:    "regular",
+		Table:   commented,
+		Comment: "changed",
+	})
+	if err := conn.Flush(); err != nil {
+		t.Fatalf("conn.Flush() failed: %v", err)
+	}
+	tb, err = conn.ListTableOfFamily("commented", nftables.TableFamilyINet)
+	if err != nil {
+		t.Fatalf("conn.ListTableOfFamily() failed: %v", err)
+	}
+	if got, want := tb.Comment, "table comment"; got != want {
+		t.Errorf("table comment after re-adding = %q, want %q", got, want)
+	}
+	ch, err = conn.ListChain(commented, "regular")
+	if err != nil {
+		t.Fatalf("conn.ListChain() failed: %v", err)
+	}
+	if got, want := ch.Comment, "regular chain comment"; got != want {
+		t.Errorf("chain comment after re-adding = %q, want %q", got, want)
+	}
+}
+
 func TestMasq(t *testing.T) {
 	tests := []struct {
 		name      string

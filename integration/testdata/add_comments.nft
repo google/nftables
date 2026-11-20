@@ -1,0 +1,10 @@
+table inet test-table {
+	comment "table comment"
+	chain base-chain {
+		comment "base chain comment"
+		type filter hook input priority filter; policy accept;
+	}
+	chain regular-chain {
+		comment "regular chain comment"
+	}
+}

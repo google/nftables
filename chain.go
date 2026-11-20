@@ -20,9 +20,13 @@ import (
 	"math"
 
 	"github.com/google/nftables/binaryutil"
+	"github.com/google/nftables/userdata"
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 )
+
+// https://github.com/torvalds/linux/blob/cbd2257dc96e3e46217540fcb095a757ffa20d96/include/uapi/linux/netfilter/nf_tables.h#L253
+const nftaChainUserdata = 0x0c
 
 // ChainHook specifies at which step in packet processing the Chain should be
 // executed. See also
@@ -103,6 +107,11 @@ type Chain struct {
 	Type     ChainType
 	Policy   *ChainPolicy
 	Device   string
+	// Comment is stored in NFTA_CHAIN_USERDATA in the format used by nft,
+	// so "nft list ruleset" shows it. It requires Linux 5.10 and is ignored
+	// by older kernels. The kernel does not update the comment of an
+	// existing chain, changing it requires deleting the chain.
+	Comment string
 }
 
 // AddChain adds the specified Chain. See also
@@ -138,6 +147,12 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 	if c.Type != "" {
 		data = append(data, cc.marshalAttr([]netlink.Attribute{
 			{Type: unix.NFTA_CHAIN_TYPE, Data: []byte(c.Type + "\x00")},
+		})...)
+	}
+	if c.Comment != "" {
+		udata := userdata.AppendString(nil, userdata.NFTNL_UDATA_CHAIN_COMMENT, c.Comment)
+		data = append(data, cc.marshalAttr([]netlink.Attribute{
+			{Type: nftaChainUserdata, Data: udata},
 		})...)
 	}
 	cc.messages = append(cc.messages, netlinkMessage{
@@ -314,6 +329,10 @@ func chainFromMsg(msg netlink.Message) (*Chain, error) {
 				c.Hooknum, c.Priority, err = hookFromMsg(b)
 				return err
 			})
+		case nftaChainUserdata:
+			if comment, ok := userdata.GetString(ad.Bytes(), userdata.NFTNL_UDATA_CHAIN_COMMENT); ok {
+				c.Comment = comment
+			}
 		}
 	}
 
