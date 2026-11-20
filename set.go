@@ -1106,20 +1106,24 @@ func (cc *Conn) getSetElements(s *Set, e []SetElement, reset bool) ([]SetElement
 		return nil, fmt.Errorf("SendMessages: %v", err)
 	}
 
-	reply, err := cc.receive(conn)
-	if err != nil {
-		return nil, fmt.Errorf("receive: %w", err)
-	}
 	var elems []SetElement
-	for _, msg := range reply {
-		s, err := elementsFromMsg(uint8(s.Table.Family), msg)
-		if err != nil {
-			return nil, err
+	var firstErr error
+	for msg, err := range cc.receiveSeq(conn) {
+		if err != nil && firstErr == nil {
+			firstErr = err
+			continue
 		}
-		elems = append(elems, s...)
+
+		e, err := elementsFromMsg(uint8(s.Table.Family), msg)
+		if err != nil && firstErr == nil {
+			firstErr = err
+			continue
+		}
+
+		elems = append(elems, e...)
 	}
 
-	return elems, nil
+	return elems, firstErr
 }
 
 // GetSetElements returns the elements in the specified set.

@@ -185,36 +185,33 @@ func (cc *Conn) receiveSeq(conn *netlink.Conn) iter.Seq2[netlink.Message, error]
 				break
 			}
 
-			replies, err := conn.Receive()
-			if err != nil {
-				// Yield the error but continue iterating
-				if !yield(netlink.Message{}, err) {
-					return
+			for res, err := range conn.ReceiveIter() {
+				if err != nil {
+					// Yield the error but continue iterating
+					if !yield(netlink.Message{}, err) {
+						return
+					}
 				}
-				continue
-			}
 
-			if len(replies) == 0 && cc.TestDial != nil {
-				// When using a test dial function, we don't always get a reply for each
-				// sent message. Additionally, there is no buffer to poll for more data,
-				// so we stop here.
-				return
-			}
-
-			for _, msg := range replies {
 				// Filter out non-nftables messages.
 				// In practice, this would only be netlink.Error messages.
 				// Those are handled by the netlink library itself and should be
-				// reported as errors by conn.Receive().
-				subsystem := msg.Header.Type >> 8
+				// reported as errors by conn.ReceiveIter().
+				subsystem := res.Header.Type >> 8
 				if subsystem != unix.NFNL_SUBSYS_NFTABLES {
 					continue
 				}
 
-				// Stop iteration if yield returns false
-				if !yield(msg, nil) {
+				if !yield(res, nil) {
 					return
 				}
+			}
+
+			if cc.TestDial != nil {
+				// When using a test dial function, we don't always get a reply for each
+				// sent message. Additionally, there is no buffer to poll for more data,
+				// so we stop here.
+				return
 			}
 		}
 	}

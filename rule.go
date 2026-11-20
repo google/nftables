@@ -170,20 +170,25 @@ func (cc *Conn) getRules(t *Table, c *Chain, msgType nftMsgType, handle uint64) 
 		return nil, fmt.Errorf("SendMessages: %v", err)
 	}
 
-	reply, err := cc.receive(conn)
-	if err != nil {
-		return nil, fmt.Errorf("receive: %w", err)
-	}
 	var rules []*Rule
-	for _, msg := range reply {
-		r, err := ruleFromMsg(t.Family, msg)
-		if err != nil {
-			return nil, err
+	var firstErr error
+
+	for msg, err := range cc.receiveSeq(conn) {
+		if err != nil && firstErr == nil {
+			firstErr = err
+			continue
 		}
-		rules = append(rules, r)
+
+		rule, err := ruleFromMsg(t.Family, msg)
+		if err != nil && firstErr == nil {
+			firstErr = err
+			continue
+		}
+
+		rules = append(rules, rule)
 	}
 
-	return rules, nil
+	return rules, firstErr
 }
 
 func (cc *Conn) newRule(r *Rule, op ruleOperation) *Rule {
