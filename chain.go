@@ -102,7 +102,14 @@ type Chain struct {
 	Priority *ChainPriority
 	Type     ChainType
 	Policy   *ChainPolicy
-	Device   string
+	// Device is the interface an ingress or egress chain is attached to.
+	// When a chain names several, this is the first of them and Devices
+	// holds all of them.
+	Device string
+	// Devices are all the interfaces an ingress or egress chain is
+	// attached to ("devices = { eth0, eth1 }"). Setting Device alone
+	// still works and is marshalled as before.
+	Devices []string
 }
 
 // AddChain adds the specified Chain. See also
@@ -121,7 +128,21 @@ func (cc *Conn) AddChain(c *Chain) *Chain {
 			{Type: unix.NFTA_HOOK_PRIORITY, Data: binaryutil.BigEndian.PutUint32(uint32(*c.Priority))},
 		}
 
-		if c.Device != "" {
+		switch {
+		case len(c.Devices) > 1:
+			var elems []netlink.Attribute
+			for _, d := range c.Devices {
+				elems = append(elems, netlink.Attribute{Type: nftaDeviceName, Data: []byte(d + "\x00")})
+			}
+			devs, err := netlink.MarshalAttributes(elems)
+			if err != nil {
+				cc.setErr(err)
+				return c
+			}
+			hookAttr = append(hookAttr, netlink.Attribute{Type: unix.NLA_F_NESTED | nftaHookDevs, Data: devs})
+		case len(c.Devices) == 1:
+			hookAttr = append(hookAttr, netlink.Attribute{Type: unix.NFTA_HOOK_DEV, Data: []byte(c.Devices[0] + "\x00")})
+		case c.Device != "":
 			hookAttr = append(hookAttr, netlink.Attribute{Type: unix.NFTA_HOOK_DEV, Data: []byte(c.Device + "\x00")})
 		}
 
@@ -311,7 +332,12 @@ func chainFromMsg(msg netlink.Message) (*Chain, error) {
 			c.Policy = &policy
 		case unix.NFTA_CHAIN_HOOK:
 			ad.Do(func(b []byte) error {
-				c.Hooknum, c.Priority, err = hookFromMsg(b)
+				var devices []string
+				c.Hooknum, c.Priority, devices, err = hookFromMsg(b)
+				if len(devices) > 0 {
+					c.Device = devices[0]
+					c.Devices = devices
+				}
 				return err
 			})
 		}
@@ -320,16 +346,25 @@ func chainFromMsg(msg netlink.Message) (*Chain, error) {
 	return &c, nil
 }
 
-func hookFromMsg(b []byte) (*ChainHook, *ChainPriority, error) {
+// nftaHookDevs and nftaDeviceName are NFTA_HOOK_DEVS and NFTA_DEVICE_NAME
+// from linux/netfilter/nf_tables.h, which golang.org/x/sys/unix does not
+// export.
+const (
+	nftaHookDevs   = 4
+	nftaDeviceName = 1
+)
+
+func hookFromMsg(b []byte) (*ChainHook, *ChainPriority, []string, error) {
 	ad, err := netlink.NewAttributeDecoder(b)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	ad.ByteOrder = binary.BigEndian
 
 	var hooknum ChainHook
 	var prio ChainPriority
+	var devices []string
 
 	for ad.Next() {
 		switch ad.Type() {
@@ -337,8 +372,24 @@ func hookFromMsg(b []byte) (*ChainHook, *ChainPriority, error) {
 			hooknum = ChainHook(ad.Uint32())
 		case unix.NFTA_HOOK_PRIORITY:
 			prio = ChainPriority(ad.Uint32())
+		case unix.NFTA_HOOK_DEV:
+			devices = append(devices, ad.String())
+		case nftaHookDevs:
+			ad.Do(func(b []byte) error {
+				nested, err := netlink.NewAttributeDecoder(b)
+				if err != nil {
+					return err
+				}
+				nested.ByteOrder = binary.BigEndian
+				for nested.Next() {
+					if nested.Type() == nftaDeviceName {
+						devices = append(devices, nested.String())
+					}
+				}
+				return nested.Err()
+			})
 		}
 	}
 
-	return &hooknum, &prio, nil
+	return &hooknum, &prio, devices, nil
 }
