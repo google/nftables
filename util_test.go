@@ -201,3 +201,229 @@ func TestNetInterval(t *testing.T) {
 		})
 	}
 }
+
+func TestEndIp(t *testing.T) {
+	tests := []struct {
+		network   string
+		wantEndIp string
+	}{
+		{
+			network:   "10.0.0.0/24",
+			wantEndIp: "10.0.0.255",
+		},
+		{
+			network:   "192.168.4.32/27",
+			wantEndIp: "192.168.4.63",
+		},
+		{
+			network:   "2001:db8:100::/64",
+			wantEndIp: "2001:db8:100:0:ffff:ffff:ffff:ffff",
+		},
+		{
+			network:   "2001:db8:100:a:b::50/64",
+			wantEndIp: "2001:db8:100:a:ffff:ffff:ffff:ffff",
+		},
+	}
+	for _, tt := range tests {
+		taddr, tnet, err := net.ParseCIDR(tt.network)
+		if err != nil {
+			t.Fatalf("endIp() error parsing test CIDR = %v", err)
+		}
+
+		t.Run(tnet.String(), func(t *testing.T) {
+			gotEndIp := endIp(taddr, tnet.Mask)
+			if !gotEndIp.Equal(net.ParseIP(tt.wantEndIp)) {
+				t.Errorf("endIp() gotEndIp = %s, wantEndIp = %s", gotEndIp, tt.wantEndIp)
+			}
+		})
+	}
+}
+
+func TestNetFromRange(t *testing.T) {
+	tests := []struct {
+		name    string
+		first   string
+		last    string
+		wantNet string
+		wantOk  bool
+		wantErr bool
+	}{
+		{
+			first:   "0.0.0.0",
+			last:    "255.255.255.255",
+			wantNet: "0.0.0.0/0",
+			wantOk:  true,
+			wantErr: false,
+		},
+		{
+			first:   "0.0.0.1",
+			last:    "255.255.255.254",
+			wantNet: "", // not exactly 0.0.0.0/0
+			wantOk:  false,
+			wantErr: false,
+		},
+		{
+			first:   "192.168.4.0",
+			last:    "192.168.4.255",
+			wantNet: "192.168.4.0/24",
+			wantOk:  true,
+			wantErr: false,
+		},
+		{
+			first:   "192.0.2.16",
+			last:    "192.0.2.30",
+			wantNet: "", // not exactly 192.0.2.16/28
+			wantOk:  false,
+			wantErr: false,
+		},
+		{
+			first:   "2001:db8:100::",
+			last:    "2001:db8:100:ffff:ffff:ffff:ffff:ffff",
+			wantNet: "2001:db8:100::/48",
+			wantOk:  true,
+			wantErr: false,
+		},
+		{
+			first:   "2001:db8:100::100",
+			last:    "2001:db8:100:0:ffff:ffff:ffff:ffff",
+			wantNet: "", // not exactly 2001:db8:100::/64
+			wantOk:  false,
+			wantErr: false,
+		},
+		{
+			first:   "2001:db8:100::",
+			last:    "192.0.2.30",
+			wantNet: "",
+			wantOk:  true,
+			wantErr: true,
+		},
+		{
+			first:   "192.0.2.30",
+			last:    "2001:db8:100::",
+			wantNet: "",
+			wantOk:  true,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.first+"-"+tt.last, func(t *testing.T) {
+			gotNet, gotOk, err := NetFromRange(net.ParseIP(tt.first), net.ParseIP(tt.last))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NetFromRange() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+
+			if tt.wantNet == "" {
+				if gotNet != nil {
+					t.Errorf("NetFromInterval() gotNet = %v, wantNet = nil", gotNet)
+				}
+
+				return
+			}
+
+			_, wantNetParsed, err := net.ParseCIDR(tt.wantNet)
+			if err != nil {
+				t.Fatalf("NetFromRange() error parsing test network = %v", err)
+			}
+
+			if tt.wantOk != gotOk {
+				t.Errorf("NetFromRange() gotOk = %t, wantOk = %t", gotOk, tt.wantOk)
+			}
+
+			if !reflect.DeepEqual(gotNet, wantNetParsed) {
+				t.Errorf("NetFromRange() gotNet = %+v, wantNet = %+v", gotNet, wantNetParsed)
+			}
+		})
+	}
+}
+
+func TestNetFromInterval(t *testing.T) {
+	tests := []struct {
+		name    string
+		first   string
+		last    string
+		wantNet string
+		wantOk  bool
+		wantErr bool
+	}{
+		{
+			first:   "192.0.2.16",
+			last:    "192.0.2.32",
+			wantNet: "192.0.2.16/28",
+			wantOk:  true,
+			wantErr: false,
+		},
+		{
+			first:   "128.0.0.0",
+			last:    "",
+			wantNet: "128.0.0.0/1",
+			wantOk:  true,
+			wantErr: false,
+		},
+		{
+			first:   "2001:db8:100::",
+			last:    "2001:db8:101::",
+			wantNet: "2001:db8:100::/48",
+			wantOk:  true,
+			wantErr: false,
+		},
+		{
+			first:   "2001:db8:a1:11::",
+			last:    "2001:db8:a1:12::",
+			wantNet: "2001:db8:a1:11::/64",
+			wantOk:  true,
+			wantErr: false,
+		},
+		{
+			first:   "2001:db8:100::100",
+			last:    "2001:db8:100:0:ffff:ffff:ffff:ffff",
+			wantNet: "", // not exactly 2001:db8:100::/64
+			wantOk:  false,
+			wantErr: false,
+		},
+		{
+			first:   "2001:db8:100::",
+			last:    "192.0.2.30",
+			wantNet: "",
+			wantOk:  true,
+			wantErr: true,
+		},
+		{
+			first:   "192.0.2.30",
+			last:    "2001:db8:100::",
+			wantNet: "",
+			wantOk:  true,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.first+"-"+tt.last, func(t *testing.T) {
+			gotNet, gotOk, err := NetFromInterval(net.ParseIP(tt.first), net.ParseIP(tt.last))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NetFromInterval() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+
+			if tt.wantNet == "" {
+				if gotNet != nil {
+					t.Errorf("NetFromInterval() gotNet = %v, wantNet = nil", gotNet)
+				}
+
+				return
+			}
+
+			_, wantNetParsed, err := net.ParseCIDR(tt.wantNet)
+			if err != nil {
+				t.Fatalf("NetFromInterval() error parsing test network = %v", err)
+			}
+
+			if tt.wantOk != gotOk {
+				t.Errorf("NetFromInterval() gotOk = %t, wantOk = %t", gotOk, tt.wantOk)
+			}
+
+			if !reflect.DeepEqual(gotNet, wantNetParsed) {
+				t.Errorf("NetFromInterval() gotNet = %+v, wantNet = %+v", gotNet, wantNetParsed)
+			}
+		})
+	}
+}
