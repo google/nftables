@@ -75,7 +75,10 @@ func (e *TProxy) unmarshal(fam byte, data []byte) error {
 	for ad.Next() {
 		switch ad.Type() {
 		case NFTA_TPROXY_FAMILY:
-			e.Family = ad.Uint8()
+			// NFTA_TPROXY_FAMILY is encoded as a 32-bit network-byte-order
+			// attribute by the kernel. Read the full value before narrowing it
+			// to the byte-sized address family stored by TProxy.
+			e.Family = byte(ad.Uint32())
 		case NFTA_TPROXY_REG_PORT:
 			e.RegPort = ad.Uint32()
 		case NFTA_TPROXY_REG_ADDR:
